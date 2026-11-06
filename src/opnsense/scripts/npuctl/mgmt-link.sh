@@ -14,6 +14,10 @@
 #
 #   mgmt-link.sh assign        make the link an OPNsense interface, NPUMGMT, with its address, and
 #                              reload what that touches - idempotent, the installer runs it
+#   mgmt-link.sh early         the ARMADA (the XGS 136), from its early boot hook 31-xgs-mgmt-link:
+#                              the same assignment, only where the link is there and nothing carries
+#                              it, written before OPNsense configures its interfaces - which then
+#                              gives the link its address and its rules itself, so nothing is reloaded
 #   mgmt-link.sh start         the XGS 3300: start the link, waiting for the coprocessor to be ready
 #   mgmt-link.sh coprocessor   give the coprocessor its address over the console, again until it
 #                              answers over the link - at every boot, from the plugin's bootup hook,
@@ -47,6 +51,9 @@ octeontx) LINK=oxmgmt0 ;;
 esac
 
 log() { /usr/bin/logger -t npuctl -p daemon.notice "mgmt-link: $*"; echo "$*"; }
+# The early hook's lines, on the console with their tag as 06-npuctl's and 07-npuep's are: before
+# syslog-ng runs, a logger line reaches no log (#1045).
+say() { /usr/bin/logger -t npuctl -p daemon.notice "mgmt-link: $*"; echo "mgmt-link: $*"; }
 
 have_link() { /sbin/ifconfig "${LINK}" > /dev/null 2>&1; }
 
@@ -130,6 +137,42 @@ assign)
 	/usr/local/sbin/configctl filter reload > /dev/null 2>&1 || true
 	/sbin/ifconfig "${LINK}" up 2>/dev/null || true
 	log "interface reconfigured and the ruleset reloaded; run: mgmt-link.sh coprocessor"
+	;;
+early)
+	# The ARMADA's link assigned at a boot that has it and no assignment, from the early hook
+	# 31-xgs-mgmt-link, which says why there and then (the review's A4). Only the configuration is
+	# written: rc.bootup reads it next, gives the link its address and loads the rules that admit the
+	# coprocessor, as for any interface, so nothing is reconfigured or reloaded here. Written only on
+	# a plain "none" from `show` - an interface key and its line is an assignment, kept as it is, and
+	# any other answer writes nothing - and said only once `show` finds what was written. Never on the
+	# XGS 3300: its link is down until its coprocessor is ready, and `coprocessor` assigns it once it
+	# has started.
+	[ "${FAMILY}" = armada ] || exit 0
+	have_link || exit 0
+	[ -x "${PHP}" ] || exit 0
+	SHOWN=$("${PHP}" "${ASSIGN}" show "${LINK}" 2>/dev/null) || SHOWN=
+	case "${SHOWN}" in
+	none)
+		;;
+	[a-z]*" "*)
+		exit 0
+		;;
+	*)
+		say "the assignment of ${LINK} could not be read - nothing written"
+		exit 0
+		;;
+	esac
+	KEYNAME=$("${PHP}" "${ASSIGN}" assign "${HOST_ADDR}" "${PREFIX_LEN}" "${LINK}")
+	SHOWN=$("${PHP}" "${ASSIGN}" show "${LINK}" 2>/dev/null) || SHOWN=
+	case "${SHOWN}" in
+	[a-z]*" "*)
+		say "${LINK} is interface ${SHOWN%% *} (NPUMGMT), ${HOST_ADDR}/${PREFIX_LEN}, assigned before OPNsense configures its interfaces"
+		;;
+	*)
+		say "the assignment of ${LINK} was not written${KEYNAME:+ (${KEYNAME})} - the coprocessor is reached over its console this boot"
+		;;
+	esac
+	exit 0
 	;;
 start)
 	start_link || exit 1
@@ -223,7 +266,7 @@ ssh)
 	exec ssh -i "${KEY}" -o BatchMode=yes -o ConnectTimeout=8 "root@${NPU_ADDR}" "$@"
 	;;
 *)
-	echo "usage: $0 assign|start|coprocessor|trust|status|ssh [command]"
+	echo "usage: $0 assign|early|start|coprocessor|trust|status|ssh [command]"
 	exit 2
 	;;
 esac

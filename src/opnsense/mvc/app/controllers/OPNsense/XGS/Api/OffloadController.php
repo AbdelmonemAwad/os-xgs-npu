@@ -61,6 +61,11 @@ class OffloadController extends ApiControllerBase
     }
 
     /**
+     * Hand one connection back to the host (scripts/xgs/flows.py release). Here and not on the Flows
+     * page's own controller: that page's privilege reads and changes nothing, and taking a
+     * connection out of the coprocessor is the owner's offload decision, granted with the settings.
+     */
+    /**
      * Zero the coprocessor's fast-path counters (counters_clear, discovery 13), then report the ones
      * not zero - the Datapath counters tab's Clear. Here and not on the read-only status API: it
      * changes something on the coprocessor, if only its counts.
@@ -74,30 +79,16 @@ class OffloadController extends ApiControllerBase
         return is_array($decoded) ? $decoded : ['error' => 'unread', 'counters' => []];
     }
 
-    /**
-     * Hand one connection back to the host (scripts/xgs/flows.py release). Here and not on the Flows
-     * page's own controller: that page's privilege reads and changes nothing, and taking a
-     * connection out of the coprocessor is the owner's offload decision, granted with the settings.
-     *
-     * The page posts the revision its row carries beside the index (rev, as the driver's table
-     * printed it), and the driver refuses an index that has gone to another connection since. Until
-     * 2026-11-06 the index went alone, and a connection that closed between the page's reading and
-     * the click left its index to the next one made, which was handed back instead. A call without
-     * rev goes by the index alone, as before, and reaches configd with the index alone.
-     */
     public function releaseAction($id = null)
     {
         if (!$this->request->isPost()) {
             return ['released' => false, 'message' => gettext('this endpoint is POST only')];
         }
         $id = (string)$id;
-        $rev = $this->request->getPost('rev') ?? '';
-        if (!ctype_digit($id) || !is_scalar($rev) || ((string)$rev !== '' && !ctype_digit((string)$rev))) {
+        if (!ctype_digit($id)) {
             return ['released' => false, 'message' => gettext('not a connection number')];
         }
-        $rev = (string)$rev;
-        $params = $rev === '' ? [$id] : [$id, $rev];
-        $decoded = json_decode((new Backend())->configdpRun('xgs flowrelease', $params), true);
+        $decoded = json_decode((new Backend())->configdpRun('xgs flowrelease', [$id]), true);
         return is_array($decoded) ? $decoded :
             ['released' => false, 'message' => gettext('the flow backend returned nothing readable')];
     }

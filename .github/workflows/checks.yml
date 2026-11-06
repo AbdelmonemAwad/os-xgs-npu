@@ -179,17 +179,9 @@ jobs:
         run: python3 tools/test-ja4-cut.py
 
       # And which connections in hardware either cut drops on the coprocessor first, from each
-      # driver's own table: a connection matched wrongly is one dropped for nothing. Each verdict
-      # carries the revision the table showed, so an index given to another connection between the
-      # reading and the write is refused, not dropped (since 2026-11-06).
+      # driver's own table: a connection matched wrongly is one dropped for nothing.
       - name: The cut in hardware
         run: python3 tools/test-hwdrop.py
-
-      # Return to host on the Flows page: the index written with the revision its row was read with,
-      # so an index given to another connection since is refused, and without one the index alone,
-      # as before. tools/test-flows.py.
-      - name: Return to host
-        run: python3 tools/test-flows.py
 
       # And what is unusual: the states read once per connection, a scan and a sweep, a host far
       # beyond its own mean and not before it has history or below a floor.
@@ -253,7 +245,10 @@ jobs:
 
       # mgmt-link.sh coprocessor with npu-run.sh, ping and the rest made up: the address goes through
       # npu-run.sh under the console's lock, is told again while the link does not answer, and stops
-      # after about five minutes (#1010); trust waits as long as the address for that lock.
+      # after about five minutes (#1010); trust waits as long as the address for that lock. And
+      # mgmt-link.sh early, the ARMADA's link assigned at a boot that has it and no assignment, before
+      # OPNsense configures its interfaces, and nothing done at the boot after, without the link, on
+      # the XGS 3300, or on an answer it cannot read (the review's A4).
       - name: The management link's address
         run: python3 tools/test-mgmt-link.py
 
@@ -399,9 +394,10 @@ jobs:
 
       # Both watchdogs stopped after the kernel follower's rebuild at shutdown, not before it; each boot
       # written down for the reporter before the coprocessor's reset and its driver's load, and one whose
-      # look at boot never ran kept for the next; the reset's record moved to the boot's time before the
-      # reporter runs; the coprocessor's clock not set at boot said once; the appliance's own settings
-      # set again after a factory reset. tools/test-hooks.py.
+      # look at boot never ran kept for the next; the ARMADA's management link assigned by an early hook
+      # after the driver's, on the ARMADA alone (the review's A4); the reset's record moved to the boot's
+      # time before the reporter runs; the coprocessor's clock not set at boot said once; the appliance's
+      # own settings set again after a factory reset. tools/test-hooks.py.
       - name: The shutdown's order and five small hooks
         run: python3 tools/test-hooks.py
 

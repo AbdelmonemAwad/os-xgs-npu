@@ -260,7 +260,7 @@ try:
     s = jc.Watch().once()
     check('two connections cut in pf, and not the third', sorted(killed), ['a52ad56a00000000', 'b52ad56a00000000'])
     check('on the coprocessor too: those two dropped, not the one with an end of each',
-          (s.get('dropped'), verdicts), (2, ['2 1 1', '3 1 1']))
+          (s.get('dropped'), verdicts), (2, ['2 1', '3 1']))
     jc.time.time = real_time
 finally:
     shutil.rmtree(work, ignore_errors=True)

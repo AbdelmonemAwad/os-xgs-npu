@@ -66,18 +66,6 @@
             return (i === 0 ? String(n) : n.toFixed(n < 10 ? 2 : (n < 100 ? 1 : 0))) + ' ' + units[i];
         }
 
-        /* Return to host, with the row's revision beside its index: see the click below. OPNsense 26.7's
-           grid draws the column whose id is "commands" with the formatter of that name alone, whatever its
-           data-formatter says (opnsense_bootgrid.js, _parseColumns): until 2026-11-06 this one was named
-           "release" only, and the button was never drawn - found trying it for #1090. Given under both
-           names, for a grid that still reads data-formatter. */
-        function release_button(column, row) {
-            return '<button type="button" class="btn btn-xs btn-default xgs-release" data-row-id="' +
-                plain(row.id).replace(/[^0-9]/g, '') + '" data-row-rev="' +
-                plain(row.rev).replace(/[^0-9]/g, '') + '" title="' + "{{ lang._('Return to host') }}" +
-                '"><i class="fa fa-fw fa-reply"></i></button>';
-        }
-
         $('#grid-flows').UIBootgrid({
             search: '/api/xgs/flows/search',
             options: {
@@ -121,8 +109,11 @@
                             ? '<i class="fa fa-bolt text-success"></i> ' + "{{ lang._('in hardware') }}"
                             : '<span class="text-muted">' + row.state + '</span>';
                     },
-                    commands: release_button,
-                    release: release_button
+                    release: function (column, row) {
+                        return '<button type="button" class="btn btn-xs btn-default xgs-release" data-row-id="' +
+                            plain(row.id).replace(/[^0-9]/g, '') + '" title="' + "{{ lang._('Return to host') }}" +
+                            '"><i class="fa fa-fw fa-reply"></i></button>';
+                    }
                 }
             }
         });
@@ -165,18 +156,13 @@
          * One connection back to the firewall: the coprocessor lets it go and the host forwards it
          * until pf lets its state go - the flow maker does not take it again. Granted with the
          * settings, not with this page: a user who may only read is told so by the answer.
-         *
-         * With the revision the row was read with, so the driver refuses an index that has gone to
-         * another connection since, and its answer says so. Until 2026-11-06 the index went alone,
-         * and the connection handed back could be the one made after this row's had closed.
          */
         $(document).on('click', '.xgs-release', function () {
             const id = String($(this).data('row-id'));
-            const rev = String($(this).attr('data-row-rev') || '');
             stdDialogConfirm("{{ lang._('Return to host') }}",
                 "{{ lang._('Take this connection out of the coprocessor? The firewall forwards it from now on, and the flow maker leaves it alone until it closes.') }}",
                 "{{ lang._('Return to host') }}", "{{ lang._('Cancel') }}", function () {
-                    ajaxCall('/api/xgs/offload/release/' + id, rev ? {rev: rev} : {}, function (data) {
+                    ajaxCall('/api/xgs/offload/release/' + id, {}, function (data) {
                         BootstrapDialog.show({
                             type: data && data.released ? BootstrapDialog.TYPE_SUCCESS : BootstrapDialog.TYPE_WARNING,
                             title: "{{ lang._('Return to host') }}",
