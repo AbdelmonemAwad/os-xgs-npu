@@ -45,6 +45,10 @@
 #	                                             installed: octep.ko on the OCTEON TX appliance,
 #	                                             npuep.ko on the ARMADA one; install.sh names it
 #	                                             when nothing is installed yet
+#	PINONLY=1 sh install/kernel-follow.sh        only send the next boot to kernel.old, where the
+#	                                             module is not built for /boot/kernel and is for
+#	                                             kernel.old; no lock, no fetch, no build - the stop
+#	                                             hook runs this first
 #
 # WHAT IT WILL NOT DO. It never replaces a working module with one that failed to build, and it never
 # stamps a module it did not just compile. If anything fails it leaves what is installed exactly
@@ -68,7 +72,10 @@ set -u
 # nothing. A run that cannot get the lock in that time exits 75 (EX_TEMPFAIL) with lockf's own
 # message in the log, and touches nothing.
 : ${LOCK:=/var/run/octep-follow.lock}
-if [ -z "${OCTEP_FOLLOW_LOCKED:-}" ]; then
+# PINONLY=1 waits for no lock: it has to arm the fall-back to kernel.old while another run holds
+# this one, and it writes no module (see "the fall-back alone" below).
+: ${PINONLY:=0}
+if [ -z "${OCTEP_FOLLOW_LOCKED:-}" ] && [ "${PINONLY}" != "1" ]; then
 	OCTEP_FOLLOW_LOCKED=1; export OCTEP_FOLLOW_LOCKED
 	exec /usr/bin/lockf -t 900 -k "$LOCK" /bin/sh "$0" "$@"
 fi
@@ -251,6 +258,57 @@ no_fallback() {
 	pin_old_kernel || warn "$1"
 }
 
+# ---------------------------------------------------------------- the fall-back alone, before a reboot
+#
+# PINONLY=1 arms the fall-back and does nothing else: no lock, no sources, no build. The stop hook
+# runs it at every orderly reboot, before the whole follower, and says what it answered.
+#
+# Until 2026-11-06 only the run holding the lock could arm it, and only a run that found the new
+# kernel already in /boot ("kept until the module matches", below). A major upgrade over a slow line
+# fell between the two. A run that started while the kernel was still a staged set - a cron tick's,
+# in the middle of the upgrade - arms nothing, because kernel.old is then the kernel two back, and it
+# was still fetching sources when the host rebooted; the stop hook's run waited for its lock until
+# the time limit cut it off, before it reached the fall-back. The next boot took the new kernel with
+# a module built for the old one: refused, so no front ports, the WAN among them.
+#
+# No lock, because nothing here needs one: it writes no module, and the one thing it changes is the
+# nextboot setting, which pin_old_kernel() makes only for a module built for kernel.old. If a run
+# holding the lock installs the rebuilt module and clears the fall-back just as this arms it, the next
+# boot takes kernel.old with the module that run replaced - kept as .prev, stamped for kernel.old, and
+# loaded by the bring-up for exactly that case - one boot behind, ports and all.
+#
+# /boot/kernel and not a staged set, because the question is what the loader boots: with a kernel
+# still staged, /boot/kernel is the one running and kernel.old the one before it.
+#
+# The answer is the exit status, so that the stop hook says only what is so: 0 the next boot is sent
+# to kernel.old; 2 the module is built for /boot/kernel and nothing is armed; 3 no module is
+# installed; 1 the module is not built for /boot/kernel and the next boot could not be sent to
+# kernel.old, for the reason in the lines before it.
+if [ "${PINONLY}" = "1" ]; then
+	if [ ! -f "${MODULE}" ]; then
+		echo "no ${MODULE} - the driver is not installed on this machine, nothing to fall back with"
+		exit 3
+	fi
+	STAMP=$(/bin/cat "${MODULE}.kernel" 2>/dev/null || true)
+	NEXTV=$(version_of_kernel_file "${KERNEL}" || true)
+	if [ -z "${NEXTV}" ]; then
+		warn "cannot read a kernel version from ${KERNEL}, so the next boot is left as it is"
+		exit 1
+	fi
+	if [ "${NEXTV}" = "${STAMP}" ]; then
+		echo "the module is built for ${KERNEL}, the kernel the next boot takes - nothing to arm"
+		exit 2
+	fi
+	log "the module is not built for ${KERNEL}, the kernel the next boot takes"
+	log "  kernel     : ${NEXTV}"
+	log "  module     : ${STAMP:-<none>}"
+	if pin_old_kernel log; then
+		[ "${DRY}" = "1" ] || : > "${PINNED}" 2>/dev/null || true
+		exit 0
+	fi
+	exit 1
+fi
+
 # ---------------------------------------------------------------- the sources of kernels gone by
 #
 # Every kernel this appliance follows leaves its sources behind: fetch-sources.sh unpacks them into
@@ -403,6 +461,8 @@ fi
 # is spent by the boot it steers, so the first run of the next boot arms it again. unpin_old_kernel()
 # takes it away the moment the module matches.
 # With no module installed there is nothing to boot kernel.old with (no_fallback()).
+# A run that started while the kernel was still staged never arms it here, and it can still hold the
+# lock at the reboot, so the stop hook arms it first, without the lock ("the fall-back alone", above).
 if [ "${WHERE}" = "${KERNEL}" ] && [ "${STAMP}" != "${TARGET}" ] && [ ! -f "${PINNED}" ] &&
     [ -f "${MODULE}" ]; then
 	pin_old_kernel log || true

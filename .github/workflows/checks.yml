@@ -121,8 +121,9 @@ jobs:
         run: python3 tools/test-reporter.py
 
       # kernel-follow.sh where the kernel's sources cannot be had: what it says of the next boot with a
-      # module for another kernel installed and with none, and that it pins nothing then (#818).
-      # tools/test-kernel-follow.py.
+      # module for another kernel installed and with none, and that it pins nothing then (#818). And
+      # the stop hook while another run holds the follower's lock: the next boot sent to kernel.old
+      # where the module is built for it, and said to be only then. tools/test-kernel-follow.py.
       - name: Kernel follower without sources
         run: python3 tools/test-kernel-follow.py
 
@@ -157,7 +158,8 @@ jobs:
         run: python3 tools/test-update.py
 
       # Every model's front ports, from scripts/xgs/models.py, against npuep.c's tables and the
-      # XGS 3300's and XGS 136's panels that bringup.sh, portmap.py and assign.php fall back to.
+      # XGS 3300's and XGS 136's panels that bringup.sh, portmap.py and assign.php fall back to; and
+      # the names portstats.py, coprocessor.py and temperatures.sh give the ports, from the same table.
       - name: Models and their ports
         run: python3 tools/test-models.py
 
@@ -203,7 +205,8 @@ jobs:
       - name: The reminder
         run: python3 tools/test-reminder.py
 
-      # The cages read again when a link changes, not only every five minutes: scripts/xgs/transceivers.py.
+      # The cages read again when a link changes, not only every five minutes, and a read cut short
+      # keeps the cages it did not reach as the read before had them: scripts/xgs/transceivers.py.
       - name: The cages read when a link changes
         run: python3 tools/test-transceivers.py
 

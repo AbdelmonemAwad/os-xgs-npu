@@ -4,8 +4,10 @@
 # Copyright (c) 2026 Abdelmonem Awad <eg2@live.com>
 #
 """kernel-follow.sh away from the appliance, where the kernel's sources cannot be had: what it says of
-the next boot with a module installed and with none (#818). logger and sysctl are stand-ins in a copy of
-the script, uname answers the kernel the run follows, and every other path is a variable it has.
+the next boot with a module installed and with none (#818). And the stop hook at a reboot while another
+run holds the follower's lock: the next boot sent to kernel.old where the module is built for it, and the
+hook's line saying so only then. logger, sysctl, lockf and pciconf are stand-ins in copies of the
+scripts, uname answers the kernel that is running, and every other path is a variable they have.
 
     python3 tools/test-kernel-follow.py
 """
@@ -16,45 +18,78 @@ import unittest
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 SCRIPT = os.path.join(HERE, '..', 'install', 'kernel-follow.sh')
+STOP = os.path.join(HERE, '..', 'src', 'etc', 'rc.syshook.d', 'stop', '20-octep')
 KERNEL = 'FreeBSD 15.1-RELEASE-p6 stable/26.7-n284176-c962f76493b6 SMP'
+OLD = 'FreeBSD 15.1-RELEASE-p4 stable/26.7-n284159-abbbe67a45e7 SMP'
+OLDER = 'FreeBSD 15.1-RELEASE-p2 stable/26.7-n284102-0f1e2d3c4b5a SMP'
 
 
-class NoSources(unittest.TestCase):
+class StandIns(unittest.TestCase):
+    """A made-up /boot in a temporary directory, its kernel the one to follow."""
 
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.dir = self.tmp.name
         os.makedirs(os.path.join(self.dir, 'modules'))
-        with open(os.path.join(self.dir, 'kernel'), 'w') as f:
-            f.write('\0\0' + KERNEL + '\n\0')
+        self.kernel('kernel', KERNEL)
 
     def tearDown(self):
         self.tmp.cleanup()
 
+    def path(self, name):
+        return os.path.join(self.dir, name)
+
+    def kernel(self, name, version):
+        with open(self.path(name), 'w') as f:
+            f.write('\0\0' + version + '\n\0')
+
+    def module(self, stamp):
+        with open(self.path('modules/octep.ko'), 'w') as f:
+            f.write('ELF')
+        with open(self.path('modules/octep.ko.kernel'), 'w') as f:
+            f.write(stamp + '\n')
+
     def stub(self, name, body):
-        path = os.path.join(self.dir, name)
+        path = self.path(name)
         with open(path, 'w', newline='\n') as f:
             f.write('#!/bin/sh\n%s\n' % body)
         os.chmod(path, 0o755)
         return path
 
-    def follow(self):
-        with open(SCRIPT, encoding='utf-8') as f:
+    def copy(self, source, name, swaps):
+        """source with each command of swaps replaced by its stand-in"""
+        with open(source, encoding='utf-8') as f:
             text = f.read()
-        text = (text.replace('/usr/bin/logger', self.stub('logger', 'exit 0'))
-                .replace('/sbin/sysctl', self.stub('sysctl', 'exit 1')))
-        script = os.path.join(self.dir, 'kernel-follow.sh')
-        with open(script, 'w', encoding='utf-8', newline='\n') as f:
+        for command, stand_in in swaps:
+            text = text.replace(command, stand_in)
+        path = self.path(name)
+        with open(path, 'w', encoding='utf-8', newline='\n') as f:
             f.write(text)
-        d = self.dir
-        env = dict(os.environ, OCTEP_FOLLOW_LOCKED='1', FORCE='1', NOFETCH='1',
-                   MODDIR=os.path.join(d, 'modules'), KERNEL=os.path.join(d, 'kernel'),
-                   KERNEL_OLD=os.path.join(d, 'kernel.old'), NEXTBOOT=os.path.join(d, 'nextboot'),
-                   PENDINGDIR=os.path.join(d, 'pending'), PENDING_KERNEL=os.path.join(d, 'kernel.pending'),
-                   PINNED=os.path.join(d, 'pinned'), SAID=os.path.join(d, 'said'),
+        os.chmod(path, 0o755)
+        return path
+
+    def env(self, **more):
+        env = dict(os.environ)
+        for name in ('OCTEP_FOLLOW_LOCKED', 'PINONLY'):
+            env.pop(name, None)
+        env.update(MODDIR=self.path('modules'), KERNEL=self.path('kernel'),
+                   KERNEL_OLD=self.path('kernel.old'), NEXTBOOT=self.path('nextboot'),
+                   PENDINGDIR=self.path('pending'), PENDING_KERNEL=self.path('kernel.pending'),
+                   PINNED=self.path('pinned'), SAID=self.path('said'), LOCK=self.path('lock'),
+                   BUILDROOT=self.path('build'), SRCTREE=self.path('src'),
                    FETCH=self.stub('fetch-sources.sh', 'echo "no sources for c962f76493b6 here, '
-                                   'and NONET=1 forbids fetching them."; exit 1'),
-                   UNAME=self.stub('uname', 'echo "%s"' % KERNEL))
+                                   'and NONET=1 forbids fetching them."; exit 1'))
+        env.update(more)
+        return env
+
+
+class NoSources(StandIns):
+
+    def follow(self):
+        script = self.copy(SCRIPT, 'kernel-follow.sh', (('/usr/bin/logger', self.stub('logger', 'exit 0')),
+                                                        ('/sbin/sysctl', self.stub('sysctl', 'exit 1'))))
+        env = self.env(OCTEP_FOLLOW_LOCKED='1', FORCE='1', NOFETCH='1',
+                       UNAME=self.stub('uname', 'echo "%s"' % KERNEL))
         return subprocess.run(['/bin/sh', script], env=env, capture_output=True, text=True, timeout=60)
 
     def test_with_no_module_it_says_no_front_ports_and_arms_nothing(self):
@@ -65,18 +100,103 @@ class NoSources(unittest.TestCase):
         self.assertIn('octep.ko is installed, so the next boot brings no front ports up', said)
         self.assertNotIn('will refuse', said)
         self.assertNotIn('kernel.old', said)
-        self.assertFalse(os.path.exists(os.path.join(self.dir, 'pinned')))
+        self.assertFalse(os.path.exists(self.path('pinned')))
 
     def test_with_a_module_for_another_kernel_it_says_the_refusal(self):
-        with open(os.path.join(self.dir, 'modules', 'octep.ko'), 'w') as f:
-            f.write('ELF')
-        with open(os.path.join(self.dir, 'modules', 'octep.ko.kernel'), 'w') as f:
-            f.write('FreeBSD 15.1-RELEASE-p4 stable/26.7-n284159-abbbe67a45e7 SMP\n')
+        self.module(OLD)
         done = self.follow()
         said = done.stdout + done.stderr
         self.assertEqual(done.returncode, 1)
         self.assertIn('the next boot will refuse the module and the front ports will not come up', said)
         self.assertIn('no usable /boot/kernel.old', said)
+
+
+class AtShutdown(StandIns):
+    """The stop hook at a reboot after a kernel update: /boot/kernel the new kernel, kernel.old the one
+    running, and another run holding the follower's lock - one started while the kernel was still a
+    staged set, still fetching its sources - until the hook's time limit cuts its own run off. Until
+    2026-11-06 nothing armed the fall-back to kernel.old then, and the hook said the next boot took it."""
+
+    def setUp(self):
+        super().setUp()
+        self.kernel('kernel.old', OLD)
+
+    def recorder(self, name, into):
+        return self.stub(name, "printf '%%s\\n' \"$*\" >> '%s'" % self.path(into))
+
+    def follower(self):
+        return self.copy(SCRIPT, 'kernel-follow.sh', (
+            ('/usr/bin/logger', self.recorder('logger', 'log')),
+            ('/sbin/sysctl', self.stub('sysctl', 'exit 1')),
+            # the lock is held: wait, as lockf -t 900 does, until the time limit ends it
+            ('/usr/bin/lockf', self.stub('lockf', ": > '%s'\nexec sleep 10" % self.path('waited')))))
+
+    def environment(self, **more):
+        return self.env(UNAME=self.stub('uname', 'echo "%s"' % OLD),
+                        NEXTBOOT=self.recorder('nextboot', 'nextboot.args'), **more)
+
+    def stop(self):
+        hook = self.copy(STOP, 'stop-20-octep', (
+            ('/usr/sbin/pciconf', self.stub('pciconf', "echo 'octep0@pci0:1:0:0: class=0x0b4000 "
+                                                        "rev=0x09 hdr=0x00 vendor=0x177d device=0xa300'")),
+            ('/usr/bin/logger', self.recorder('logger', 'log'))))
+        env = self.environment(FOLLOW=self.follower(), LIMIT='1')
+        return subprocess.run(['/bin/sh', hook], env=env, capture_output=True, text=True, timeout=60)
+
+    def pin_only(self):
+        env = self.environment(PINONLY='1')
+        return subprocess.run(['/bin/sh', self.follower()], env=env, capture_output=True, text=True,
+                              timeout=60)
+
+    def read(self, name):
+        try:
+            with open(self.path(name)) as f:
+                return f.read()
+        except FileNotFoundError:
+            return ''
+
+    def test_a_module_for_the_old_kernel_is_sent_to_kernel_old_with_the_lock_held(self):
+        self.module(OLD)
+        done = self.stop()
+        log = self.read('log')
+        self.assertEqual(done.returncode, 0)
+        self.assertTrue(os.path.exists(self.path('waited')), 'the run under the time limit took no lock')
+        self.assertEqual(self.read('nextboot.args').splitlines(), ['-k kernel.old'])
+        self.assertTrue(os.path.exists(self.path('pinned')))
+        self.assertIn('-t octep-stop -p daemon.notice gave up after 1s - the next boot takes kernel.old, '
+                      'which the module is built for', log)
+
+    def test_a_module_built_for_the_new_kernel_arms_nothing(self):
+        self.module(KERNEL)
+        done = self.stop()
+        log = self.read('log')
+        self.assertEqual(done.returncode, 0)
+        self.assertTrue(os.path.exists(self.path('waited')), 'the run under the time limit took no lock')
+        self.assertEqual(self.read('nextboot.args'), '')
+        self.assertFalse(os.path.exists(self.path('pinned')))
+        self.assertIn('-t octep-stop -p daemon.notice gave up after 1s - the module is built for the '
+                      'kernel the next boot takes', log)
+        self.assertNotIn('takes kernel.old', log)
+
+    def test_a_module_built_for_neither_kernel_is_not_said_to_take_kernel_old(self):
+        self.module(OLDER)
+        done = self.stop()
+        log = self.read('log')
+        self.assertEqual(done.returncode, 0)
+        self.assertEqual(self.read('nextboot.args'), '')
+        self.assertIn('the module does not match /boot/kernel.old either', log)
+        self.assertIn('-t octep-stop -p daemon.notice gave up after 1s - nothing sent the next boot to '
+                      'kernel.old', log)
+        self.assertNotIn('takes kernel.old', log)
+
+    def test_with_no_module_nothing_is_armed_and_no_lock_waited_for(self):
+        # The stop hook says nothing on a machine with no module, so the step it runs first is asked.
+        done = self.pin_only()
+        self.assertEqual(done.returncode, 3)
+        self.assertIn('nothing to fall back with', done.stdout)
+        self.assertFalse(os.path.exists(self.path('waited')))
+        self.assertEqual(self.read('nextboot.args'), '')
+        self.assertFalse(os.path.exists(self.path('pinned')))
 
 
 if __name__ == '__main__':
