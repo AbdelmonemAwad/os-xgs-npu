@@ -186,6 +186,23 @@ idle*)
 	# The inspector's virtual function, an experiment (discovery 4): one function on ring 0, as
 	# the vendor's host gives its inspector eight, so the PF's rings start at 1 and its pkind is
 	# 40 + 1. Only while the marker is there; the handshake below publishes it.
+	#
+	# The marker as the configuration has it first. It is written by XGS: Settings' Apply
+	# (scripts/xgs/apply.php) and lives in /var/db, outside config.xml, so a configuration put back
+	# without that setting - a factory reset, or one restored from a backup - left it behind: until
+	# 2026-11-06 the inspector's function and ring 0 were taken at every boot after, with the setting
+	# off on the page. And one restored with it on waited for an Apply nobody knew was due. A
+	# configuration that cannot be read leaves the marker as it is.
+	case "$(/usr/local/bin/php -r 'require_once("config.inc"); $g = $config["OPNsense"]["XGS"]["general"] ?? []; echo (($g["inspect_then_hardware"] ?? "0") === "1") ? "1" : "0";' 2>/dev/null)" in
+	1)	if [ ! -e /var/db/os-xgs-npu/inspector-vf ]; then
+			mkdir -p /var/db/os-xgs-npu && : > /var/db/os-xgs-npu/inspector-vf &&
+			    log "the configuration has inspect, then hardware: its marker made"
+		fi ;;
+	0)	if [ -e /var/db/os-xgs-npu/inspector-vf ]; then
+			rm -f /var/db/os-xgs-npu/inspector-vf &&
+			    log "the configuration does not have inspect, then hardware: the marker an earlier one left removed"
+		fi ;;
+	esac
 	R0=0
 	if [ -e /var/db/os-xgs-npu/inspector-vf ]; then
 		R0=1
