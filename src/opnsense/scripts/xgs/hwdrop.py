@@ -27,10 +27,13 @@ freed last out first), and that one, which no list named, was dropped on the cop
 there while its frames kept coming. A driver as of that day refuses an index whose revision has moved,
 and changes nothing; an older one reads the index and the verdict and stops there, as before.
 """
+import fcntl
 import ipaddress
 import os
+import re
 import subprocess
 import sys
+import time
 import xml.etree.ElementTree as ET
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -38,6 +41,26 @@ import flows  # noqa: E402
 
 CONFIG = '/conf/config.xml'
 SYSCTL = '/sbin/sysctl'
+
+# Each driver's table: what prints its first page, the verdict to write, how flows.py reads it, and
+# the two sysctls that print the rest a page at a time - the place a page starts from, which every
+# reader shares, and the page.
+TABLES = (('dev.octep.0.dp.flow_table', 'dev.octep.0.dp.flow_verdict', flows.octep,
+           'dev.octep.0.dp.flow_table_from', 'dev.octep.0.dp.flow_table_page'),
+          ('dev.npuep.0.flow.flows', 'dev.npuep.0.flow.verdict', flows.npuep,
+           'dev.npuep.0.flow.flows_from', 'dev.npuep.0.flow.flows_page'))
+# The first page's last line when the table holds more than it prints, on both families.
+MORE = re.compile(r'^and \d+ more connections, not printed$', re.M)
+# A page's first line, which names the place it was printed from, and its last, which names the
+# place the next page starts from - or says "the last page".
+PAGE_FROM = re.compile(r'from (\d+), \d+ in the table')
+NEXT_FROM = re.compile(r'^next from (\d+)$', re.M)
+END = 4294967295        # a place past the end of any live list: the reading starts at its end
+PAGES = 2048            # at most: the tables' ceiling, 2,000,000 connections, is 489 pages of 4,096
+TRIES = 3               # writes of one place, should another reader's come in between
+# The one place is every reader's, so readers take turns: lockf(1)'s kind of lock, on this file.
+LOCK = '/var/run/xgs-flow-table.lock'
+LOCK_WAIT = 30          # seconds, as offload.sh waits for the rpc lock
 
 
 def enabled(path=CONFIG):
@@ -50,14 +73,113 @@ def enabled(path=CONFIG):
 
 
 def table():
-    """(the driver's verdict sysctl, [connections as flows.py reads them]), or (None, [])."""
-    text = flows.sysctl('dev.octep.0.dp.flow_table')
-    if text is not None:
-        return 'dev.octep.0.dp.flow_verdict', flows.octep(text)
-    text = flows.sysctl('dev.npuep.0.flow.flows')
-    if text is not None:
-        return 'dev.npuep.0.flow.verdict', flows.npuep(text)
+    """(the driver's verdict sysctl, the connections as flows.py reads them), or (None, []).
+
+    Each driver prints the first 4,096 connections of its table and counts the rest. Until
+    2026-11-06 that first page was all this read, and a connection past it was never given its
+    verdict (the review's D13). The first page is still read first and alone, as before, and when it
+    says there are more the connections come as a generator: the first page's, then the whole table
+    again a page at a time (pages). Each page is read once the one before it has been gone through,
+    so its connections are as fresh as the first page's were."""
+    for name, verdict, parse, start, page in TABLES:
+        text = flows.sysctl(name)
+        if text is None:
+            continue
+        if MORE.search(text):
+            return verdict, every(parse(text), start, page, parse)
+        return verdict, parse(text)
     return None, []
+
+
+def every(first, start, page, parse):
+    """The first page's connections, and then every page's."""
+    yield from first
+    yield from pages(start, page, parse)
+
+
+def pages(start, page, parse):
+    """The table a page at a time, from the end of its live list down - every connection there for
+    the whole reading is on a page, and one moved down by another that went may be on two (once,
+    in drop). The place a page starts from is one setting for every reader, so this takes the lock
+    first; not had within LOCK_WAIT seconds, or a driver older than the pages, and the first page
+    is all there is, as before. The place is put back to 0 at the end, where a page holds nothing,
+    so that a walk of the sysctl tree which reads the page finds two lines and no connections."""
+    lock = locked()
+    if lock is None:
+        return
+    try:
+        at = END
+        for _ in range(PAGES):
+            text = page_at(start, page, at)
+            if text is None:
+                return
+            yield from parse(text)
+            nxt = NEXT_FROM.search(text)
+            # the last page says so; a next place not below this one would never end
+            if nxt is None or not 0 < int(nxt.group(1)) < at:
+                return
+            at = int(nxt.group(1))
+    finally:
+        try:
+            subprocess.run([SYSCTL, '%s=0' % start], capture_output=True, timeout=10)
+        except (OSError, subprocess.SubprocessError):
+            pass
+        lock.close()
+
+
+def page_at(start, page, at):
+    """The page from place at, or None. The page names the place it was printed from: another one
+    is a write in between, by hand or by a reader without the lock, and the place is written again,
+    TRIES times at most."""
+    for _ in range(TRIES):
+        try:
+            done = subprocess.run([SYSCTL, '%s=%d' % (start, at)], capture_output=True, timeout=10)
+        except (OSError, subprocess.SubprocessError):
+            return None
+        if done.returncode != 0:
+            return None     # no such sysctl: a driver older than the pages
+        text = flows.sysctl(page)
+        if text is None:
+            return None
+        head = PAGE_FROM.fullmatch(text.split('\n', 1)[0])
+        if head and int(head.group(1)) == at:
+            return text
+    return None
+
+
+def locked():
+    """LOCK held, as an open file that lets it go when closed; None when it is not had in time."""
+    try:
+        fh = open(LOCK, 'w')
+    except OSError:
+        return None
+    until = time.monotonic() + LOCK_WAIT
+    while True:
+        try:
+            fcntl.flock(fh, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            return fh
+        except OSError:
+            if time.monotonic() >= until:
+                fh.close()
+                return None
+            time.sleep(0.2)
+
+
+def once(match):
+    """match, true only the first time for each connection - by its index and revision, since an
+    index goes to the next connection made once its own has gone: the first page's connections are
+    on a later page too, and one moved down the live list may be on two."""
+    done = set()
+
+    def first(f):
+        if not match(f):
+            return False
+        key = (f.get('id'), f.get('rev'))
+        if key in done:
+            return False
+        done.add(key)
+        return True
+    return first
 
 
 def address(text):
@@ -68,6 +190,7 @@ def address(text):
 
 
 def drop(match, path=CONFIG):
+    match = once(match)
     if not enabled(path):
         return 0
     oid, conns = table()

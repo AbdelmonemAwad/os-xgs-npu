@@ -3547,6 +3547,7 @@ struct octep_softc {
 	uint32_t		 dp_conn_nlive;
 	uint32_t		 dp_conn_used;		/* connections currently accelerated */
 	uint32_t		 dp_conn_max;		/* dp_conn_cap, capped by the board */
+	uint32_t		 dp_flow_table_from;	/* where dp.flow_table_page starts */
 	struct octep_nhop_ent	 dp_nhop[OCTEP_NHOP_MAX];
 	uint32_t		 dp_nhop_used;
 	uint32_t		 dp_nhop_max;		/* OCTEP_NHOP_MAX, capped by the board */
