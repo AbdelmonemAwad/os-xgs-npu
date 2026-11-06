@@ -10,8 +10,13 @@ name: thanks
 # github-actions[bot], and the label `thanked` is how it knows whom it has thanked.
 #
 # pull_request_target and not pull_request, so that a pull request from a fork can be answered: the
-# job reads the repository's own main and runs nothing from the pull request. One run at a time, so
-# two contributions arriving together cannot both be the first.
+# job reads the repository's own main and runs nothing from the pull request. One run at a time for
+# each person - the author of the issue or the pull request - so that two contributions of one person
+# arriving together cannot both be the first. Until 2026-11-06 it was one run at a time for everybody,
+# and GitHub keeps one run waiting in a group, the newest: of three events close together the middle
+# one is cancelled unseen (run 41693322007, three seconds after it was queued; the issues were the
+# owner's own that time), and a first contributor's thank-you would go with it. Three events of one
+# person close together can still lose the middle one. A run by hand is a group of its own.
 
 on:
   issues:
@@ -32,7 +37,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: thanks
+  group: thanks-${{ github.event.issue.user.login || github.event.pull_request.user.login || format('by-hand-{0}', github.run_id) }}
   cancel-in-progress: false
 
 jobs:

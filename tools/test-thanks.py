@@ -1,14 +1,18 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: BSD-2-Clause
 # Copyright (c) 2026 Abdelmonem Awad <eg2@live.com>
-"""tools/thanks.py against made-up events and a stand-in GitHub: who is thanked, for what, once, and
-who never is.
+"""tools/thanks.py against made-up events and a stand-in GitHub: who is thanked, for what, once - though
+the search has not yet seen the label just put on - and who never is; and thanks.yml, one run at a time
+for each person rather than for everybody.
 
     python3 tools/test-thanks.py"""
 import os
+import re
 import sys
+import urllib.parse
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+here = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, here)
 import thanks  # noqa: E402
 
 failures = 0
@@ -22,17 +26,24 @@ def check(name, got, want):
 
 
 class GitHub:
-    """Records what is written; the search answers from the people thanked so far."""
+    """Records what is written. The issues list answers from the labels as they are; the search only from
+    the people thanked before it was made, as GitHub's search index takes a while to see a label just
+    put on."""
 
     def __init__(self, thanked=(), items=None):
         self.thanked = set(thanked)
+        self.indexed = set(thanked)
         self.items = items or {}
         self.written = []
 
     def __call__(self, method, path, body=None):
         if method == 'GET' and path.startswith('/search/issues?'):
             login = path.split('author%3A', 1)[1].split('+', 1)[0]
-            return {'total_count': 1 if login in self.thanked else 0}
+            return {'total_count': 1 if login in self.indexed else 0}
+        if method == 'GET' and path.startswith('/repos/%s/issues?' % thanks.REPO):
+            q = urllib.parse.parse_qs(path.split('?', 1)[1])
+            mine = q.get('creator', [''])[0] in self.thanked and q.get('labels') == ['thanked']
+            return [{'number': 1}] if mine and q.get('state') == ['all'] else []
         if method == 'GET':
             return self.items[path]
         self.written.append((method, path, body))
@@ -112,10 +123,19 @@ go(gh, 'pull_request_target', {'action': 'closed',
                                                 'labels': [], 'merged': True}})
 check('the owner and bots are not thanked', gh.written, [])
 
-# Someone the search already knows as thanked, on an item without the label: passed over.
+# Someone thanked before, on an item without the label: passed over.
 gh = GitHub(thanked={'veteran'})
 go(gh, 'issues', {'action': 'opened', 'issue': issue(50, 'veteran', ['compatibility'])})
 check('someone thanked before is passed over', gh.written, [])
+
+# One person's two contributions back to back - a pull request merged and the issue it closed - in two
+# runs, one after the other. The label the first put on is not in the search yet: until 2026-11-06 the
+# second asked the search, and here it found nobody thanked and thanked the person again.
+gh = GitHub()
+merged = {'number': 90, 'user': user('fixer'), 'labels': [], 'merged': True}
+go(gh, 'pull_request_target', {'action': 'closed', 'pull_request': merged})
+go(gh, 'issues', {'action': 'closed', 'issue': issue(91, 'fixer', ['bug'], 'closed', 'completed')})
+check('a label put on a moment ago is seen, though search has not caught up', len(comments(gh)), 1)
 
 # A dry run says what it would write and writes nothing.
 gh = GitHub()
@@ -136,6 +156,14 @@ check('a pull request reads as the pull request', thanks.as_event(71, gh)[0], 'p
 check('a labelled issue is no contribution',
       thanks.contribution('issues', {'action': 'labeled', 'issue': issue(80, 'x', ['compatibility'])}),
       None)
+
+# One run at a time for each person, so that one person's two contributions cannot both be the first;
+# not for everybody, since GitHub keeps one run waiting in a group and drops the one before it.
+with open(os.path.join(os.path.dirname(here), '.github', 'workflows', 'thanks.yml'), encoding='utf-8') as f:
+    flow = f.read()
+check('one run at a time for each person, not for everybody',
+      ('github.event.issue.user.login' in flow, 'github.event.pull_request.user.login' in flow,
+       re.search(r'^\s*group:\s*thanks\s*$', flow, re.M) is None), (True, True, True))
 
 print('%d failure(s)' % failures)
 sys.exit(1 if failures else 0)

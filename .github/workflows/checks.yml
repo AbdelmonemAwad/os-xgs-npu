@@ -224,6 +224,11 @@ jobs:
       - name: The release's notices
         run: python3 tools/test-release-notice.py
 
+      # What a release's section takes from the commits and leaves out, the lines --release names to
+      # read again, the commit a version's tag goes on, and release.yml that tags it: tools/changelog.py.
+      - name: Changelog and release tag
+        run: python3 tools/test-changelog.py
+
       # install/verify.sh on a made-up XGS 3300: its summary blames the front ports only when the chain
       # to them fails (issue 957). tools/test-verify.py.
       - name: The verify summary

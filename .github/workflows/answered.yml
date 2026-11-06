@@ -14,6 +14,11 @@ name: answered
 # before any note, anybody else's looks again and waits on from the same start. The hourly sweep puts
 # the labels right on every open issue and writes the note a wait missed, however old the wait. A run
 # by hand is a group of its own, so that looking - a dry run above all - never cancels a wait or a sweep.
+#
+# A wait holds one of the account's runners the whole half hour, and every workflow here and in the
+# plugins' repositories shares them. So a run does not wait while five that began before it are under
+# way - it reads them with `actions: read` - and the sweep writes its note. Until 2026-11-06 every one
+# waited, so twenty issues written on within half an hour would have held twenty runners.
 
 on:
   issues:
@@ -47,6 +52,7 @@ jobs:
     permissions:
       contents: read
       issues: write
+      actions: read
     steps:
       - uses: actions/checkout@v7
         with:

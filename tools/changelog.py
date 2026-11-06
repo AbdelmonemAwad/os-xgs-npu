@@ -6,15 +6,22 @@
     tools/changelog.py                     rewrite the Unreleased section from the commits since the
                                            last release
     tools/changelog.py --release VERSION   the same, then make that section VERSION, dated today, and
-                                           open a new empty Unreleased above it
+                                           open a new empty Unreleased above it; then name the lines to
+                                           read again (below)
     tools/changelog.py --notes VERSION     print VERSION's section, as the release's notes
     tools/changelog.py --top               print the newest released version, or nothing
+    tools/changelog.py --commit VERSION    print the commit that added VERSION's section, the one its
+                                           tag goes on, or exit 1
     tools/changelog.py --due DAYS COUNT    print what waits for a release, as Markdown, and exit 1 if a
                                            release is due: a fix waits, or improvements have waited
                                            DAYS days or number COUNT
 
 Every change reaches main as one squashed commit whose subject is its pull request's title and number,
-so the commits since the last tag ARE the change list. Each goes under one heading:
+so the commits since the last tag ARE the change list - all but a release's own, the commit titled with
+its version alone (`Release 0.1.0-alpha.14 (#1053)`). Until 2026-11-06 every title that began with
+"Release " was taken for one, so a change named "Release the coprocessor's reset ..." would have been
+left out of the changelog, of what makes a release due, and so of the notices. Each goes under one
+heading:
 
     Fixes                       the pull request carries the label `fix`, or, without labels, its title
                                 says it fixes something, or names a crash, a panic, a hang or a leak
@@ -29,20 +36,32 @@ relay (relay/), and their workflows, is left out: both are services deployed fro
 workflows, an appliance installs neither (.gitattributes leaves them out of every archive), and a
 release's notes are what an appliance's Updates page shows. Such a commit is not counted by --due
 either, so the site never makes a release due. Since 2026-10-22; v0.1.0-alpha.5.2 had carried one.
+
+A LINE IS ITS PULL REQUEST'S TITLE AS IT WAS MERGED, and a later change of the same release can make it
+untrue: in 0.1.0-alpha.14, #1049 narrowed what #1048's title said every board got, and the line was put
+right by hand in the release's pull request. So --release, once it has written the section, names each
+line that a later pull request of the same release says it fixes an issue of too ("Fix for #N", or
+GitHub's "Fixes #N", read as tools/release-notice.py reads them for the notices), or names - unless that
+later one changed pages alone, which describe a change and make none. It changes nothing in the file:
+what the line should say is for whoever reads it (RELEASING.md). Since 2026-11-06.
 """
 
 import datetime
+import functools
+import importlib.util
 import json
 import pathlib
 import re
 import subprocess
 import sys
 
-ROOT = pathlib.Path(__file__).resolve().parent.parent
+HERE = pathlib.Path(__file__).resolve().parent
+ROOT = HERE.parent
 FILE = ROOT / 'CHANGELOG.md'
 REPO = 'AbdelmonemAwad/os-xgs-npu'
 HEADINGS = ['Fixes', 'Improvements and additions', 'Documentation']
 VERSION = re.compile(r'^## (\d+\.\d+\.\d+(?:-[0-9A-Za-z.]+)?) - (\d{4}-\d{2}-\d{2})\s*$')
+RELEASE = re.compile(r'^Release \d+\.\d+\.\d+(?:-[0-9A-Za-z.]+)?(?: \(#\d+\))?\s*$')
 FIXWORDS = re.compile(r'\b(fix|fixes|fixed|fixing|broken|crash|panic|hang|regression|leak)\b', re.I)
 DOCS = re.compile(r'^(docs/|README\.md$|CONTRIBUTING\.md$|DESIGN\.md$|CHANGELOG\.md$|RELEASING\.md$)')
 SITE = re.compile(r'^(website/|relay/|\.github/workflows/(website|relay)\.yml$)')
@@ -62,7 +81,7 @@ release on an appliance you can reach before you trust it with a network you dep
 
 def git(*args):
     return subprocess.run(['git', '-C', str(ROOT)] + list(args), capture_output=True, text=True,
-                          check=True).stdout
+                          encoding='utf-8', errors='replace', check=True).stdout
 
 
 def last_tag():
@@ -72,16 +91,45 @@ def last_tag():
         return ''
 
 
-def labels(number):
-    """The pull request's labels through gh, or None when gh cannot say."""
+def added(version):
+    """The commit on main's own line that added VERSION's heading to CHANGELOG.md - the release's own,
+    which its tag goes on - or '' when none did. A later change to the file, the next release's above
+    it or a correction of its date, leaves the number of such headings as it was, so it is not this."""
     try:
-        out = subprocess.run(['gh', 'pr', 'view', str(number), '-R', REPO, '--json', 'labels'],
-                             capture_output=True, text=True, timeout=30)
+        return git('log', '--first-parent', '-1', '--format=%H', '-S## %s - ' % version, '--',
+                   'CHANGELOG.md').strip()
+    except subprocess.CalledProcessError:
+        return ''
+
+
+@functools.lru_cache(maxsize=None)
+def pull(number):
+    """The pull request's labels and description through gh, or None when gh cannot say; asked once
+    for both."""
+    try:
+        out = subprocess.run(['gh', 'pr', 'view', str(number), '-R', REPO, '--json', 'labels,body'],
+                             capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=30)
         if out.returncode != 0:
             return None
-        return [l['name'] for l in json.loads(out.stdout).get('labels', [])]
+        got = json.loads(out.stdout)
+        return [l['name'] for l in got.get('labels', [])], got.get('body') or ''
     except (OSError, ValueError, subprocess.SubprocessError):
         return None
+
+
+def labels(number):
+    """The pull request's labels through gh, or None when gh cannot say."""
+    got = pull(number)
+    return None if got is None else got[0]
+
+
+@functools.lru_cache(maxsize=None)
+def notice_rules():
+    """tools/release-notice.py, for its reading of what a pull request says it fixes."""
+    spec = importlib.util.spec_from_file_location('release_notice', HERE / 'release-notice.py')
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
 
 
 def commits(since):
@@ -102,6 +150,17 @@ def site_only(files):
     return bool(files) and all(SITE.match(f) for f in files)
 
 
+def docs_only(files):
+    """Only pages changed: they describe a change and make none."""
+    return bool(files) and all(DOCS.match(f) for f in files)
+
+
+def pending(since):
+    """The commits since the last release that the next one takes: all but a release's own and those
+    that touched only the site."""
+    return [c for c in commits(since) if not RELEASE.match(c[2]) and not site_only(c[4])]
+
+
 def heading(subject, number, files):
     names = labels(number) if number else None
     if names is not None:
@@ -112,24 +171,56 @@ def heading(subject, number, files):
     # Pages alone are Documentation whatever their title says: until 2026-11-06 the title was read
     # first, and #1038 - pages alone, on "a panic's record" - was counted a fix and made a release due
     # (#1046). A person's `fix` label above still counts.
-    if files and all(DOCS.match(f) for f in files):
+    if docs_only(files):
         return 'Documentation'
     if FIXWORDS.search(subject):
         return 'Fixes'
     return 'Improvements and additions'
 
 
+def title_of(subject):
+    return re.sub(r'\s*\(#\d+\)\s*$', '', subject).strip()
+
+
 def entry(subject, number):
-    title = re.sub(r'\s*\(#\d+\)\s*$', '', subject).strip()
     link = f' ([#{number}](https://github.com/{REPO}/pull/{number}))' if number else ''
-    return f'- {title}{link}'
+    return f'- {title_of(subject)}{link}'
 
 
-def unreleased_body(since):
-    groups = {h: [] for h in HEADINGS}
-    for sha, date, subject, number, files in commits(since):
-        if subject.startswith('Release ') or site_only(files):
+def to_read(found):
+    """The lines of a release a later change of the same release may have made untrue, as (number,
+    subject, reasons) oldest first, and the pull requests gh could not read. A reason is a later pull
+    request that says it fixes an issue this one does too, or that names this one in its title or
+    description, unless it changed pages alone."""
+    known, unread = [], []
+    for _, _, subject, number, files in found:
+        if not number:
             continue
+        got = pull(number)
+        if got is None:
+            unread.append(number)
+        else:
+            known.append((number, subject, files, got[1]))
+    flagged = []
+    for i, (number, subject, _, body) in enumerate(known):
+        mine, reasons = set(notice_rules().fixed(body)), []
+        for later, later_subject, later_files, later_body in known[i + 1:]:
+            said = []
+            same = [n for n in notice_rules().fixed(later_body) if n in mine]
+            if same:
+                said.append('fixes %s too' % ', '.join('#%d' % n for n in same))
+            if not docs_only(later_files) and re.search(r'#%d\b' % number, later_subject + '\n' + later_body):
+                said.append('names it')
+            if said:
+                reasons.append('#%d %s' % (later, ' and '.join(said)))
+        if reasons:
+            flagged.append((number, subject, reasons))
+    return flagged, unread
+
+
+def unreleased_body(found):
+    groups = {h: [] for h in HEADINGS}
+    for sha, date, subject, number, files in found:
         groups[heading(subject, number, files)].append(entry(subject, number))
     body = []
     for h in HEADINGS:
@@ -192,11 +283,19 @@ def main(argv):
         if rel:
             print(VERSION.match(rel[0][0]).group(1))
         return 0
+    if '--commit' in argv:
+        want = argv[argv.index('--commit') + 1]
+        sha = added(want)
+        if not sha:
+            print(f'no commit added a section for {want} to CHANGELOG.md', file=sys.stderr)
+            return 1
+        print(sha)
+        return 0
     since = last_tag()
+    found = pending(since)
     if '--due' in argv:
         days, count = int(argv[argv.index('--due') + 1]), int(argv[argv.index('--due') + 2])
-        waiting = [(d, s, n, f) for _, d, s, n, f in commits(since)
-                   if not s.startswith('Release ') and not site_only(f)]
+        waiting = [(d, s, n, f) for _, d, s, n, f in found]
         fixes = [w for w in waiting if heading(w[1], w[2], w[3]) == 'Fixes']
         others = [w for w in waiting if heading(w[1], w[2], w[3]) == 'Improvements and additions']
         oldest = min((datetime.date.fromisoformat(w[0]) for w in others), default=None)
@@ -212,7 +311,8 @@ def main(argv):
                 for d, s, n, f in group:
                     print(entry(s, n))
         return 1 if due else 0
-    body = unreleased_body(since)
+    body = unreleased_body(found)
+    version = None
     if '--release' in argv:
         version = argv[argv.index('--release') + 1]
         if not re.match(r'^\d+\.\d+\.\d+(-[0-9A-Za-z.]+)?$', version):
@@ -225,6 +325,17 @@ def main(argv):
         sections[0] = ('## Unreleased', body)
     FILE.write_text(render(sections), encoding='utf-8', newline='\n')
     print(f'wrote CHANGELOG.md ({len(released(sections))} release(s))')
+    if version:
+        flagged, unread = to_read(found)
+        if flagged or unread:
+            print(f'\nRead these again before the pull request: a later change of {version} may have made '
+                  f'them untrue.')
+        for number, subject, reasons in flagged:
+            print(f'  #{number} {title_of(subject)}: {"; ".join(reasons)}')
+        if unread:
+            them = 'it' if len(unread) == 1 else 'them'
+            print(f'  gh could not read {", ".join(f"#{n}" for n in unread)}, so the lines before {them} were '
+                  f'not compared with {them}')
     return 0
 
 
