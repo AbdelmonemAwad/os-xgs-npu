@@ -54,11 +54,17 @@ import xml.etree.ElementTree as ET
 
 CONFIG = os.environ.get('XGS_FASTPATH_CONFIG', '/conf/config.xml')
 STATE = os.environ.get('XGS_FASTPATH_STATE', '/var/db/os-xgs-npu/fastpath.json')
+BOOT_TOKEN = '/var/run/xgs-fastpath-boot'	# this boot (boot_time)
 NODES = ('dev.octep.0.heartbeat', 'dev.npuep.0.heartbeat')
 CHOICES = (0, 1, 2, 5, 10)
 DEFAULT = 1			# the model's default, for a configuration that has never saved the page
 RESTARTS_PER_DAY = 3
 RECOVERIES_PER_DAY = 6
+# The day's restarts and recoveries are counted on the wall clock: they span the host's boots, which its
+# monotonic clock does not. A time the clock has since been stepped back past - its age below zero -
+# counts as recent, on purpose: a host whose clock starts behind until NTP sets it finds the restarts of
+# the boots before in its future, and a bound on such ages, or such times set to now, would let each
+# boot forget them and restart again (the review's F14; a boot itself is told apart by boot_time).
 DAY = 86400
 # The driver's own tag, so the log shows it beside the driver's lines; a warning, not an error: the
 # report is reporter.py's own kind, and an error line would make a second, generic one (measured
@@ -127,11 +133,37 @@ def setting():
 
 
 def boot_time():
-    raw = sysctl('kern.boottime') or ''
+    """This boot, as the checks tell one from another (restarting, refused_boot, recover_failed): a token
+    the first caller in a boot leaves in BOOT_TOKEN - /var/run, which is emptied at boot, as
+    temperatures.sh keeps its own. Until 2026-11-06 it was kern.boottime's seconds, which a step of the
+    clock moves: the check after one took the same boot for another, and asked for a second restart
+    while one was under way, or took the coprocessor up again for a stop whose recovery had failed (the
+    review's F14). None when it can be neither read nor left."""
     try:
-        return int(raw.split('sec =')[1].split(',')[0])
-    except (IndexError, ValueError):
-        return 0
+        with open(BOOT_TOKEN, encoding='ascii') as f:
+            token = f.read().strip()
+    except (OSError, ValueError):
+        token = ''
+    if token:
+        return token
+    mine = '%s.%d' % (BOOT_TOKEN, os.getpid())
+    try:
+        with open(mine, 'w', encoding='ascii') as f:
+            f.write(os.urandom(8).hex() + '\n')
+        try:
+            os.link(mine, BOOT_TOKEN)	# the first one left stands: a check and show() can begin at once
+        except FileExistsError:
+            pass
+        with open(BOOT_TOKEN, encoding='ascii') as f:
+            token = f.read().strip()
+    except (OSError, ValueError):
+        token = ''
+    finally:
+        try:
+            os.unlink(mine)
+        except OSError:
+            pass
+    return token or None
 
 
 def load_state():
@@ -324,9 +356,12 @@ def run_recover(seconds=None):
     2026-11-06 subprocess.run's timeout killed its direct child alone - lockf, which recover.sh had
     become - and recover.sh carried on under no lock, in the middle of a driver's reload or of
     OPNsense's, while this check restarted the appliance or a later one could start a second recovery
-    (#1072, F7)."""
+    (#1072, F7).
+
+    Its stderr with its stdout, in the order they came: what kldunload, devctl or lockf said of why a
+    step failed is said nowhere else. Until 2026-11-06 it was read and thrown away (the review's F13)."""
     try:
-        child = subprocess.Popen([RECOVER], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+        child = subprocess.Popen([RECOVER], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
                                  errors='replace', start_new_session=True)
     except (OSError, subprocess.SubprocessError) as failure:
         return ['recover.sh did not finish: %s' % failure], False

@@ -29,7 +29,8 @@ WHAT A CALLER READ is kept too (keep): the coprocessor goes on printing while a 
 console, and a caller that threw its read away with its temporary file threw that away with it - on
 2026-10-31 the first XGS 3300's coprocessor printed one line of a kernel oops and nothing after it,
 while the watchdog feeder's npu-run.sh took the console every twenty seconds (#819).
-Never fails the caller: a host with no console port reports so and exits 0.
+Never fails the caller: a host with no console port reports so and exits 0 - but keep exits 1 when
+what it was given could not be written, for feeder.py to read its crash records again.
 """
 import errno
 import fcntl
@@ -192,16 +193,27 @@ def session():
     return True
 
 
+def noted(text):
+    """note(text) for the logger itself, which goes on whether or not the note could be written: written
+    from inside run()'s handler, a log that cannot be written - a full /var/log - raised there until
+    2026-11-06 and ended the logger for the rest of the boot with the error it was noting. daemon(8) runs
+    it without -r, and nothing starts it again (the review's F9)."""
+    try:
+        os.makedirs(os.path.dirname(LOG), exist_ok=True)
+        note(text)
+    except (OSError, ValueError):
+        pass
+
+
 def run():
-    os.makedirs(os.path.dirname(LOG), exist_ok=True)
     signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))
-    note('started')
+    noted('started')
     while True:
         try:
             held = not paused() and session()
         except Exception as e:
             # a port that will not open, a log that cannot be written: said once a minute at most
-            note(str(e))
+            noted(str(e))
             time.sleep(60)
             continue
         if not held:
@@ -257,8 +269,12 @@ def main(what, args=()):
 
 
 if __name__ == '__main__':
+    what = sys.argv[1] if len(sys.argv) > 1 else 'status'
     try:
-        sys.exit(main(sys.argv[1] if len(sys.argv) > 1 else 'status', sys.argv[2:]))
+        sys.exit(main(what, sys.argv[2:]))
     except Exception as e:
         print('console_log.py: %s' % e, file=sys.stderr)
-        sys.exit(0)
+        # keep's caller is told that what it read was not written: feeder.py marks a crash record read
+        # only once it is. Until 2026-11-06 this was 0 for keep too, and a record the log did not take
+        # was marked read all the same, never to be read again (the review's F8).
+        sys.exit(1 if what == 'keep' else 0)

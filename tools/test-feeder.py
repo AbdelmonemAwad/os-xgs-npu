@@ -8,7 +8,8 @@ The coprocessor's watchdog feeder as scripts/xgs/feeder.py reads it and puts it 
 the coprocessor's answers made up: npu-run.sh is replaced by a function that answers as the
 coprocessor does and keeps what it was asked, and the system log and the state file by a list and a
 temporary file. And npu-run.sh's own console session as feeder.py asks for it, in a copy whose paths
-point at stand-ins.
+point at stand-ins; and console_log.py, which keeps what feeder.py reads, as it answers keep and as its
+logger goes on past a note it cannot write.
 
     python3 tools/test-feeder.py
 """
@@ -17,6 +18,7 @@ import importlib.util
 import json
 import os
 import subprocess
+import sys
 import tempfile
 import threading
 import time
@@ -34,6 +36,7 @@ def load(name, path):
 
 
 feeder = load('feeder', os.path.join(XGS, 'feeder.py'))
+console_log = load('console_log', os.path.join(XGS, 'console_log.py'))
 
 
 OOPS = ('=== /sys/fs/pstore/dmesg-ramoops-0\nOops#1 Part1\n'
@@ -56,6 +59,33 @@ class SysctlRun:
         if name not in self.values:
             return subprocess.CompletedProcess(argv, 1, '', "sysctl: unknown oid '%s'\n" % name)
         return subprocess.CompletedProcess(argv, 0, self.values[name] + '\n', '')
+
+
+class NoLogger:
+    """subprocess, as say() runs logger(1), on a host that cannot start it - out of processes."""
+    SubprocessError = subprocess.SubprocessError
+    TimeoutExpired = subprocess.TimeoutExpired
+
+    @staticmethod
+    def run(args, **kw):
+        raise OSError(35, 'Resource temporarily unavailable')
+
+
+class Clock:
+    """time as feeder.py reads it, later seconds on - and its wall clock step seconds more: a clock
+    stepped since, which the monotonic one is not."""
+
+    def __init__(self, later=0, step=0):
+        self.later, self.step = later, step
+
+    def monotonic(self):
+        return time.monotonic() + self.later
+
+    def time(self):
+        return time.time() + self.later + self.step
+
+    def __getattr__(self, name):
+        return getattr(time, name)
 
 
 class Coprocessor:
@@ -99,6 +129,8 @@ class Feeder(unittest.TestCase):
         feeder.sysctl = lambda name: '0' if name == feeder.GONE else None
         self.tmp = tempfile.TemporaryDirectory()
         feeder.STATE = os.path.join(self.tmp.name, 'feeder.json')
+        feeder.BOOT = os.path.join(self.tmp.name, 'boot')
+        feeder.KEEP = os.path.join(self.tmp.name, 'keep.%d')
         self.said = []
         feeder.say = self.said.append
         self.console = []
@@ -325,6 +357,124 @@ class Feeder(unittest.TestCase):
         feeder.once()
         self.assertEqual(feeder.UPTIME['uptime'], 900)
         self.assertIsNotNone(feeder.UPTIME['at'])
+
+    def test_a_crash_record_the_console_s_log_did_not_take_is_read_again(self):
+        """The review's F8 (2026-11-06): the records were marked read before console_log.py keep ran, and
+        how it went was not asked - a record the console's log did not take, on a full /var/log, was never
+        read again. Marked once it is kept, and read again PSTORE_AGAIN s on."""
+        def full(text, who):
+            raise OSError('console_log.py keep exited 1: [Errno 28] No space left on device')
+        feeder.console_keep = full
+        feeder.npu = Coprocessor(900, '2448', 'S', OOPS)
+        feeder.once()
+        self.assertIn('1 crash record(s) in its pstore, and the console\'s log did not take them',
+                      self.said[-1])
+        self.assertIn('No space left on device', self.said[-1])
+        self.assertEqual(self.kept().get('pstore_seen', []), [])
+        self.addCleanup(setattr, feeder, 'time', feeder.time)
+        feeder.time = Clock(later=feeder.PSTORE_AGAIN)
+        feeder.console_keep = lambda text, who: self.console.append((who, text))
+        feeder.npu = Coprocessor(900 + feeder.PSTORE_AGAIN, '2448', 'S', OOPS)
+        feeder.once()
+        self.assertIn(feeder.PSTORE, feeder.npu.asked)
+        self.assertEqual(len(self.console), 1)
+        self.assertIn('1 crash record(s) in its pstore: kept in', self.said[-1])
+
+    def test_a_pstore_read_cut_short_is_not_made_again_at_every_look(self):
+        """The review's F12 (2026-11-06): a read of the pstore cut short over the console - npu-run.sh's
+        exit 1, its end marker not come in its 15 s - left the boot unread, and the next look, 20 s on, read
+        it again: the console held some 20 s in every 20, and what came put in its log each time. Tried
+        again PSTORE_AGAIN s on, PSTORE_TRIES times in the boot. A console held by another caller read
+        nothing, and is asked again at the next look."""
+        coprocessor = Coprocessor(900, '2448', 'S', OOPS)
+        reads, answer = [], {'rc': feeder.BUSY}
+
+        def npu(seconds, command):
+            if command != feeder.PSTORE:
+                return coprocessor(seconds, command)
+            reads.append(command)
+            feeder.NPU_EXIT['rc'] = answer['rc']
+            return None
+        clock = Clock()
+        self.addCleanup(setattr, feeder, 'time', feeder.time)
+        feeder.npu, feeder.time = npu, clock
+
+        def look(later, uptime=None):
+            clock.later = later
+            coprocessor.uptime = 900 + later if uptime is None else uptime
+            feeder.once()
+        look(0)
+        look(20)
+        self.assertEqual(len(reads), 2)
+        answer['rc'] = 1
+        look(40)
+        look(60)
+        look(80)
+        self.assertEqual(len(reads), 3)
+        look(40 + feeder.PSTORE_AGAIN)
+        look(60 + feeder.PSTORE_AGAIN)
+        self.assertEqual(len(reads), 4)
+        look(40 + 2 * feeder.PSTORE_AGAIN)
+        self.assertEqual(len(reads), feeder.PSTORE_TRIES + 2)
+        self.assertIn('could not be read to its end: not read again in this boot of it, after %d tries'
+                      % feeder.PSTORE_TRIES, self.said[-1])
+        look(40 + 3 * feeder.PSTORE_AGAIN)
+        self.assertEqual(len(reads), feeder.PSTORE_TRIES + 2)
+        # another boot of the coprocessor is read
+        look(60 + 3 * feeder.PSTORE_AGAIN, uptime=130)
+        self.assertEqual(len(reads), feeder.PSTORE_TRIES + 3)
+
+    def test_a_clock_step_is_no_new_boot_of_the_coprocessor(self):
+        """The review's F14 (2026-11-06): the coprocessor's boot was taken by the host's wall clock, and a
+        step of it - NTP setting a clock that started wrong - was a new boot: its pstore read again. On the
+        monotonic clock now, which no step moves."""
+        feeder.npu = Coprocessor(900, '2448', 'S', OOPS)
+        feeder.once()
+        self.assertEqual(len(self.console), 1)
+        self.addCleanup(setattr, feeder, 'time', feeder.time)
+        feeder.time = Clock(later=20, step=3600)
+        feeder.npu = Coprocessor(920, '2448', 'S', OOPS)
+        feeder.once()
+        self.assertEqual(feeder.npu.asked, [feeder.ASK + feeder.PANIC_ASK])
+
+    def test_a_clock_step_does_not_say_the_panic_timeout_again(self):
+        """F14's other reading: the boot the panic timeout was said for, on the wall clock - a step of more
+        than two looks said it again for the same boot."""
+        feeder.npu = Coprocessor(900, '2448', 'S', panic='1 1')
+        feeder.once()
+        self.assertEqual(len([line for line in self.said if 'after a panic' in line]), 1)
+        self.addCleanup(setattr, feeder, 'time', feeder.time)
+        feeder.time = Clock(later=20, step=-3600)
+        feeder.npu = Coprocessor(920, '2448', 'S', panic='1 1')
+        feeder.once()
+        self.assertEqual(len([line for line in self.said if 'after a panic' in line]), 1)
+
+    def test_a_stop_whose_error_cannot_be_said_ends_nothing(self):
+        """The review's F9 (2026-11-06): an error at the stop was said from watch_beat's handler, and a line
+        that could not be said - logger not started, the host out of processes - raised from the handler
+        and ended the watch for the rest of the boot: nothing starts it again. The line is lost, the watch
+        goes on."""
+        def failed():
+            raise RuntimeError('the stop failed')
+        feeder.at_the_stop, feeder.gone, feeder.say = failed, lambda: '1', self.real['say']
+        self.addCleanup(setattr, feeder, 'subprocess', feeder.subprocess)
+        feeder.subprocess = NoLogger
+        self.assertEqual(feeder.watch_beat('0'), '1')
+
+    def test_the_xgs_136_s_gone_latch_is_watched_too(self):
+        """The review's F11 (2026-11-06): the latch read was octep's alone, and on the XGS 136 - npuep, whose
+        latch has the same name under its own node - a stop waited for the next minute of cron."""
+        values = {'dev.npuep.0.gone': '0'}
+        self.addCleanup(setattr, feeder, 'subprocess', feeder.subprocess)
+        self.addCleanup(setattr, feeder, 'LATCH', {'name': None})
+        feeder.subprocess, feeder.LATCH, feeder.gone = SysctlRun(values), {'name': None}, self.real['gone']
+        stops = []
+        feeder.at_the_stop = lambda: stops.append('stop')
+        beat = feeder.watch_beat(None)
+        self.assertEqual(beat, '0')
+        values['dev.npuep.0.gone'] = '1'
+        feeder.watch_beat(beat)
+        self.assertEqual(stops, ['stop'])
 
 
 class SilentLink(unittest.TestCase):
@@ -886,6 +1036,20 @@ class SilentLink(unittest.TestCase):
         self.run_until(self.silent_since(0), [10])
         self.assertEqual(self.waits, [feeder.URGENT_WAIT])
 
+    def test_a_retell_that_did_not_start_is_asked_again(self):
+        """The review's F10 (2026-11-06), its second half: a retell that did not start - mgmt-link.sh not
+        there, one already running, daemon(8) refused - marked the silence told all the same, and the link
+        went without its address until a boot or a recovery. Asked again at the next poll."""
+        self.console, started = True, [False, True]
+
+        def retell():
+            self.retold += 1
+            return started.pop(0)
+        feeder.retell_link = retell
+        self.run_until(self.silent_since(0), [10, 45, 47, 49])
+        self.assertEqual(self.retold, 2)
+        self.assertEqual(len([line for line in self.said if 'given its address again' in line]), 1)
+
 
 class SilentUserland(unittest.TestCase):
     """A look that finds the coprocessor's console without a Linux prompt to two carriage returns, its
@@ -1169,6 +1333,29 @@ class TheLoop(unittest.TestCase):
             self.Signal.handlers[self.Signal.SIGTERM](self.Signal.SIGTERM, None)
         self.assertEqual(released, [1])
 
+    def test_an_error_that_cannot_be_said_does_not_end_the_watch(self):
+        """The review's F9 (2026-11-06): the watch's handler said its error with logger(1), and a line that
+        could not be said raised from the handler and ended run() for the rest of the boot - daemon(8) runs
+        it without -r. The polls go on."""
+        polls = []
+
+        def beat(value):
+            if len(polls) >= 3:
+                raise SystemExit
+            return value
+
+        def broken(link, now=None):
+            polls.append(1)
+            raise RuntimeError('a watch that failed')
+        self.addCleanup(setattr, feeder, 'subprocess', feeder.subprocess)
+        feeder.signal, feeder.POLL, feeder.subprocess = self.Signal, 0.001, NoLogger
+        feeder.watch_beat, feeder.watch_link = beat, broken
+        feeder.looker = lambda: None
+        feeder.release_console = lambda: None
+        with self.assertRaises(SystemExit):
+            feeder.run()
+        self.assertEqual(len(polls), 3)
+
 
 class TheStop(unittest.TestCase):
     """What at_the_stop does once the driver takes the coprocessor as gone: SysRq over the console, then
@@ -1267,6 +1454,105 @@ class TheStop(unittest.TestCase):
             self.assertEqual(self.ran, [], beat)
             self.assertIn('keys sent now could reach its boot firmware', self.said[-1])
             self.assertEqual(len(self.started), 1)
+
+    def test_the_xgs_136_s_stop_is_taken_up_at_once_and_asks_no_sysrq(self):
+        """The review's F11 (2026-11-06): with npuep's latch read too, the XGS 136's stop is taken up at once
+        - fastpath.py check - and npu-sysrq.sh, which asks the XGS 3300 family's console alone, is not run.
+        Nothing is said in its place: read from octep's node, which this host has not, its heartbeat was
+        "nothing, not dead"."""
+        self.addCleanup(setattr, feeder, 'LATCH', {'name': None})
+        feeder.LATCH = {'name': 'dev.npuep.0.gone'}
+        feeder.sysctl = {'dev.npuep.0.heartbeat.state': 'dead'}.get
+        feeder.at_the_stop()
+        self.assertEqual((self.ran, self.said, len(self.started)), ([], [], 1))
+
+
+class TheConsoleLogger(unittest.TestCase):
+    """console_log.py, which keeps what feeder.py reads: keep says by its exit whether it wrote what it was
+    given (the review's F8), and the logger goes on past a note it cannot write (F9)."""
+
+    NAMES = ('LOG', 'PAUSE', 'session', 'note', 'time', 'signal')
+
+    def setUp(self):
+        self.real = {name: getattr(console_log, name) for name in self.NAMES}
+        self.tmp = tempfile.TemporaryDirectory()
+        console_log.LOG = os.path.join(self.tmp.name, 'xgs', 'npu-console.log')
+        console_log.PAUSE = os.path.join(self.tmp.name, 'pause')
+
+    def tearDown(self):
+        for name, value in self.real.items():
+            setattr(console_log, name, value)
+        self.tmp.cleanup()
+
+    def keep(self, log):
+        """console_log.py keep, as feeder.py and npu-run.sh run it, in a copy whose log is log."""
+        with open(os.path.join(XGS, 'console_log.py'), encoding='utf-8') as f:
+            text = f.read()
+        real = "LOG = '/var/log/xgs/npu-console.log'"
+        self.assertIn(real, text)
+        script = os.path.join(self.tmp.name, 'console_log.py')
+        with open(script, 'w', encoding='utf-8') as f:
+            f.write(text.replace(real, 'LOG = %r' % log))
+        read = os.path.join(self.tmp.name, 'read')
+        with open(read, 'w', encoding='utf-8') as f:
+            f.write(OOPS)
+        return subprocess.run([sys.executable, script, 'keep', read, 'feeder.py'], capture_output=True,
+                              text=True, timeout=30)
+
+    def test_keep_says_by_its_exit_whether_it_wrote(self):
+        """F8: an exception in keep was printed and the exit was 0 all the same, so feeder.py - which marks a
+        crash record read once it is kept - could not know. 1 now, for a log that cannot be written."""
+        log = os.path.join(self.tmp.name, 'xgs', 'npu-console.log')
+        done = self.keep(log)
+        self.assertEqual(done.returncode, 0, done.stderr)
+        with open(log, encoding='utf-8') as f:
+            self.assertIn('virtual address 00000001', f.read())
+        blocked = os.path.join(self.tmp.name, 'a file')	# its directory cannot be made under a file
+        open(blocked, 'w').close()
+        done = self.keep(os.path.join(blocked, 'xgs', 'npu-console.log'))
+        self.assertEqual(done.returncode, 1)
+        self.assertIn('console_log.py: ', done.stderr)
+
+    def test_the_feeder_hears_that_keep_did_not_write(self):
+        """And console_keep, feeder.py's side, raises then, where it carried on as if kept."""
+        log = os.path.join(self.tmp.name, 'a file', 'xgs', 'npu-console.log')
+        open(os.path.join(self.tmp.name, 'a file'), 'w').close()
+        self.keep(log)			# leaves the copy, its log where it cannot be written
+        self.addCleanup(setattr, feeder, 'CONSOLE_LOG', feeder.CONSOLE_LOG)
+        feeder.CONSOLE_LOG = os.path.join(self.tmp.name, 'console_log.py')
+        feeder.KEEP = os.path.join(self.tmp.name, 'keep.%d')
+        with self.assertRaises(OSError) as raised:
+            feeder.console_keep(OOPS, 'pstore, after the coprocessor booted again')
+        self.assertIn('console_log.py keep exited 1', str(raised.exception))
+
+    def test_a_note_that_cannot_be_written_does_not_end_the_logger(self):
+        """F9: the logger noted its own errors from inside its handler, and a log that could not be written
+        - a full /var/log - raised there and ended it for the rest of the boot: daemon(8) runs it without
+        -r. The note is lost, the logger goes on."""
+        class Stop(BaseException):
+            """The test's own end of run(), which its handler does not catch."""
+        sessions, sleeps, wall = [], [], time.time
+
+        def session():
+            sessions.append(1)
+            raise OSError(5, 'Input/output error')
+
+        def note(text):
+            raise OSError(28, 'No space left on device')
+
+        class Time:
+            time = staticmethod(wall)
+
+            @staticmethod
+            def sleep(seconds):
+                sleeps.append(seconds)
+                if len(sleeps) >= 2:
+                    raise Stop
+        console_log.session, console_log.note = session, note
+        console_log.time, console_log.signal = Time, TheLoop.Signal
+        with self.assertRaises(Stop):
+            console_log.run()
+        self.assertEqual((len(sessions), sleeps), (2, [60, 60]))
 
 
 class ConsoleAsk(unittest.TestCase):
