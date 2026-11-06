@@ -11,12 +11,22 @@ the driver makes its interfaces before any script runs; and bringup.sh, portmap.
 keep the XGS 3300's and the XGS 136's panels as what a model the table does not have is given. They
 were written apart and have to say the same thing, so this reads each of them and compares.
 
+And the scripts that name a port by what it is on (the review of 2026-11-06, D5): portstats.py's
+counters, coprocessor.py's chips and temperatures.sh's port chips take the model's ports from the
+table - on an XGS 2100 or 2300 the switch's 9 and 10 are F1 and F2, and the coprocessor has no cages
+of its own. Until then all three gave those two models the XGS 3300's panel.
+
     python3 tools/test-models.py
 """
 
 import importlib.util
 import os
 import re
+import shutil
+import subprocess
+import sys
+import tempfile
+import types
 import unittest
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -120,6 +130,159 @@ class Models(unittest.TestCase):
         self.assertIn("$wan_label = 'Port2'", src)
         self.assertIn("$wan_label = 'Port1'", src)
         self.assertEqual(models.WAN, {'octeontx': 'Port2', 'armada': 'Port1'})
+
+
+XGS2100, XGS3300, UNKNOWN = 'AMDA0202-0001', 'AMDA0202-0004', 'AMDA0202-0009'
+
+
+def serial(assembly):
+    return 'XYZ' + assembly + '12345678'
+
+
+class NamedByTheTable(unittest.TestCase):
+    """portstats.py, coprocessor.py and temperatures.sh against the table, each run as on an
+    appliance of the model the planar serial names (XGS_PLANAR_SERIAL), the coprocessor stood in for."""
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp(prefix='models-test-')
+        self.saved = os.environ.get('XGS_PLANAR_SERIAL')
+
+    def tearDown(self):
+        shutil.rmtree(self.tmp, True)
+        if self.saved is None:
+            os.environ.pop('XGS_PLANAR_SERIAL', None)
+        else:
+            os.environ['XGS_PLANAR_SERIAL'] = self.saved
+
+    # portstats.py ---------------------------------------------------------------------------------
+
+    def portstats(self, assembly):
+        """portstats.py collect on this model: the switch's port N answers N good octets, and each BGX
+        LMAC asked for 2 frames; the ports kept, and the command the coprocessor was given."""
+        os.environ['XGS_PLANAR_SERIAL'] = serial(assembly)
+        mod = load('portstats_under_test', os.path.join(XGS, 'portstats.py'))
+        mod.STATE = os.path.join(self.tmp, 'portstats.json')
+        mod.PORTS_JSON = os.path.join(self.tmp, 'ports.json')
+        mod.family = lambda: 'octeontx'
+        asked = []
+
+        def run(argv, **kwargs):
+            asked.append(argv[-1])
+            lines = ['port=%d in_good_octets=%d' % (n, n) for n in range(1, 11)]
+            m = re.search(r'for p in ([^;]*); do b=', argv[-1])
+            for item in (m.group(1).split() if m else []):
+                lines.append('bgx=%s in_frames=2' % item.split(':')[0])
+            return types.SimpleNamespace(returncode=0, stdout='\n'.join(lines) + '\n', stderr='')
+
+        mod.subprocess = types.SimpleNamespace(run=run, DEVNULL=subprocess.DEVNULL,
+                                               SubprocessError=subprocess.SubprocessError)
+        answer = mod.collect()
+        return answer.get('ports') or {}, asked[0]
+
+    def test_portstats_2100_cages_are_the_switch_f1_f2(self):
+        ports, command = self.portstats(XGS2100)
+        self.assertEqual(sorted(ports), sorted(['Port%d' % n for n in range(1, 9)] + ['F1', 'F2']))
+        self.assertEqual((ports['F1'], ports['F2']), ({'in_good_octets': 9}, {'in_good_octets': 10}))
+        self.assertNotIn('devmem', command, 'an XGS 2100 has no cages on the coprocessor to read')
+
+    def test_portstats_3300_as_before(self):
+        ports, command = self.portstats(XGS3300)
+        self.assertEqual((ports['F3'], ports['F4']), ({'in_good_octets': 9}, {'in_good_octets': 10}))
+        self.assertEqual((ports['F1'], ports['F2']), ({'in_frames': 2}, {'in_frames': 2}))
+        self.assertIn('F1:%d F2:%d' % (0x87E0E0000000 + 2 * 0x1000000, 0x87E0E0000000 + 2 * 0x1000000 + 0x100000),
+                      command)
+
+    def test_portstats_unknown_model_gets_the_3300_panel(self):
+        ports, _ = self.portstats(UNKNOWN)
+        self.assertEqual(sorted(ports), sorted(['Port%d' % n for n in range(1, 9)] + ['F1', 'F2', 'F3', 'F4']))
+
+    def test_portstats_every_switch_port_named_as_the_table(self):
+        for a, (model, family, _, _) in models.MODELS.items():
+            if family != 'octeontx':
+                continue
+            ports, _ = self.portstats(a)
+            want = {p['label'] for p in models.ports(a) if p['attach'].startswith('switch port')}
+            self.assertEqual({k for k, v in ports.items() if 'in_good_octets' in v}, want, '%s %s' % (a, model))
+
+    # coprocessor.py -------------------------------------------------------------------------------
+
+    def chips(self, assembly):
+        mod = load('coprocessor_under_test', os.path.join(XGS, 'coprocessor.py'))
+        mod.sysctl = lambda name: ''
+        return {r['part']: (r['name'], r['where'], r['source']) for r in mod.chips(assembly, {})[2:]}
+
+    def test_coprocessor_2100_chips_serve_its_ports(self):
+        for a in (XGS2100, 'AMDA0202-0002'):
+            rows = self.chips(a)
+            self.assertEqual(rows['switch'], ('88E6193X', 'Port1-8, F1, F2', 'family'), a)
+            # whether the board carries an 88X5113 has not been read; it serves no port of this model
+            self.assertEqual(rows['phy'], ('88X5113', '', 'family'), a)
+
+    def test_coprocessor_run_here_as_before(self):
+        self.assertEqual(self.chips(XGS3300), {'switch': ('88E6193X', 'Port1-8, F3, F4', 'photographed'),
+                                               'phy': ('88X5113', 'F1, F2', 'photographed'),
+                                               'cpld': ('LCMXO3LF-2100C', '', 'photographed')})
+        self.assertEqual(self.chips('AMDA0201-0003'), {'switch': ('88E6193X', 'Port1-8, F1, F2', 'photographed'),
+                                                       'phy': ('AQR412C', 'Port9-12', 'photographed')})
+        self.assertEqual(self.chips(UNKNOWN)['switch'], ('88E6193X', 'Port1-8, F3, F4', 'family'))
+
+    # temperatures.sh ------------------------------------------------------------------------------
+
+    def temperatures(self, assembly):
+        """temperatures.sh -v on this model, in a copy whose paths point at stand-ins: sysctl(8) keeps
+        what it is told, and the link answers each label the coprocessor's temperature tool is asked
+        for. What the link was asked, and the temperatures written."""
+        run = tempfile.mkdtemp(dir=self.tmp).replace('\\', '/')
+        calls = run + '/calls'
+
+        def stub(name, body):
+            path = run + '/' + name
+            with open(path, 'w', newline='\n') as f:
+                f.write('#!/bin/sh\n%s\n' % body)
+            os.chmod(path, 0o755)
+            return path
+
+        sysctl = stub('sysctl', 'echo "sysctl $*" >> "%s"\ncase "$1" in\n'
+                                '-N) case "$2" in dev.octep.0.temperature.memory) exit 1 ;; dev.octep.0.*) exit 0 ;; esac; exit 1 ;;\n'
+                                '-n) echo "{ sec = 1700000000, usec = 0 }"; exit 0 ;;\nesac\nexit 0' % calls)
+        link = stub('mgmt-link', 'echo "link $*" >> "%s"\n'
+                                 'for l in $(echo "$2" | sed -n "s/^for l in \\([^;]*\\);.*/\\1/p"); do\n'
+                                 '\techo "$l phy temperatures 50000 51000"\ndone' % calls)
+        sensors = stub('xgs3300-sensors', 'echo \'{"npu_c": 60.5, "inlet_c": 30.5}\'')
+        logger = stub('logger', 'exit 0')
+        with open(os.path.join(XGS, 'temperatures.sh'), encoding='utf-8') as f:
+            text = f.read()
+        for real, fake in (('/usr/local/opnsense/scripts/npuctl/mgmt-link.sh', link),
+                           ('/usr/local/opnsense/scripts/xgs/board.sh', os.path.join(XGS, 'board.sh').replace('\\', '/')),
+                           ('/usr/local/opnsense/scripts/xgs/models.py', os.path.join(XGS, 'models.py').replace('\\', '/')),
+                           ('/usr/local/bin/python3', sys.executable.replace('\\', '/')),
+                           ('/usr/local/sbin/xgs3300-sensors', sensors), ('/usr/bin/logger', logger),
+                           ('/sbin/sysctl', sysctl), ('/var/db/os-xgs-npu', run)):
+            text = text.replace(real, fake)
+        script = run + '/temperatures.sh'
+        with open(script, 'w', encoding='utf-8', newline='\n') as f:
+            f.write(text)
+        done = subprocess.run(['sh', script, '-v'], capture_output=True, text=True, errors='replace', timeout=60,
+                              env=dict(os.environ, XGS_PLANAR_SERIAL=serial(assembly)))
+        self.assertEqual(done.returncode, 0, done.stderr)
+        with open(calls, encoding='utf-8') as f:
+            lines = f.read().splitlines()
+        asked = [re.search(r'for l in ([^;]*);', line).group(1).split() for line in lines
+                 if line.startswith('link ssh for l in')]
+        written = sorted(re.match(r'sysctl -q dev\.octep\.0\.temperature\.(\w+)=', line).group(1) for line in lines
+                         if line.startswith('sysctl -q dev.octep.0.temperature.'))
+        return asked, written
+
+    def test_temperatures_2100_reads_no_sfp_phy(self):
+        asked, written = self.temperatures(XGS2100)
+        self.assertEqual(asked, [['1', 'A1']], 'an XGS 2100\'s F1 is the switch\'s, not an SFP+ PHY\'s')
+        self.assertEqual(written, ['inlet', 'module_phy', 'npu', 'switch'])
+
+    def test_temperatures_3300_as_before(self):
+        for a in (XGS3300, UNKNOWN):
+            asked, written = self.temperatures(a)
+            self.assertEqual(asked, [['1', 'F1', 'A1']], a)
+            self.assertEqual(written, ['inlet', 'module_phy', 'npu', 'sfp_phy', 'switch'], a)
 
 
 if __name__ == '__main__':
