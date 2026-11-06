@@ -82,7 +82,7 @@ if [ "$armada" = 1 ]; then
     # __FreeBSD_version it was built against to the end of that branch, so a module built for 15.1
     # loads cleanly into any later 15.x kernel rather than being refused. The mismatch has to be
     # caught out of band, by comparing the stamp contrib/npuep/build.sh writes beside the module.
-    if kldstat -q -n npuep; then
+    if kldstat -q -m pci/npuep; then
         ok "npuep is loaded"
     elif [ ! -f /boot/modules/npuep.ko ]; then
         bad "npuep is NOT loaded and there is no module in /boot/modules to load"
@@ -129,11 +129,15 @@ else
 ' "${obuilt}"
         printf '        running: %s
 ' "${onow}"
-        note "the bring-up refuses to load it in this state rather than loading it wrongly"
+        if kldstat -q -n octep.ko.prev; then
+            note "the driver running is octep.ko.prev, the module kept for this kernel - the bring-up took it instead"
+        else
+            note "the bring-up refuses to load it in this state rather than loading it wrongly"
+        fi
     else
         ok "octep matches this kernel"
     fi
-    if kldstat -q -n octep; then
+    if kldstat -q -m pci/octep; then
         ok "octep is loaded"
         n=$(ifconfig -l 2>/dev/null | tr ' ' '
 ' | grep -c '^oxp')

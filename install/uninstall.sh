@@ -18,13 +18,13 @@ if [ "$(id -u)" != "0" ]; then
     exit 1
 fi
 
-if kldstat -q -n npuep; then
+if kldstat -q -m pci/npuep; then
     echo "== npuep is loaded; unload it yourself when you are ready =="
-    echo "   kldunload npuep"
+    echo "   kldunload $(kldstat -q -n npuep.ko.prev && echo npuep.ko.prev || echo npuep)"
     echo "   (pulse the NPU's reset first - it raises doorbells by writing the MSI message"
     echo "    itself, so freed vectors mean its writes land on whatever replaces them)"
 fi
-if kldstat -q -n octep; then
+if kldstat -q -m pci/octep; then
     echo "== octep is loaded and stays loaded until the next reboot =="
     echo "   do not kldunload it on a machine whose front ports matter"
 fi

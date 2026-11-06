@@ -24,7 +24,8 @@ STUBS = {
     'kenv': 'exit 0',
     'dmesg': 'exit 0',
     'pciconf': 'echo "none0@pci0:3:0:0: class=0x0b4000 rev=0x00 hdr=0x00 vendor=0x177d device=0xa300"',
-    'kldstat': '[ "$3" = octep ] && [ "${FAKE_OCTEP_LOADED}" = 1 ] && exit 0; exit 1',
+    # as the kernel answers: the driver's module is pci/octep (DRIVER_MODULE), asked for with -m
+    'kldstat': '[ "$2" = -m ] && [ "$3" = pci/octep ] && [ "${FAKE_OCTEP_LOADED}" = 1 ] && exit 0; exit 1',
     'ifconfig': ('[ "$1" = -l ] || exit 1; ports=""; [ "${FAKE_PORTS}" = 1 ] && '
                  'ports="oxp0 oxp1 oxp2 oxp3 oxp4 oxp5 oxp6 oxp7 oxp8 oxp9 oxp10 oxp11"; '
                  'echo "${ports} igb0 lo0"'),
