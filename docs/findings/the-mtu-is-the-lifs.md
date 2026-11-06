@@ -83,7 +83,8 @@ and a decrypted connection crosses it. That is the peer's setting, not this path
   uplink - so a frame behind the switch is capped at 2,048 by the switch itself, whatever the LIF
   and the host allow, and raising a port is one write of that field, ~~not made yet~~ ~~made at every
   boot since 2026-10-17, on all ten ports of both appliances (`scripts/xgs/switch-jumbo.sh`)~~ made
-  at every boot on the XGS 3300's ten ports (`scripts/xgs/switch-jumbo.sh`); on the XGS 136 by the
+  at every boot on the XGS 3300's ten ports, and since 2026-11-06 again after a recovery in place,
+  whose coprocessor boot sets them back to 2,048 (`scripts/xgs/switch-jumbo.sh`); on the XGS 136 by the
   same hook from 2026-10-17, and since 2026-10-24 by the network agent from each port's MTU
   ([the measurement](../measurements/switch-frame-limit-2026-10-24.md)). The machine on
   the bench behind one of them keeps a 1,500 MTU that only its owner can raise. The cage ports of
