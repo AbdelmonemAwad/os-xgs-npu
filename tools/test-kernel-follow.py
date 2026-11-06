@@ -290,5 +290,113 @@ class AtUpgrade(StandIns):
                          [])
 
 
+class Install(StandIns):
+    """The follower's last step, the module it built moved into place with its stamp, and a step of it
+    that fails: the review's P15 (2026-11-06). The module and its stamp are two files; until then the
+    module was moved and then its stamp, neither checked, and a failure between the two left the new
+    module under the stamp of the kernel running - loaded on that kernel at its next boot, at the wrong
+    offsets - or the reverse. The build is a stand-in for make that writes which kernel its module is
+    for, and what a boot would load is bringup.sh's own decision (CHECK=1) on each of the two kernels:
+    a module built for that kernel, or a refusal, never one built for the other."""
+
+    def setUp(self):
+        super().setUp()
+        self.kernel('kernel.old', OLD)			# the kernel running; /boot/kernel is the new one
+        self.module(OLD)
+        self.built('modules/octep.ko', OLD)
+        os.makedirs(self.path('sys/sys/amd64/include'))
+        open(self.path('sys/sys/param.h'), 'w').close()
+        os.makedirs(self.path('src'))
+        for name in ('Makefile', 'octep.c', 'octep.h'):
+            open(self.path('src/' + name), 'w').close()
+
+    def built(self, name, version):
+        with open(self.path(name), 'w') as f:
+            f.write('ELF built for %s\n' % version)
+
+    def follow(self, fails=None, force=False):
+        """kernel-follow.sh built and installed for the kernel in /boot; with fails, the one move whose
+        source ends so fails, as a rename does on a failing disk."""
+        mv = self.stub('mv', 'case "$1" in *%s) echo "mv: rename $1 to $2: Input/output error" >&2; exit 1 ;; '
+                             'esac\nexec /bin/mv "$@"' % (fails or '/nothing'))
+        make = self.stub('make', 'ln -s "${1#SYSDIR=}/sys/amd64/include" machine\n: > octep.o\n'
+                                 "echo 'ELF built for %s' > octep.ko" % KERNEL)
+        script = self.copy(SCRIPT, 'kernel-follow.sh', (
+            ('/usr/bin/logger', self.recorder('logger', 'log')),
+            ('/sbin/sysctl', self.stub('sysctl', 'exit 1')),
+            ('/usr/bin/make', make), ('/bin/mv', mv),
+            ('/var/db/os-xgs-npu/build.log', self.path('build.log'))))
+        env = self.env(OCTEP_FOLLOW_LOCKED='1', NOFETCH='1', UNAME=self.stub('uname', 'echo "%s"' % OLD),
+                       NEXTBOOT=self.recorder('nextboot', 'nextboot.args'),
+                       FETCH=self.stub('fetch-here.sh', 'echo "SYSDIR=%s"' % self.path('sys')))
+        if force:
+            env['FORCE'] = '1'
+        return subprocess.run(['/bin/sh', script], env=env, capture_output=True, text=True, timeout=60)
+
+    def loads(self, running):
+        """What bringup.sh would load on a boot of `running`: the kernel its module is built for, or None
+        for a refusal. Its decision is in its own log file: off a terminal, its lines go to logger."""
+        bringup = self.copy(os.path.join(HERE, '..', 'src', 'opnsense', 'scripts', 'octep', 'bringup.sh'),
+                            'bringup.sh', (('/usr/bin/uname', self.stub('uname-boot', 'echo "%s"' % running)),
+                                           ('/usr/bin/logger', self.stub('logger-boot', 'exit 0'))))
+        log = self.path('bringup.log')
+        if os.path.exists(log):
+            os.unlink(log)
+        env = dict(os.environ, MODULE=self.path('modules/octep.ko'), KLDSTAT=self.stub('kldstat', 'exit 1'),
+                   LOGFILE=log, CHECK='1')
+        done = subprocess.run(['/bin/sh', bringup], env=env, capture_output=True, text=True, timeout=60)
+        if done.returncode != 0:
+            return None
+        loaded = self.read('bringup.log').strip().rsplit('CHECK=1: would load ', 1)[1]
+        return self.read(os.path.relpath(loaded, self.dir)).strip()[len('ELF built for '):]
+
+    def assert_no_boot_loads_another_kernels(self):
+        for running in (OLD, KERNEL):
+            self.assertIn(self.loads(running), (running, None),
+                          'a boot of %s would load a module built for another kernel' % running)
+
+    def test_the_module_and_its_stamp_go_in_together(self):
+        done = self.follow()
+        self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+        self.assertEqual((self.loads(KERNEL), self.loads(OLD)), (KERNEL, OLD))
+
+    def test_a_stamp_that_cannot_follow_its_module_leaves_it_refused(self):
+        done = self.follow(fails='.kernel.new')
+        self.assertEqual(done.returncode, 1, done.stdout + done.stderr)
+        self.assert_no_boot_loads_another_kernels()
+        # the kernel running keeps its ports, from the module kept for it
+        self.assertEqual(self.loads(OLD), OLD)
+        self.assertIn('its stamp could not be put beside it: it is stamped for no kernel', done.stderr)
+        # and the next run, its moves working again, keeps that one: the module stamped for no kernel is
+        # not made the module kept for the old one
+        done = self.follow()
+        self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+        self.assertEqual((self.loads(KERNEL), self.loads(OLD)), (KERNEL, OLD))
+
+    def test_a_module_that_cannot_move_leaves_the_old_pair_as_it_was(self):
+        done = self.follow(fails='octep.ko.new')
+        self.assertEqual(done.returncode, 1, done.stdout + done.stderr)
+        self.assert_no_boot_loads_another_kernels()
+        self.assertEqual(self.read('modules/octep.ko.kernel').strip(), OLD)
+        self.assertIn('untouched and still matches ' + OLD, done.stderr)
+
+    def test_a_stamp_that_cannot_be_written_touches_nothing(self):
+        os.makedirs(self.path('modules/octep.ko.kernel.new'))	# a write to it fails
+        done = self.follow()
+        self.assertEqual(done.returncode, 1, done.stdout + done.stderr)
+        self.assert_no_boot_loads_another_kernels()
+        self.assertEqual(self.read('modules/octep.ko').strip(), 'ELF built for ' + OLD)
+        self.assertEqual(self.read('modules/octep.ko.kernel').strip(), OLD)
+
+    def test_a_rebuild_for_the_same_kernel_is_never_refused_between_its_steps(self):
+        """install.sh's FORCE=1, the module already built for the kernel in /boot: whatever step fails,
+        the module in place is one built for it, under its stamp."""
+        self.module(KERNEL)
+        self.built('modules/octep.ko', KERNEL)
+        for fails in ('.kernel.new', 'octep.ko.new'):
+            done = self.follow(fails=fails, force=True)
+            self.assertEqual(self.loads(KERNEL), KERNEL, fails + ': ' + done.stdout + done.stderr)
+
+
 if __name__ == '__main__':
     unittest.main(verbosity=2)

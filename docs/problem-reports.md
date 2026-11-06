@@ -88,7 +88,7 @@ Only the parts that are installed, each one's reports going to its own repositor
 | update | `/var/db/os-xgs-npu/update/apply.json` | an update from XGS: Updates failed |
 | fan incident | `/var/db/fanctl/incident.json` | fan control recorded an incident |
 | kernel panic | `/var/crash/info.N`, `textdump.tar.N` | a crash dump was saved; the panic string, the backtrace and ~~the end of the message buffer~~ from the message buffer the trap - its fault address, instruction pointer and process - with the ten lines the kernel logged before it go into the report, up to 60 lines (2026-10-25: #755 carried only the backtrace's end twice over, and could not say what faulted). Two crashes are the same problem when the panic and the first frames **after** the debugger's, the panic's, the trap's and the lock code's are the same - ~~the first three frames~~, which are the same for every page fault and filed two different crashes as one issue (#467, corrected 2026-10-18). `info.last`, savecore's link to the newest dump, is not a dump of its own. Nothing in `/var/crash` is removed: it is OPNsense's crash reporter's |
-| restart without shutdown | at boot | the boot before this one ended without an orderly shutdown - see below |
+| restart without shutdown | at boot | the boot before this one ended without an orderly shutdown, and since 2026-11-06 each boot since the last look that went before it, and a shutdown that began in order and ended in a kernel panic - see below |
 
 The logs are read from where the last look stopped; the first look after installing reads none of what
 was there before.
@@ -115,6 +115,27 @@ before the boot from the kernel, the logger, devd, the address clients (dhclient
 plugin's own programs - other programs' lines carry the names an owner chose, a gateway's or a user's,
 and went into public issues with them (corrected 2026-11-06) - and, when the message buffer kept the
 boot before, what its kernel said last: the trap and panic lines if there are any, and its last ten.
+
+**Every boot since the last look**, since 2026-11-06. The look at boot runs from a start hook, late in
+the boot, and until then it was the first thing to write a boot down: a boot that went before it - a
+panic in a driver's load, a hang a watchdog ended - was never one, the boot before it was judged
+instead and found to have shut down in order, and the crash went unreported. Now the early hook
+`early/05-xgs-report` writes each boot down as it begins, after OPNsense's `05-upgrade` and before the
+coprocessor's reset and its driver's load, and the look takes the record away; one still there at the
+next look is a boot that never got that far, and is judged between its own start and the next boot's.
+The boot just before the look is reported as above. One before it, which ended before a boot that went
+early too, is reported with its last lines alone (`unexpected reset unread`): the message buffer, a dump
+and the chipset's record are of the later reset. At most the last twenty such boots are judged.
+
+**A shutdown that began in order is not one that ended in order**, since 2026-11-06. The line
+`stop/90-xgs-report` writes, and `reboot(8)`'s record, are written as a shutdown begins: OPNsense's last
+hook, `shutdown(8)` and the kernel's own part - the disks' sync, every driver's shutdown method - come
+after both, and nothing of the system's own runs late enough to write a later line. A panic there is in
+the message buffer the restart kept, and is a report of its own: the appliance panicked while it shut
+down. A hang there that only the power ended leaves nothing a boot can read - the disks were synced
+with the line on them, and the buffer went with the memory - and still reads as an orderly shutdown.
+Both were found in a review of the code and are tested with stand-ins (`tools/test-reporter.py`, and
+the early hook in `tools/test-hooks.py`), not yet on an appliance.
 
 **What the host's chipset recorded** goes in too, since 2026-10-18. The AMD FCH beside the host's
 processor keeps the cause of the last reset in `FCH::PM::S5_RESET_STATUS` - power-management register

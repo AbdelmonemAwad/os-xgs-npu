@@ -7,6 +7,13 @@
 # rc.shutdown all run `rc.syshook stop` before anything is torn down, so a boot that finds no such
 # line after the boot before it is a restart without a shutdown - a loss of power, a hardware reset,
 # or a panic - and is reported as one (scripts/xgs/reporter.py, from_reset).
+#
+# The line says that the shutdown began in order, and no more: OPNsense's last hook, shutdown(8) and
+# the kernel's own part - the disks' sync, every driver's shutdown method - come after it, and nothing
+# of the system's own runs late enough to write a later one. Until 2026-11-06 the next boot took it
+# for the shutdown's end, and a panic after it went unreported (the review's P13). That panic is in the
+# message buffer the restart keeps, where the reporter reads it now; a hang after it that only the
+# power ends leaves nothing a boot can read, and still reads as orderly.
 
 D=/var/db/os-xgs-npu/reports
 /bin/mkdir -p "${D}" 2> /dev/null

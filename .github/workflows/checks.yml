@@ -131,8 +131,11 @@ jobs:
       # the stop hook while another run holds the follower's lock: the next boot sent to kernel.old
       # where the module is built for it, and said to be only then. And the upgrade hook with the new
       # kernel still staged: the follower cut off at its time limit, and a failed rebuild said to leave
-      # the next boot on kernel.old where the module is built for it. tools/test-kernel-follow.py.
-      - name: Kernel follower without sources
+      # the next boot on kernel.old where the module is built for it. And a rebuild with stand-in
+      # sources, a step of its install failing: what bringup.sh would load on either kernel is a module
+      # built for it or nothing, never one built for the other (the review of 2026-11-06, P15).
+      # tools/test-kernel-follow.py.
+      - name: Kernel follower without sources, and its install
         run: python3 tools/test-kernel-follow.py
 
       # bringup.sh with the driver's answers made up: a coprocessor an earlier load of the driver
@@ -149,6 +152,14 @@ jobs:
       # after the minutes the setting names, never more than three a day. tools/test-fastpath.py.
       - name: The fast path's watcher
         run: python3 tools/test-fastpath.py
+
+      # recover.sh on both families with stand-ins for the driver, the coprocessor and OPNsense: a reload
+      # of the interfaces that did not finish is a recovery not done, where it was counted done on the
+      # heartbeat alone; and on the XGS 3300 a detach the driver refuses for a moment is asked again, six
+      # times, where its first refusal restarted the appliance (the review of 2026-11-06, O8 and O9).
+      # tools/test-recover.py.
+      - name: The recovery in place, to its end
+        run: python3 tools/test-recover.py
 
       # Which connections a block list cuts is decided from pf's own text: a state matched wrongly
       # is a connection cut for nothing, one missed stays open to a listed address.
@@ -366,10 +377,12 @@ jobs:
       - name: The switch ports' frame limit
         run: python3 tools/test-switch-jumbo.py
 
-      # Both watchdogs stopped after the kernel follower's rebuild at shutdown, not before it; the reset's
-      # record moved to the boot's time before the reporter runs; the coprocessor's clock not set at boot
-      # said once; the appliance's own settings set again after a factory reset. tools/test-hooks.py.
-      - name: The shutdown's order and four small hooks
+      # Both watchdogs stopped after the kernel follower's rebuild at shutdown, not before it; each boot
+      # written down for the reporter before the coprocessor's reset and its driver's load, and one whose
+      # look at boot never ran kept for the next; the reset's record moved to the boot's time before the
+      # reporter runs; the coprocessor's clock not set at boot said once; the appliance's own settings
+      # set again after a factory reset. tools/test-hooks.py.
+      - name: The shutdown's order and five small hooks
         run: python3 tools/test-hooks.py
 
       # tunables-kenv.sh: the configuration's tunables put in the kernel's environment before the driver

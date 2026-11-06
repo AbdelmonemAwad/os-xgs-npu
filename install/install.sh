@@ -354,12 +354,15 @@ fi
 
 # Problem reports (docs/problem-reports.md): the reporter, its page under XGS, its place
 # in OPNsense's own status (a notice until the owner has chosen, then one when a report waits), a
-# look at boot and one every five minutes from the plugin's cron entry, and the stop hook
-# that writes down an orderly shutdown so the next boot can tell one from a restart without it.
+# look at boot and one every five minutes from the plugin's cron entry, the stop hook
+# that writes down an orderly shutdown so the next boot can tell one from a restart without it, and
+# the early hook that writes each boot down as it begins, so one that goes before the look at boot
+# is judged at the next.
 echo "== problem reports =="
 install -m 0755 "${SRC}/src/opnsense/scripts/xgs/reporter.py" "${PREFIX}/opnsense/scripts/xgs/reporter.py"
-install -d -m 0755 "${PREFIX}/etc/rc.syshook.d/start" "${PREFIX}/etc/rc.syshook.d/stop" \
+install -d -m 0755 "${PREFIX}/etc/rc.syshook.d/early" "${PREFIX}/etc/rc.syshook.d/start" "${PREFIX}/etc/rc.syshook.d/stop" \
     "${PREFIX}/opnsense/mvc/app/library/OPNsense/System/Status"
+install -m 0755 "${SRC}/src/etc/rc.syshook.d/early/05-xgs-report" "${PREFIX}/etc/rc.syshook.d/early/05-xgs-report"
 install -m 0755 "${SRC}/src/etc/rc.syshook.d/start/65-xgs-report" "${PREFIX}/etc/rc.syshook.d/start/65-xgs-report"
 install -m 0755 "${SRC}/src/etc/rc.syshook.d/stop/90-xgs-report" "${PREFIX}/etc/rc.syshook.d/stop/90-xgs-report"
 # What the host's chipset recorded as the cause of the last reset, read early in every boot and kept

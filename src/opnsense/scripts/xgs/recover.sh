@@ -24,7 +24,7 @@
 # Then the driver unloaded - or, while IPsec associations point into it, its device detached and
 # attached again with the module loaded - and brought up as the boot hook does (bringup.sh).
 #
-# Both: OPNsense's interfaces reloaded (rc.reload_all), and the heartbeat waited for.
+# Both: OPNsense's interfaces reloaded (rc.reload_all), to its end, and the heartbeat waited for.
 
 PATH=/sbin:/bin:/usr/sbin:/usr/bin:/usr/local/sbin:/usr/local/bin
 LIB=/usr/local/opnsense/scripts
@@ -227,18 +227,50 @@ else
 	kldstat -q -n octep.ko.prev && ko=octep.ko.prev
 	if kldstat -q -m pci/octep && ! kldunload "${ko}" 2>/dev/null; then
 		# IPsec associations point into the module, which stays loaded: its device is detached and
-		# attached again instead (since 2026-10-26; until then this restarted the appliance)
+		# attached again instead (since 2026-10-26; until then this restarted the appliance). The
+		# device's own detach can refuse too, and says "try again", nothing changed (octep_detach):
+		# while an IPsec association is being put on the coprocessor - which, with the coprocessor taken
+		# as gone, fails at once (octep_rpc_post) - or while a ring is still being serviced a second
+		# after servicing was stopped; and an unload refused for that ends here as well. So the detach
+		# is asked again, every five seconds, six times in all: until 2026-11-06 its first refusal was
+		# final, and the appliance was restarted where the driver had asked to be asked again (the
+		# review's O9).
 		SEL=$(pciconf -l 2>/dev/null | awk '/^octep0@/ {s = $1; sub(/^[^@]*@/, "", s); sub(/:$/, "", s); print s}')
 		[ -n "${SEL}" ] || { say "the driver did not unload, and its device was not found; not taken up in place"; exit 1; }
-		devctl detach octep0 || { say "the driver did not unload, nor its device detach; not taken up in place"; exit 1; }
+		n=1
+		until devctl detach octep0; do
+			if [ "${n}" -ge 6 ]; then
+				say "the driver did not unload, nor its device detach, asked ${n} times; not taken up in place"
+				exit 1
+			fi
+			n=$((n + 1))
+			sleep 5
+		done
 		devctl attach "${SEL}" || { say "its device did not attach again at ${SEL}; not taken up in place"; exit 1; }
-		say "the driver stays loaded (IPsec associations point into it); its device detached and attached again"
+		say "the driver stays loaded (its unload refused: IPsec associations point into it, or its device was busy); its device detached, asked ${n} time(s), and attached again"
 	fi
 	${LIB}/octep/bringup.sh > /dev/null 2>&1 || { say "the driver's bring-up did not finish"; exit 1; }
 fi
 
 say "driver up ($(since) s); OPNsense reloads its interfaces"
-/usr/local/etc/rc.reload_all > /dev/null 2>&1
+# The reload is half of being taken up in place: the driver's devices are new interfaces, and it is
+# what gives them their addresses, bridges and rules again. Until 2026-11-06 its result went with its
+# output to /dev/null, and a reload that stopped part-way was a recovery counted done on the heartbeat
+# alone - the coprocessor answering, its ports left with what part of their configuration the reload
+# had reached (the review's O8). Its status is what says so: rc.reload_all goes on past whatever each
+# of its steps returns and exits 0 when it has run to its end (read in OPNsense 26.7's own), so
+# anything else is PHP stopping in it, or the script killed - a recovery not done, which fastpath.py
+# restarts the appliance for. What it said goes to a file, not a pipe: it starts the plugins' services
+# again last, and one that kept a pipe open would hold this here until fastpath.py's cap.
+reloadlog=$(mktemp "${TMPDIR:-/tmp}/xgs-recover.XXXXXX" 2>/dev/null) || reloadlog=/dev/null
+/usr/local/etc/rc.reload_all > "${reloadlog}" 2>&1
+rc=$?
+if [ "${rc}" -ne 0 ]; then
+	say "OPNsense's reload of its interfaces did not finish (rc.reload_all exited ${rc}); not taken up in place"
+	tail -n 5 "${reloadlog}" 2>/dev/null | while IFS= read -r l; do say "  rc.reload_all: ${l}"; done
+fi
+[ "${reloadlog}" = /dev/null ] || rm -f "${reloadlog}"
+[ "${rc}" -eq 0 ] || exit 1
 if hb_alive 120; then
 	say "the fast path answers again: taken up in place in $(since) s"
 	# The management link last, in the background as at boot: the coprocessor's end lost its address
