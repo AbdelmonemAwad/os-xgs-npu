@@ -19,10 +19,10 @@ to a new image, and the checks fail on one without them.
 |---|---|---|
 | [screens/](screens/) | The web interface, page by page, in English and in Arabic | 81 |
 | [hardware/](hardware/) | Photographs and drawings of the appliances, one folder each | 41 |
-| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 719 |
+| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 724 |
 | [readme/](readme/) | The README's banner and status board, drawn by tools/readme-art.py | 6 |
 
-886 images in all.
+891 images in all.
 
 ## The web interface
 
@@ -1310,7 +1310,7 @@ The page: [unload-780-2026-10-25.md](../measurements/unload-780-2026-10-25.md).
 | [02-sfos21-unload-path-fixed.png](measurements/unload-780-2026-10-25/02-sfos21-unload-path-fixed.png) | Four reloads with npuep.ko 68a87305, the change: five connections in the flow table before each, all fourteen front ports confirmed after each load, the second XGS 3300 answering | [unload-780-2026-10-25.md](../measurements/unload-780-2026-10-25.md) |
 | [03-sfos21-each-unload-from-the-log.png](measurements/unload-780-2026-10-25/03-sfos21-each-unload-from-the-log.png) | The board's system log, each reload's mark and the unload's lines after it: with 68a87305, "5 connection(s) taken back from the fast path at unload, 0 reclaim(s) not sent or not answered" six times; with the comparison build 89d6b526, "5 reclaim(s) not sent or not answered" twice; "function 1's datapath disabled" whenever the inspector's function was there, and "datapath disabled" at every unload | [unload-780-2026-10-25.md](../measurements/unload-780-2026-10-25.md) |
 
-### measurements/userland-review-2026-11-06/ (14)
+### measurements/userland-review-2026-11-06/ (19)
 
 The page: [userland-review-2026-11-06.md](../measurements/userland-review-2026-11-06.md).
 
@@ -1330,6 +1330,11 @@ The page: [userland-review-2026-11-06.md](../measurements/userland-review-2026-1
 | [12-flows-handed-back-first-3300.png](measurements/userland-review-2026-11-06/12-flows-handed-back-first-3300.png) | Pressed and confirmed: the connection handed back to the host, the table empty | [userland-review-2026-11-06.md](../measurements/userland-review-2026-11-06.md) |
 | [13-management-link-unassigned-main-136.png](measurements/userland-review-2026-11-06/13-management-link-unassigned-main-136.png) | XGS 136, main: the management link left without an assignment or an address after the boot | [userland-review-2026-11-06.md](../measurements/userland-review-2026-11-06.md) |
 | [14-management-link-assigned-at-boot-136.png](measurements/userland-review-2026-11-06/14-management-link-assigned-at-boot-136.png) | XGS 136, the change: the link assigned by the early hook in the same boot, the coprocessor's clock and log handled over it | [userland-review-2026-11-06.md](../measurements/userland-review-2026-11-06.md) |
+| [15-a-missing-port-renames-the-rest-main-second-3300.png](measurements/userland-review-2026-11-06/15-a-missing-port-renames-the-rest-main-second-3300.png) | Second XGS 3300, main, A4 given no address: A3, A2 and A1 each a name down, with the assignment of the port before them, both links silent | [userland-review-2026-11-06.md](../measurements/userland-review-2026-11-06.md) |
+| [16-each-port-keeps-its-name-second-3300.png](measurements/userland-review-2026-11-06/16-each-port-keeps-its-name-second-3300.png) | The change, the same gap: oxp12 left empty, every other port its own name and assignment, the link over A2 answering | [userland-review-2026-11-06.md](../measurements/userland-review-2026-11-06.md) |
+| [17-a-cut-reaches-the-first-page-only-main-first-3300.png](measurements/userland-review-2026-11-06/17-a-cut-reaches-the-first-page-only-main-first-3300.png) | First XGS 3300, main: two connections printed and three more counted; main's hwdrop.py drops the two, three downloads go on | [userland-review-2026-11-06.md](../measurements/userland-review-2026-11-06.md) |
+| [18-a-cut-reaches-every-page-first-3300.png](measurements/userland-review-2026-11-06/18-a-cut-reaches-every-page-first-3300.png) | The change: all five read by the pages and dropped, no download moves after | [userland-review-2026-11-06.md](../measurements/userland-review-2026-11-06.md) |
+| [19-a-cut-reaches-every-page-136.png](measurements/userland-review-2026-11-06/19-a-cut-reaches-every-page-136.png) | XGS 136, the change: every connection of the address read by the pages and dropped, no download moves after | [userland-review-2026-11-06.md](../measurements/userland-review-2026-11-06.md) |
 
 ### measurements/v6-136-2026-10-20/ (9)
 

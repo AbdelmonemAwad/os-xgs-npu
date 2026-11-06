@@ -5,7 +5,7 @@ On 2026-11-06 everything this project runs on an appliance outside its two drive
 stop hooks, the scripts, the pages and their API, the installer and the updater, the problem reporter,
 the workflows and two plugins of the family - was read through for faults:
 [1072](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/1072) holds the register, 138 findings - one of them found and fixed that evening -
-with their severity, evidence and state. **132 of them were fixed by the end of that day, in 50 pull
+with their severity, evidence and state. **134 of them were fixed by the end of that day, in 52 pull
 requests, each run before it was merged - on the lab appliances, as an owner meets it, wherever an
 appliance can show it - and every one of them with its tests.** The rest are open or confirmed there.
 This page was first published that evening with 121 in 45; those merged after it are added below.
@@ -96,7 +96,10 @@ slot's. Built from the change and loaded on the first XGS 3300 and the XGS 136, 
 cross each from a lab link to its WAN: with the revision + 1 the verdict and the hand-back were refused,
 nothing changed; with the right one both were taken, and the connection went on. On the first XGS 3300
 the case came by itself: the next connection took index 2 again with revision 2, and a hand-back with
-the revision read before was refused.
+the revision read before was refused. The merge of
+[1106](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1106) took these changes out of `main` again
+the same evening - its commit carried the files of a `main` from before them - and
+[1108](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1108) put them back, file for file.
 
 ![XGS 136: a verdict and a hand-back with the wrong revision refused, with the right one taken](../images/measurements/userland-review-2026-11-06/09-index-and-rev-in-hardware-136.png)
 
@@ -124,6 +127,42 @@ sent and its clock set. The configuration of before was put back after.
 ![XGS 136, main: the management link left without an assignment or an address after the boot](../images/measurements/userland-review-2026-11-06/13-management-link-unassigned-main-136.png)
 
 ![XGS 136, the change: the link assigned by the early hook in the same boot, the coprocessor's clock and log handled over it](../images/measurements/userland-review-2026-11-06/14-management-link-assigned-at-boot-136.png)
+
+## Every front port named by its place
+
+[1109](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1109), O3: each front-port interface took the
+unit of the interfaces made before it, so one port that did not come up - an expansion module's port
+NetAgent gave no address, say - moved every port made after it to the name of the one before it; and
+OPNsense assigns an interface by its name. Each port is given the unit of its place now, and one that
+does not come up leaves its name empty. On the second XGS 3300, 12 panel ports and a module of 4, A4
+(the link to the first XGS 3300) given no address by a lab copy of `ports.py`, each run a restart by
+OPNsense's own `rc.reboot`: with `main`, A3 became oxp12 with A4's assignment, A2 took A3's, A1 took
+A2's, and both links to the first XGS 3300 went silent; with the change, oxp12 left empty and every
+other port kept its name and its assignment, the link over A2 answering. With every port up, the names
+and assignments were those of `main`.
+
+![Second XGS 3300, main, A4 given no address: A3, A2 and A1 each a name down, with the assignment of the port before them, both links silent](../images/measurements/userland-review-2026-11-06/15-a-missing-port-renames-the-rest-main-second-3300.png)
+
+![The change, the same gap: oxp12 left empty, every other port its own name and assignment, the link over A2 answering](../images/measurements/userland-review-2026-11-06/16-each-port-keeps-its-name-second-3300.png)
+
+## The flow table read past its first page
+
+[1110](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1110), D13: each driver prints the first
+4,096 connections of its flow table and counts the rest, and `hwdrop.py`, which drops a cut's
+connections on the coprocessor, read that first page alone - a connection past it went on through the
+fast path after the firewall had cut it. Both drivers print the rest a page at a time now, and
+`hwdrop.py` reads every page when the first says there are more. Run with a lab build of each driver
+from the change whose pages hold two connections, so that five fill three pages, and five downloads
+from the second XGS 3300 through the appliance, `hwdrop.py` asked to drop every connection of that
+address: on the first XGS 3300 and on the XGS 136, `main`'s dropped the first page's two and three
+downloads went on; the change's dropped every one, and none of the five moved in the 15 s after. On the
+XGS 136 that was seven - the five, and two of `main`'s run, stopped but still in the table.
+
+![First XGS 3300, main: two connections printed and three more counted; main's hwdrop.py drops the two, three downloads go on](../images/measurements/userland-review-2026-11-06/17-a-cut-reaches-the-first-page-only-main-first-3300.png)
+
+![The change: all five read by the pages and dropped, no download moves after](../images/measurements/userland-review-2026-11-06/18-a-cut-reaches-every-page-first-3300.png)
+
+![XGS 136, the change: every connection of the address read by the pages and dropped, no download moves after](../images/measurements/userland-review-2026-11-06/19-a-cut-reaches-every-page-136.png)
 
 ## Every pull request, and what it was run on
 
@@ -177,7 +216,10 @@ sent and its clock set. The configuration of before was put back after.
 | [1103](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1103) | P19 | kernel-follow.sh: the fall-back to kernel.old never across a FreeBSD major release | Under Linux: test-kernel-follow.py (18) OK; the two new major-release tests fail on main's script. First XGS 3300 on its own sh, strings, grep and sed: the stop hook's PINONLY=1 run with stand-ins in /tmp only - a kernel.old of FreeBSD 14.3-RELEASE-p16, a module stamped for it, a nextboot that only records - against the real /boot/kernel 15.1: main's exit 0 and -k kernel.old asked; the branch's exit 1, nothing asked, the reason said. Nothing in /boot touched, nothing to syslog. Not tested: a real major upgrade. |
 | [1104](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1104) | U11, U12, U13, U14, U15 | update.py, install.sh, uninstall.sh, verify.sh, kernel-follow.sh: an ARMADA appliance's stray octep.ko taken off, an uninstall that leaves nothing armed, verify.sh naming what is installed, a download tried again, and the releases read past the twenty newest | Under Linux: test-update.py (99), test-verify.py, test-kernel-follow.py, test-uninstall.py OK. U13: the branch's verify.sh on the first XGS 3300 and the 136 says the release installed, the last update and the installer's files - on the 136 one of 135 not as written. U15: as if alpha.2 were installed, main's check offered 1 release since it, the branch's 40. U14: on the first XGS 3300 codeload blocked for the first 12 s - the first download failed and the log said 'trying again in 30 s, try 2 of 3', the second took it, the update done in 68 s, no archive or tree left. U11: on the 136 four stand-in octep.ko files taken off by the branch's install.sh in the update. U12 not on an appliance: an uninstall takes the plugin off whole; by test-uninstall.py only. |
 | [1106](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1106) | A4 | 31-xgs-mgmt-link, mgmt-link.sh, install.sh: the ARMADA's management link assigned at the first boot that has it, before OPNsense configures its interfaces | Under Linux: test-hooks.py, test-mgmt-link.py OK. The 136 with mvmgmt0's assignment taken out of its configuration, as after an install from an image: with main's files it stayed unassigned, no address, no npu-clock or npu-log, npu-clock.sh exit 1. With the branch's early hook the link was assigned in that same boot before the interfaces came up, took its address, the coprocessor answered, its log was sent and its clock set. The kept configuration and main's files put back after. |
-| [os-kernelfollow 10](https://github.com/AbdelmonemAwad/os-kernelfollow/pull/10) | P16 | stop/21-kernelfollow, follow.sh: the fall-back armed first, on its own, and the cut-off said as it is - released in 1.0.3 | Under Linux: test-follow.py (17, new) OK; on main 16 fail. First XGS 3300, follow.sh's lock held 40 s by a stand-in, nothing registered: the installed follow.sh with PINONLY=1 waited for the lock until an outside limit cut it at 15 s, the branch's ended at once (2); the installed stop hook with LIMIT=5 said the next boot takes kernel.old with nothing armed (no nextboot.conf), the branch's said what it found. No fall-back actually armed on an appliance (nothing registered needs one). |
-| [os-watchdog 10](https://github.com/AbdelmonemAwad/os-watchdog/pull/10) | B15 | stop/24-watchdog: the host's watchdog disarmed after the slow stop hooks, not first - released in 1.0.2 | The XGS 136: the branch's 24-watchdog in place of 04-watchdog for one restart, the installed one put back after. The stop order as the console printed it: before, watchdog first of all; with it, after octep and kernelfollow. install.sh and uninstall.sh as they now are not run on an appliance (sh -n passes). |
+| [1108](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1108) | none of its own: #1090's put back | octep, npuep, hwdrop.py, flows.py, flows.volt: #1090 put back, which the merge of #1106 had taken out | Puts #1090 back as it was merged, file for file, after #1106's merge had taken it out; every file the same as 331756b2, which was run in hardware on both families (see #1090), checks.yml differing by #1106's lines alone. test-flows.py, test-hwdrop.py, test-ja4-cut.py OK. |
+| [1109](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1109) | O3 | octep, bringup.sh, ports.py, portmap.py, portstats.py: every front port named by its place, so one that does not come up renames no other | Under Linux: test-bringup.py, test-models.py OK. The second XGS 3300 (12 ports and a module of 4), on main first: every port up, oxp0 to oxp15. With A4 given no address (a lab copy of ports.py): on main A3 took oxp12 and A4's assignment, A2 A3's, A1 A2's, no oxp15, both lab links silent; with the branch oxp12 left empty, each other port its own name and assignment, A2's link answering; every port up with the branch, the names as on main. Main's files and module put back after. |
+| [1110](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1110) | D13 | octep, npuep, hwdrop.py: the flow table read past its first page, so a cut reaches every connection | Under Linux: test-hwdrop.py, test-flows.py, test-ja4-cut.py OK; both modules built on the first XGS 3300 with -Werror, no warning. A lab build of each driver whose pages hold two connections, five downloads from the second XGS 3300 through the appliance: on the first XGS 3300 main's hwdrop.py dropped the first page's 2 and 3 downloads went on, the branch's dropped all 5 and none moved; on the XGS 136 main's dropped 2 and 3 went on, the branch's dropped 7 - the five and two of main's run not yet out of the table - and none moved. Each appliance's own module put back after. |
+| [os-kernelfollow 10](https://github.com/AbdelmonemAwad/os-kernelfollow/pull/10) | P16 |  | Under Linux: test-follow.py (17, new) OK; on main 16 fail. First XGS 3300, follow.sh's lock held 40 s by a stand-in, nothing registered: the installed follow.sh with PINONLY=1 waited for the lock until an outside limit cut it at 15 s, the branch's ended at once (2); the installed stop hook with LIMIT=5 said the next boot takes kernel.old with nothing armed (no nextboot.conf), the branch's said what it found. No fall-back actually armed on an appliance (nothing registered needs one). |
+| [os-watchdog 10](https://github.com/AbdelmonemAwad/os-watchdog/pull/10) | B15 |  | The XGS 136: the branch's 24-watchdog in place of 04-watchdog for one restart, the installed one put back after. The stop order as the console printed it: before, watchdog first of all; with it, after octep and kernelfollow. install.sh and uninstall.sh as they now are not run on an appliance (sh -n passes). |
 
 The two plugins' releases were checked as a release of this project is: [Hardware Watchdog 1.0.2 and Kernel Follower 1.0.3, checked before their release](plugin-releases-2026-11-06.md).
