@@ -276,13 +276,25 @@ def at_the_stop():
             'it while its fast path\'s heartbeat read %s, not dead - its reset may be under way, and keys '
             'sent now could reach its boot firmware' % (beat or 'nothing'))
     elif os.access(SYSRQ, os.R_OK):
+        # Said as it went: kept only when npu-sysrq.sh asked, and otherwise its own reason, the last line
+        # it wrote. Until 2026-11-06 the line said "kept" whatever it did: on the first XGS 3300 at 09:25
+        # it returned within the second, where a run that asks takes fifteen, the console's log held
+        # nothing from it, and why it had declined was thrown away (the review's F16).
         try:
-            subprocess.run(['/bin/sh', SYSRQ, 'lwp', '5'], stdin=subprocess.DEVNULL,
-                           capture_output=True, timeout=60)
+            done = subprocess.run(['/bin/sh', SYSRQ, 'lwp', '5'], stdin=subprocess.DEVNULL,
+                                  capture_output=True, timeout=60)
+        except (OSError, subprocess.SubprocessError) as e:
+            done, why = None, 'npu-sysrq.sh did not run to its end (%s)' % e.__class__.__name__
+        if done is not None and done.returncode == 0:
             say('the coprocessor\'s fast path stopped answering: its kernel was asked for its state over '
                 'its console (SysRq l, w, p), kept in /var/log/xgs/npu-console.log')
-        except (OSError, subprocess.SubprocessError):
-            pass
+        else:
+            if done is not None:
+                err = done.stderr.decode('utf-8', 'replace') if isinstance(done.stderr, bytes) else (done.stderr or '')
+                lines = [line.strip() for line in err.splitlines() if line.strip()]
+                why = lines[-1] if lines else 'npu-sysrq.sh exited %s' % done.returncode
+            say('the coprocessor\'s fast path stopped answering, and its kernel was not asked for its state '
+                'over its console: %s' % why)
     if os.access(FASTPATH, os.R_OK):
         subprocess.Popen([sys.executable, FASTPATH, 'check'], stdin=subprocess.DEVNULL,
                          stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
