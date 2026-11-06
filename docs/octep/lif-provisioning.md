@@ -53,9 +53,12 @@ The LIF table is addressed `(iface_id << 12) | vlan`, which the driver writes at
 (`contrib/octep/octep_rpc.c:425`), and which
 `docs/families/octeon-tx-rpc.md:540` confirms four independent ways.
 
-Interface units are handed out in `dp.if_add` order, at
-`if_initname(ifp, "oxp", sc->dp_nif)` - `contrib/octep/octep_dp.c:2949`. The bring-up script adds
-the two cages first and then the ten switch ports, so:
+Interface units were handed out in `dp.if_add` order, at `if_initname(ifp, "oxp", sc->dp_nif)`,
+until 2026-11-06. Since then the bring-up gives each port its unit, `dp.if_unit` before its
+`dp.if_add` - its place on the model's panel, which is the same order - at
+`if_initname(ifp, "oxp", (int)unit)` - `contrib/octep/octep_dp.c:12651` - so that a port whose
+interface is not made leaves its unit empty rather than renaming the ports after it (the review's
+O3). The bring-up script adds the two cages first and then the ten switch ports, so:
 
 | interface | front port | `iface_id` | LIF index |
 |---|---|---|---|
@@ -232,7 +235,7 @@ the receive-filter reconcile already makes in this driver
 
 Not from `bringup.sh`. A shell loop cannot read a reply and branch on it without parsing
 `rpc.last`, and the write gate is deliberately shut at the end of the script, at
-`sc ${S}.rpc.allow_write=0` (`src/opnsense/scripts/octep/bringup.sh:766`) - so a reconciler driven
+`sc ${S}.rpc.allow_write=0` (`src/opnsense/scripts/octep/bringup.sh:788`) - so a reconciler driven
 from outside would need that gate held open for the life of the machine, which defeats it.
 
 That argues for the driver, on its own taskqueue, for the same reason `npuep` put it on a thread:

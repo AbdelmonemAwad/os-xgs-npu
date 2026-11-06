@@ -129,10 +129,10 @@ def label(port, fam, saved, module, panel):
     """
     The name on the metal. On the OCTEON TX family the driver writes it in the interface's
     description, which OPNsense replaces once the port is assigned, so it is taken from what the
-    boot saved, then from the description, then from the model's panel in the order bringup.sh
-    creates the interfaces in - the rule assign.php uses too - and the expansion module's ports
-    after it, as ports.json lists them. On the ARMADA family the unit is the number: npupN is PortN
-    and the cages follow the highest port, npup13 and npup14 on the XGS 136.
+    boot saved, then from the description, then from the model's panel by the unit bringup.sh gives
+    each port - the rule assign.php uses too - and the expansion module's ports after it, each at the
+    place ports.json gives it. On the ARMADA family the unit is the number: npupN is PortN and the
+    cages follow the highest port, npup13 and npup14 on the XGS 136.
     """
     n = int(re.sub(r'\D', '', port['device']) or 0)
     if fam == 'armada':
@@ -145,7 +145,12 @@ def label(port, fam, saved, module, panel):
     order = [panel[u] for u in sorted(panel)] if panel else OCTEP_ORDER
     if n < len(order):
         return order[n]
+    # A module port by its place, which is its unit after the panel's. Since 2026-11-06 a port that does
+    # not come up leaves its unit empty (the review's O3) and is not in the list, so an index there is
+    # not a unit. A ports.json written before places were kept is read by its index, as it always was.
     extra = (module or {}).get('extra') or []
+    if any('place' in e for e in extra):
+        return next((e.get('name') for e in extra if e.get('place') == n - len(order)), None)
     if n - len(order) < len(extra):
         return extra[n - len(order)].get('name')
     return None

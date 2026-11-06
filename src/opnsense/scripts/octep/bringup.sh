@@ -620,7 +620,16 @@ sc ${S}.dp.msix=1
 # tag, the interface, the label and the socket, in the order the units are made. A model the table
 # does not have gets the XGS 3300's panel, as every box did before the table. PANEL was read before
 # the ports were bound, so that one left without its address could be named by it.
+#
+# And each interface is given its unit in dp.if_unit rather than taking the next: the table's for a
+# panel port, and for a port beyond the panel the unit after the panel's at its place (ports.py). So
+# a port whose interface is not made - its attach refused, or beyond the panel no address or no
+# logical interface - leaves its unit empty, and every other port keeps its name. OPNsense assigns
+# an interface by its name: until 2026-11-06 one port missing moved every port made after it down to
+# the unit of the one before it, and so to that port's firewall rules and addresses (the review's O3).
+# Where every port comes up, each unit is the one it always was.
 if [ -n "${PANEL}" ]; then
+	NPANEL=$(echo "${PANEL}" | grep -c .)
 	log "panel: $(echo "${PANEL}" | awk '{printf "%s%s", (NR > 1 ? " " : ""), $4}')"
 	echo "${PANEL}" | while read -r UNIT TAG IFACE LABEL SOCKET; do
 		TAG=$((TAG))
@@ -629,34 +638,47 @@ if [ -n "${PANEL}" ]; then
 		else
 			sc ${S}.dp.if_port=4294967295
 		fi
+		sc ${S}.dp.if_unit=${UNIT}
 		sc ${S}.dp.if_iface=${IFACE}
 		sc ${S}.dp.if_label=${LABEL}
 		sc ${S}.dp.if_add=${TAG}
 	done
 else
+	NPANEL=12
 	log "this model is not in models.py; the XGS 3300's panel"
+	sc ${S}.dp.if_unit=0
 	sc ${S}.dp.if_iface=10
 	sc ${S}.dp.if_add=1
+	sc ${S}.dp.if_unit=1
 	sc ${S}.dp.if_iface=11
 	sc ${S}.dp.if_add=2
 	for p in 1 2 3 4 5 6 7 8 9 10; do
 		TAG=$((32768 + p * 256))
 		sc ${S}.dp.if_port=${TAG}
+		sc ${S}.dp.if_unit=$((p + 1))
 		sc ${S}.dp.if_iface=$((p - 1))
 		sc ${S}.dp.if_add=${TAG}
 	done
 fi
 # The module's ports after the panel's twelve, so oxp0 to oxp11 keep the ports an assignment made
-# before the module was fitted names. Each by the name the coprocessor gave it.
+# before the module was fitted names. Each by the name the coprocessor gave it, at the unit of its
+# place. A place that is not a number would end this script in the arithmetic, and a port given no
+# unit would take the number of interfaces made before it, which can be another port's: so a port
+# without one is not presented.
 sc ${S}.dp.if_port=4294967295
 for entry in ${EXTRA}; do
 	set -- $(echo "${entry}" | tr ',' ' ')
+	case ${5:-} in
+	''|*[!0-9]*) log "$3: ports.py gave it no place, so no unit of its own; not presented"; continue ;;
+	esac
+	sc ${S}.dp.if_unit=$((NPANEL + $5))
 	sc ${S}.dp.if_iface=$2
 	sc ${S}.dp.if_label=$3
 	sc ${S}.dp.if_add=$1
 done
 sc ${S}.dp.if_port=4294967295
 sc ${S}.dp.if_iface=4294967295
+sc ${S}.dp.if_unit=4294967295
 
 # The name on the metal of each interface, as the driver just gave it, kept for the Ports page of
 # the settings: OPNsense replaces an assigned interface's description with its own name later in

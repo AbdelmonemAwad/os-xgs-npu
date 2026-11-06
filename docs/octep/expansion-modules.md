@@ -91,6 +91,16 @@ lists the same sixteen with `xgs-ports -b`: 1 to 8, F3, F4, F1, F2, A4, A3, A2, 
    lifport and `dp.if_label` to its name, so the driver describes it "XGS front port A1" the way it
    describes the panel's. **`oxp0` to `oxp11` keep the panel's ports**, so an assignment made before
    the module was fitted still names the same metal.
+5. Each interface is given its unit in `dp.if_unit` (since 2026-11-06): a panel port the one the
+   model's table has, a module port the one after the panel's at its place - its turn in tag order
+   among every port NetAgent reported beyond the panel's, bound or not. Where every port comes up
+   these are the units they always were. A module port that gives no address or has no logical
+   interface leaves its unit empty, and the ports after it keep theirs: until then the units were the
+   order the interfaces were made in, so one module port missing moved every one after it to the
+   name of the one before it - and, since OPNsense assigns an interface by its name, to that port's
+   rules and addresses (the review's O3). A port NetAgent does not report at all has no place to
+   keep; when the platform database names more ports in the bays than NetAgent reported, the
+   bring-up log says so.
 
 `OCTEP_DP_IF_MAX` is 32 (it was 13): the largest the vendor's board files put on one coprocessor is
 twenty front ports, plus a module's eight.
@@ -160,6 +170,11 @@ onto this driver and bring-up:
 - the panel's twelve unchanged - the WAN still on `oxp3`, its address and route as before;
 - `dp.if_label` empty after the adds; the fallback, run by hand without the database, gave the same
   lifports under the names `Ext3` to `Ext6`.
+
+**Not yet run on an appliance: the units given in `dp.if_unit`** (2026-11-06). The bring-up and
+`ports.py` are tested against made-up answers (`tools/test-bringup.py`) - every name as before where
+every port comes up, and one port missing leaving its unit empty; the driver's side has not been
+built or booted yet.
 
 ~~**Not yet measured: traffic through a module port.**~~ **Traffic through the module's ports,
 measured from the next day on.** On 2026-10-17 the 10G fibre from A1 to the first XGS 3300's F1

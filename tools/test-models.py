@@ -24,6 +24,11 @@ the bypass pair or a place on a panel, one the model has. Until 2026-11-06 the X
 pages put their F1 and F2, the switch's ports 9 and 10, on the XGS 3300's QLM5 and QLM6 behind its
 88X5113 as well.
 
+And an expansion module's ports by the place ports.py gives each (the review's O3): a module port that
+did not come up leaves its unit empty, and portmap.py names an interface and portstats.py reads a
+port's LMAC by its place - until 2026-11-06 portstats.py counted the list, and read every port after
+one missing from the LMAC of the one before it.
+
     python3 tools/test-models.py
 """
 
@@ -115,6 +120,21 @@ class Models(unittest.TestCase):
         src = read('src', 'opnsense', 'scripts', 'xgs', 'portmap.py')
         order = re.search(r'OCTEP_ORDER = (\[.*?\])', src).group(1)
         self.assertEqual(eval(order), [p['label'] for p in models.ports('AMDA0202-0004')])
+
+    def test_portmap_names_a_module_port_by_its_place(self):
+        mod = load('portmap_under_test', os.path.join(XGS, 'portmap.py'))
+        panel = {p['unit']: p['label'] for p in models.ports('AMDA0202-0004')}
+
+        def named(device, extra):
+            return mod.label({'device': device, 'description': ''}, 'octeontx', {}, {'extra': extra}, panel)
+
+        # A3 not bound: oxp13 is left empty, and oxp14 and oxp15 are A2 and A1
+        gap = [{'tag': 3, 'name': 'A4', 'place': 0}, {'tag': 5, 'name': 'A2', 'place': 2},
+               {'tag': 6, 'name': 'A1', 'place': 3}]
+        self.assertEqual([named('oxp%d' % u, gap) for u in range(11, 16)], ['F4', 'A4', None, 'A2', 'A1'])
+        # a ports.json from before places were kept, read by its index as it always was
+        old = [{'tag': 3 + n, 'name': 'A%d' % (4 - n)} for n in range(4)]
+        self.assertEqual([named('oxp%d' % u, old) for u in range(12, 17)], ['A4', 'A3', 'A2', 'A1', None])
 
     def test_board_sh_names_every_model(self):
         # board.sh: every model of the table, the family as its second word, and "rnd" - research and
@@ -212,6 +232,29 @@ class NamedByTheTable(unittest.TestCase):
             ports, _ = self.portstats(a)
             want = {p['label'] for p in models.ports(a) if p['attach'].startswith('switch port')}
             self.assertEqual({k for k, v in ports.items() if 'in_good_octets' in v}, want, '%s %s' % (a, model))
+
+    def module(self, extra):
+        with open(os.path.join(self.tmp, 'ports.json'), 'w') as f:
+            json.dump({'reported': 18, 'extra': extra, 'slots': {}}, f)
+
+    @staticmethod
+    def lmac(name, n):
+        return '%s:%d' % (name, 0x87E0E0000000 + (n // 4) * 0x1000000 + (n % 4) * 0x100000)
+
+    def test_portstats_module_lmacs_in_tag_order_as_before(self):
+        # A ports.json from before places were kept, and one with them: the same LMACs.
+        for places in (False, True):
+            self.module([dict({'tag': 3 + n, 'name': 'A%d' % (4 - n)}, **({'place': n} if places else {}))
+                         for n in range(4)])
+            _, command = self.portstats(XGS3300)
+            self.assertIn(' '.join(self.lmac('A%d' % (4 - n), n) for n in range(4)), command)
+
+    def test_portstats_a_module_port_missing_moves_no_lmac(self):
+        # A3, at place 1, not bound: A2 and A1 are still LMACs 2 and 3.
+        self.module([{'tag': 3, 'name': 'A4', 'place': 0}, {'tag': 5, 'name': 'A2', 'place': 2},
+                     {'tag': 6, 'name': 'A1', 'place': 3}])
+        _, command = self.portstats(XGS3300)
+        self.assertIn(' '.join([self.lmac('A4', 0), self.lmac('A2', 2), self.lmac('A1', 3)]), command)
 
     # coprocessor.py -------------------------------------------------------------------------------
 

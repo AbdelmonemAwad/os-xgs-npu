@@ -161,8 +161,12 @@ def bgx_ports(own):
         extra = []
     extra = sorted((e for e in extra if isinstance(e.get('tag'), int) and e.get('name')),
                    key=lambda e: e['tag'])
-    for i, e in enumerate(extra[:8]):
-        if all(ch.isalnum() for ch in e['name']):
+    for n, e in enumerate(extra):
+        # Its LMAC by its place among the module's ports, which ports.py keeps for every port it
+        # binds: a port before it that did not bind is not in the list, and counting the list read
+        # every port after it from the LMAC of the one before it, until 2026-11-06 (the review's O3).
+        i = e['place'] if isinstance(e.get('place'), int) else n
+        if 0 <= i < 8 and all(ch.isalnum() for ch in e['name']):
             ports.append((e['name'], i // 4, i % 4))
     return ports
 
