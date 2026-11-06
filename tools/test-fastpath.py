@@ -13,7 +13,17 @@ the restarts already made, and is asked here for each case that matters. Nothing
 
 import importlib.util
 import os
+import signal
+import subprocess
+import sys
+import threading
+import time
 import unittest
+
+try:
+    import fcntl
+except ImportError:		# not on a POSIX host: the recovery's own processes are not run there
+    fcntl = None
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 SCRIPT = os.path.join(HERE, '..', 'src', 'opnsense', 'scripts', 'xgs', 'fastpath.py')
@@ -208,6 +218,210 @@ class RestartUnderWay(unittest.TestCase):
         self.boot = 2000
         fastpath.check()
         self.assertEqual(len(self.started), 2)
+
+
+class ReportAroundTheRecovery(unittest.TestCase):
+    """#1072, F6 (2026-11-06): with reporting automatic, the stop's report was collected
+    and sent before the recovery, through the fast path that had stopped - each send failing after its
+    relay's 20 s, up to 120 s more of the outage. It is found and queued first now, nothing sent - the
+    driver's reload takes the heartbeat's counters it is read from - and sent behind a recovery that
+    brought the fast path back; before a restart it is found and queued alone, for the next boot to send.
+    Nothing is recovered or restarted here."""
+
+    NAMES = ('check_lock', 'recovering', 'heartbeat', 'setting', 'load_state', 'save_state', 'boot_time',
+             'log', 'run_recover', 'subprocess')
+
+    def setUp(self):
+        import tempfile
+        self.real = {name: getattr(fastpath, name) for name in self.NAMES}
+        self.lock = tempfile.NamedTemporaryFile(delete=False)
+        self.state, self.events, self.ok = {}, [], True
+        test = self
+
+        class Sub:
+            """subprocess as check() starts the reporter and the reboot: what ran, waited for or started in
+            the background, and whether it may send (XGS_REPORT_NO_SEND not set)."""
+            DEVNULL = subprocess.DEVNULL
+            SubprocessError = subprocess.SubprocessError
+
+            @staticmethod
+            def run(args, **kw):
+                sends = 'XGS_REPORT_NO_SEND' not in (kw.get('env') or os.environ)
+                test.events.append(('waited for', os.path.basename(args[0]), sends, kw.get('timeout')))
+                return subprocess.CompletedProcess(args, 0, b'', b'')
+
+            @staticmethod
+            def Popen(args, **kw):
+                sends = 'XGS_REPORT_NO_SEND' not in (kw.get('env') or os.environ)
+                test.events.append(('started', os.path.basename(args[0]), sends))
+
+        def recover(seconds=None):
+            test.events.append('recovery')
+            return ['the fast path answers again'], test.ok
+
+        def save(kept):
+            self.state.clear()
+            self.state.update(kept)
+        fastpath.check_lock = lambda: os.open(self.lock.name, os.O_RDWR)
+        fastpath.recovering = lambda: False
+        fastpath.heartbeat = lambda: dict(hb('dead', 40), gone=True, deaths=1)
+        fastpath.setting = lambda: 1
+        fastpath.load_state = lambda: dict(self.state)
+        fastpath.save_state = save
+        fastpath.boot_time = lambda: 1000
+        fastpath.log = lambda *args: None
+        fastpath.run_recover = recover
+        fastpath.subprocess = Sub
+
+    def tearDown(self):
+        for name, value in self.real.items():
+            setattr(fastpath, name, value)
+        self.lock.close()
+        os.unlink(self.lock.name)
+
+    def kinds(self):
+        """What ran, without the time each run was given."""
+        return [event[:3] if isinstance(event, tuple) else event for event in self.events]
+
+    def test_found_before_the_recovery_and_sent_behind_it(self):
+        fastpath.check()
+        self.assertEqual(self.kinds(), [('waited for', 'reporter.py', False), 'recovery',
+                                        ('started', 'reporter.py', True)])
+        # the finding alone is waited for, and not as long as a send through the stopped fast path took
+        self.assertEqual(self.events[0][3], fastpath.FIND_SECONDS)
+        self.assertLess(fastpath.FIND_SECONDS, 120)
+
+    def test_a_recovery_that_failed_restarts_with_the_report_found_and_not_sent(self):
+        """Nothing passes the fast path that did not come back, and the restart does not wait for sends
+        that can only fail: the report queued goes from the next boot (reporter.py boot, its cron)."""
+        self.ok = False
+        fastpath.check()
+        self.assertEqual(self.kinds(), [('waited for', 'reporter.py', False), 'recovery',
+                                        ('waited for', 'reporter.py', False), ('started', 'rc.reboot', True)])
+
+
+# lockf(1) as FreeBSD's runs a command (usr.bin/lockf): the lock taken, the command run as a child that
+# does not hold it, waited for with stdin, stdout and stderr closed; the lock gone when this one ends.
+LOCKF = r'''
+import fcntl, os, signal, sys
+args = sys.argv[1:]
+while args[0].startswith('-'):
+    if args.pop(0) == '-t':
+        args.pop(0)
+fd = os.open(args[0], os.O_RDWR | os.O_CREAT, 0o600)
+try:
+    fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+except OSError:
+    os._exit(75)
+child = os.fork()
+if child == 0:
+    os.close(fd)
+    os.execv(args[1], args[1:])
+signal.signal(signal.SIGINT, signal.SIG_IGN)
+signal.signal(signal.SIGQUIT, signal.SIG_IGN)
+for n in (0, 1, 2):
+    os.close(n)
+_, status = os.waitpid(child, 0)
+os._exit(os.WEXITSTATUS(status) if os.WIFEXITED(status) else 70)
+'''
+
+
+def running(pid):
+    """Whether pid is a process that runs: there, and no zombie."""
+    try:
+        with open('/proc/%d/stat' % pid) as f:
+            return f.read().rsplit(')', 1)[1].split()[0] != 'Z'
+    except (OSError, IndexError):
+        return False
+
+
+@unittest.skipUnless(fcntl is not None and os.path.isdir('/proc/self'), 'reads /proc: Linux, as CI runs it')
+class RecoveryEndedWhole(unittest.TestCase):
+    """recover.sh past its cap (#1072, F7, 2026-11-06): subprocess.run's timeout killed
+    lockf alone - recover.sh had become it - its lock went with it, and recover.sh carried on under no
+    lock while the check went on. A stand-in for recover.sh runs itself again under a stand-in for
+    FreeBSD's lockf(1), as recover.sh does, and waits in a long step; its lock is watched throughout."""
+
+    def setUp(self):
+        import tempfile
+        self.tmp = tempfile.TemporaryDirectory()
+        here = self.tmp.name
+        self.lock = os.path.join(here, 'xgs-recover.lock')
+        self.pidfiles = [os.path.join(here, 'shell.pid'), os.path.join(here, 'step.pid')]
+        lockf = os.path.join(here, 'lockf.py')
+        with open(lockf, 'w') as f:
+            f.write(LOCKF)
+        script = os.path.join(here, 'recover.sh')
+        with open(script, 'w') as f:
+            f.write('#!/bin/sh\n'
+                    'if [ -z "${XGS_RECOVER_LOCKED:-}" ]; then\n'
+                    '\tXGS_RECOVER_LOCKED=1 exec "%s" "%s" -k -t 0 "%s" /bin/sh "$0" "$@"\n'
+                    'fi\n'
+                    'echo $$ > "%s"\n'
+                    'echo "21:54:00 taking the coprocessor up again in place"\n'
+                    'sleep 60 &\n'
+                    'echo $! > "%s"\n'
+                    'wait\n' % (sys.executable, lockf, self.lock, self.pidfiles[0], self.pidfiles[1]))
+        os.chmod(script, 0o755)
+        self.real = fastpath.RECOVER
+        fastpath.RECOVER = script
+
+    def tearDown(self):
+        fastpath.RECOVER = self.real
+        for pid in self.pids():		# whatever the cap left running
+            try:
+                os.kill(pid, signal.SIGKILL)
+            except OSError:
+                pass
+        self.tmp.cleanup()
+
+    def pids(self):
+        """recover.sh's shell and its step, once each has said its pid."""
+        found = []
+        for name in self.pidfiles:
+            try:
+                with open(name) as f:
+                    found.append(int(f.read().strip()))
+            except (OSError, ValueError):
+                pass
+        return found
+
+    def lock_free(self):
+        fd = os.open(self.lock, os.O_RDWR | os.O_CREAT, 0o600)
+        try:
+            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except OSError:
+            return False
+        finally:
+            os.close(fd)
+        return True
+
+    def test_the_whole_recovery_ends_at_its_cap_and_its_lock_last(self):
+        free_while_running, done = [], threading.Event()
+
+        def watch():
+            # the lock read first: a process found running after it was free was running while it was
+            while not done.is_set():
+                pids = self.pids()
+                if len(pids) == 2 and self.lock_free():
+                    free_while_running.extend(pid for pid in pids if running(pid))
+                time.sleep(0.002)
+
+        watcher = threading.Thread(target=watch)
+        watcher.start()
+        try:
+            lines, ok = fastpath.run_recover(2)
+            time.sleep(0.5)		# what the cap left running would still be running now
+        finally:
+            done.set()
+            watcher.join()
+        self.assertFalse(ok)
+        self.assertEqual(lines[0], '21:54:00 taking the coprocessor up again in place')
+        self.assertIn('did not finish', lines[-1])
+        self.assertEqual(len(self.pids()), 2)
+        self.assertEqual([pid for pid in self.pids() if running(pid)], [])
+        self.assertTrue(self.lock_free())
+        self.assertEqual(free_while_running, [])
 
 
 if __name__ == '__main__':
