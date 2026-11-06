@@ -105,6 +105,20 @@ with tempfile.TemporaryDirectory() as d:
     commit(d, 'A start', 'src/demo.py', 'x = 1\n')
     check('never tagged: left to a person', prp.plan(d)[0], None)
 
+# A release's own title is the version and nothing else. Until 2026-11-06 any title that began with
+# "Release " was taken for one, and a change so named was left out of the next release.
+with tempfile.TemporaryDirectory() as d:
+    git(d, 'init', '-q', '-b', 'main')
+    write(d, 'Makefile', MAKEFILE)
+    write(d, 'pkg-descr', DESCR)
+    commit(d, 'A start', 'src/demo.py', 'x = 1\n')
+    git(d, 'tag', '-a', 'v1.0.6', '-m', 'v1.0.6')
+    commit(d, 'Release the keys before the panel sleeps (#54)', 'src/opnsense/scripts/demo/sleep.py', 's = 1\n')
+    commit(d, 'Release 1.0.6 (#55)', 'pkg/post-install.sh', 'true\n')
+    commit(d, 'Release 1.0.6', 'pkg/pre-install.sh', 'true\n')
+    check("a change whose title begins with Release is a change; a release's own title, numbered or not, is not",
+          prp.plan(d), ('1.0.7', ['Release the keys before the panel sleeps (#54)']))
+
 check('the last part goes up by one', prp.bump('1.2.9'), '1.2.10')
 
 # main() itself. Its origin is a bare repository beside the plugin's checkout, and GIT_ALLOW_PROTOCOL

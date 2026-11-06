@@ -90,9 +90,12 @@ def as_event(number, call):
 
 
 def thanked_before(login, call):
-    query = 'repo:%s author:%s label:%s' % (REPO, login, LABEL)
-    found = call('GET', '/search/issues?' + urllib.parse.urlencode({'q': query, 'per_page': 1}))
-    return (found or {}).get('total_count', 0) > 0
+    """Whether an issue or pull request of login's here carries the label, open or closed. Asked of the
+    issues themselves: until 2026-11-06 it was asked of the search, whose index takes a while to see a
+    label just put on, so one person's second contribution, right after the first, could find nobody
+    thanked and be thanked again."""
+    query = urllib.parse.urlencode({'creator': login, 'labels': LABEL, 'state': 'all', 'per_page': 1})
+    return bool(call('GET', '/repos/%s/issues?%s' % (REPO, query)))
 
 
 def run(event_name, event, call, dry_run=False, say=print):

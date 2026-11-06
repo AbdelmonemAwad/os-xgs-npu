@@ -5,7 +5,8 @@
 `answered` once the developer has written, one note after thirty minutes with no answer - however long
 ago they passed - and a report an owner wrote by hand counted as that person's message; no note when
 the developer writes first, twice in one wait or in one day, on a report the problem reporter found or
-an issue left out; the sweep's fifteen minutes; and every bot here ending its messages the same way.
+an issue left out; the sweep's fifteen minutes; no wait held while five began before it are under way;
+and every bot here ending its messages the same way.
 
     python3 tools/test-answered.py"""
 import contextlib
@@ -14,6 +15,7 @@ import importlib.util
 import io
 import json
 import os
+import re
 import sys
 import tempfile
 import urllib.error
@@ -38,6 +40,10 @@ def check(name, got, want):
     failures += 0 if ok else 1
     print('%s %s%s' % ('ok  ' if ok else 'FAIL', name, '' if ok else ' - got %r, want %r' % (got, want)))
 
+
+# The run these looks are, as GitHub Actions numbers it; the runs of answered.yml under way are each
+# stand-in's own, none unless a case says.
+os.environ['GITHUB_RUN_NUMBER'] = '100'
 
 T0 = datetime.datetime(2026, 11, 20, 12, 0, tzinfo=datetime.timezone.utc)
 DEV = {'login': answered.OWNER, 'type': 'User'}
@@ -74,9 +80,12 @@ class GitHub:
         self.clock = clock
         self.issues = {i['number']: (i, c) for i, c in issues}
         self.written = []
+        self.runs = []
 
     def __call__(self, method, path, body=None):
         rest = path.split('/repos/%s/' % answered.REPO, 1)[1]
+        if method == 'GET' and rest == 'actions/workflows/answered.yml/runs?status=in_progress&per_page=100':
+            return {'total_count': len(self.runs), 'workflow_runs': self.runs}
         if method == 'GET' and rest.startswith('issues?'):
             page = int(rest.rsplit('page=', 1)[1])
             return [i for i, _ in self.issues.values()][(page - 1) * 100:page * 100]
@@ -320,6 +329,44 @@ check('and its note greets who is still waiting', gh.notes()[0][2]['body'].start
 with open(os.path.join(os.path.dirname(here), '.github', 'workflows', 'answered.yml'), encoding='utf-8') as f:
     flow = f.read()
 check('a run by hand has a concurrency group of its own', "format('by-hand-{0}', github.run_id)" in flow, True)
+
+
+# A wait holds a runner for its thirty minutes, and the account's runners are shared with every other
+# workflow. Until 2026-11-06 every wait waited. Five runs of answered.yml under way that began before this
+# one (run 100): it does not wait - the label is on at once - and the sweep writes the note.
+def runs(*numbers):
+    return [{'id': 9000 + n, 'run_number': n, 'status': 'in_progress'} for n in numbers]
+
+
+gh = GitHub(Clock(mins(1)), issue(30, user('randgh'), mins(0)))
+gh.runs = runs(95, 96, 97, 98, 99, 100, 101)
+slept, said = look(gh, 30)
+check('five waits under way before it: no wait, label on at once',
+      (slept, gh.notes(), gh.labels(30)), ([], [], ['unanswered']))
+check('... and it says the sweep writes the note', any('the sweep writes it' in s for s in said), True)
+gh.clock.t = mins(50)
+sweep(gh)
+check('... which the sweep does', len(gh.notes()), 1)
+
+# Four before it - itself and a later run do not count: it waits as before.
+gh = GitHub(Clock(mins(1)), issue(31, user('randgh'), mins(0)))
+gh.runs = runs(96, 97, 98, 99, 100, 101)
+slept, _ = look(gh, 31)
+check('four waits under way before it: it waits as before', (slept, len(gh.notes())), ([WAIT_LEFT], 1))
+
+
+# The runs cannot be read - the token may not, GitHub does not answer: it waits, as every run did.
+class NoRuns(GitHub):
+    def __call__(self, method, path, body=None):
+        if '/actions/' in path:
+            raise urllib.error.HTTPError(path, 403, 'Resource not accessible by integration', {}, None)
+        return GitHub.__call__(self, method, path, body)
+
+
+gh = NoRuns(Clock(mins(1)), issue(32, user('randgh'), mins(0)))
+slept, _ = look(gh, 32)
+check('runs that cannot be read: it waits as before', (slept, len(gh.notes())), ([WAIT_LEFT], 1))
+check('workflow may read its own runs', re.search(r'^      actions: read$', flow, re.M) is not None, True)
 
 # The workflow's event as main() reads it: the developer's comment makes the issue answered.
 gh = GitHub(Clock(mins(40)), issue(28, user('randgh'), mins(0), [comment(DEV, mins(39))], ['unanswered']))

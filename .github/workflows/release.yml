@@ -20,14 +20,26 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
-  issues: write
-  pull-requests: read
+  contents: read
+
+# One run at a time: a push and a run by hand side by side could both find the version untagged. A run
+# that waits is replaced by a newer one, which reads the same changelog and tags the same commit (below).
+concurrency:
+  group: release
+  cancel-in-progress: false
 
 jobs:
   release:
     name: tag and publish a new version
+    # From main alone. A run by hand on another branch would have published that branch's changelog,
+    # tagged at its head (until 2026-11-06).
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      issues: write
+      pull-requests: read
+      actions: write      # to start website.yml once the release is out
     steps:
       - uses: actions/checkout@v7
         with:
@@ -49,6 +61,10 @@ jobs:
             echo "version=${v}" >> "$GITHUB_OUTPUT"
           fi
 
+      # The tag goes on the commit that added the version's section: the merge of the release's pull
+      # request, which is this run's own commit when that merge started it. Until 2026-11-06 it went on
+      # the commit the run started from, so a run by hand after other merges would have tagged those too,
+      # though no section names them and none of their issues is told. No such commit: nothing tagged.
       - name: Tag the merge commit and publish
         if: steps.version.outputs.version != ''
         env:
@@ -56,10 +72,25 @@ jobs:
           VERSION: ${{ steps.version.outputs.version }}
         run: |
           set -eu
+          target=$(python3 tools/changelog.py --commit "${VERSION}")
           python3 tools/changelog.py --notes "${VERSION}" > notes.md
-          gh release create "v${VERSION}" --target "${GITHUB_SHA}" --title "${VERSION}" \
+          gh release create "v${VERSION}" --target "${target}" --title "${VERSION}" \
             --notes-file notes.md --latest
-          echo "published v${VERSION} at ${GITHUB_SHA}"
+          echo "published v${VERSION} at ${target}"
+
+      # The site's home page gives the newest release, read from the tags (website/build.py). Its build
+      # of this same push starts beside this run and reads the tags first: for 0.1.0-alpha.14 it read
+      # them five seconds before the release was made, and the home page said 0.1.0-alpha.13 until a
+      # later push built the site again, an hour and 43 minutes after (until 2026-11-06). A release made
+      # with this run's own token starts no workflow, but a workflow_dispatch made with it does:
+      # website.yml on main, which waits for the build under way and then reads the new tag. A failure
+      # here never undoes the release.
+      - name: Rebuild site for new release
+        if: steps.version.outputs.version != ''
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run website.yml --ref main
 
       # Each issue a pull request in this release says it fixes - a line "Fix for #N", or GitHub's own
       # "Fixes #N" - is told, once, that the fix is out (tools/release-notice.py). It runs here because

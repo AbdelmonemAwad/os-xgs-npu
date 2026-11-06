@@ -24,6 +24,13 @@ developer's comment ends the wait, anybody else's waits on from the same start. 
 writes the note a wait missed, however long ago it fell due, but no sooner than fifteen minutes after,
 so the two never write together. A note deleted by hand is not remembered and is written again while
 the wait lasts; `no auto reply` is the way to silence an issue.
+
+A wait holds a runner for its thirty minutes, and the account's runners are shared by every workflow
+here and in the plugins' repositories. So while five runs of answered.yml that began before this one
+are under way, it does not wait: its label is put right at once, and the sweep writes the note. Until
+2026-11-06 every wait waited, so one person writing on twenty issues within half an hour would have held
+twenty runners, with the checks and a release queued behind them. When the runs cannot be read it
+waits, as before.
 """
 
 import argparse
@@ -47,6 +54,7 @@ AUTOMATED = '<sub>This is an automated message.</sub>'
 WAIT = datetime.timedelta(minutes=30)
 DAY = datetime.timedelta(days=1)
 GRACE = datetime.timedelta(minutes=15)
+WAITS = 5
 
 
 def api(method, path, body=None):
@@ -173,6 +181,19 @@ def label(number, have, want, call, dry_run=False, say=print):
     say('#%d: labelled %s' % (number, want) if want else '#%d: labels taken off' % number)
 
 
+def under_way(call):
+    """How many runs of answered.yml that began before this one are under way - a wait holds a runner
+    the whole time - or 0 when that cannot be read."""
+    try:
+        found = call('GET', '/repos/%s/actions/workflows/answered.yml/runs?status=in_progress&per_page=100'
+                     % REPO) or {}
+        mine = int(os.environ.get('GITHUB_RUN_NUMBER') or 0)
+        return sum(1 for r in found.get('workflow_runs') or []
+                   if r.get('status') == 'in_progress' and (not mine or int(r.get('run_number') or 0) < mine))
+    except (OSError, ValueError, AttributeError, TypeError):
+        return 0
+
+
 def look(number, call, clock=now, sleep=time.sleep, dry_run=False, say=print, wait=True, grace=None):
     """Issue N as it stands: its label put right, and its note written when due - waited for when
     `wait`, and when `grace` is given (the sweep's), only once that long past due."""
@@ -200,6 +221,11 @@ def look(number, call, clock=now, sleep=time.sleep, dry_run=False, say=print, wa
     if t < at + (grace or datetime.timedelta(0)):
         if not wait or dry_run:
             say('#%d: its note falls due at %s' % (number, at.strftime('%Y-%m-%d %H:%M UTC')))
+            return
+        busy = under_way(call)
+        if busy >= WAITS:
+            say('#%d: its note falls due at %s; %d runs before this one are under way, so the sweep writes it'
+                % (number, at.strftime('%Y-%m-%d %H:%M UTC'), busy))
             return
         # Then looks again, and waits again if the note fell due later meanwhile (the comment that
         # began the wait was deleted, say).

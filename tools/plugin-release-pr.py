@@ -33,6 +33,10 @@ INSTALLED = re.compile(r'^(src/|pkg/|install/|Makefile$)')
 VERSION = re.compile(r'^(PLUGIN_VERSION=\s*)(\d+\.\d+\.\d+)\s*$', re.M)
 HEADER = 'Plugin Changelog\n================\n\n'
 OWN = re.compile(r'Release \d+\.\d+\.\d+')
+# A release's own commit on main: its title is the version, with its pull request's number once squashed.
+# Until 2026-11-06 any title that began with "Release " was taken for one, so a change named "Release the
+# keys ..." was left out of the next release's draft.
+RELEASED = re.compile(r'Release \d+\.\d+\.\d+(?: \(#\d+\))?\s*')
 
 
 def git(*args, cwd='.'):
@@ -78,7 +82,7 @@ def plan(cwd='.'):
     if 'v' + v != tag:
         return None, 'the Makefile says %s and the newest tag is %s: a release is under way' % (v, tag)
     due = [s for s, files in changes(tag, cwd)
-           if not s.startswith('Release ') and any(INSTALLED.match(f) for f in files)]
+           if not RELEASED.fullmatch(s) and any(INSTALLED.match(f) for f in files)]
     if not due:
         return None, 'nothing an appliance installs has changed since %s' % tag
     return bump(v), due

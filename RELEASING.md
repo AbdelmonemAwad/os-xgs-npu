@@ -47,7 +47,9 @@ done, and the number stays alpha until the owner says otherwise.
 1. Make sure every change since the last release is merged and its checks passed.
 2. On a branch: `python3 tools/changelog.py --release 0.1.0-alpha.1.1` - this moves what the commits
    since the last tag say into a section of its own, dated today, under the right headings. Read it,
-   and correct a line that says less than the change did.
+   and correct a line that says less than the change did. Below what it wrote, it names each line a
+   later change of the same release may have made untrue - one that says it fixes the same issue, or
+   names it - so that line is read against that change.
 3. Open a pull request titled `Release 0.1.0-alpha.1.1` with `CHANGELOG.md` and nothing else.
 4. Merge it once its checks pass. On that push the release workflow (`.github/workflows/release.yml`)
    finds a version in `CHANGELOG.md` that has no tag yet, tags the merge commit `v0.1.0-alpha.1.1` and
