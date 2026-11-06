@@ -19,10 +19,10 @@ to a new image, and the checks fail on one without them.
 |---|---|---|
 | [screens/](screens/) | The web interface, page by page, in English and in Arabic | 81 |
 | [hardware/](hardware/) | Photographs and drawings of the appliances, one folder each | 41 |
-| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 689 |
+| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 698 |
 | [readme/](readme/) | The README's banner and status board, drawn by tools/readme-art.py | 6 |
 
-856 images in all.
+865 images in all.
 
 ## The web interface
 
@@ -1342,6 +1342,22 @@ The page: [vlan-2026-10-24.md](../measurements/vlan-2026-10-24.md).
 | [04-3300-after-vlan-flows-off.png](measurements/vlan-2026-10-24/04-3300-after-vlan-flows-off.png) | After, dp.vlan_flows 0: the VLAN's entry switched off, the host routes the connection, the VLAN still carrying it | [vlan-2026-10-24.md](../measurements/vlan-2026-10-24.md) |
 | [05-136-after.png](measurements/vlan-2026-10-24/05-136-after.png) | After: both of iperf3's connections in hardware, the data tagged VLAN 60 with the TTL lowered, no reply reaching the host, the processors 0.9 % busy | [vlan-2026-10-24.md](../measurements/vlan-2026-10-24.md) |
 | [06-136-after-vlan-flows-off.png](measurements/vlan-2026-10-24/06-136-after-vlan-flows-off.png) | After, flow.vlan_flows 0: the VLAN's entry shut, the host routes the connection as before | [vlan-2026-10-24.md](../measurements/vlan-2026-10-24.md) |
+
+### measurements/vlan-mtu-2026-11-06/ (9)
+
+The page: [vlan-mtu-2026-11-06.md](../measurements/vlan-mtu-2026-11-06.md).
+
+| image | what it shows | used on |
+|---|---|---|
+| [01-tagged-frames-cross.png](measurements/vlan-mtu-2026-11-06/01-tagged-frames-cross.png) | Tagged frames of 1,518 and 9,014 bytes cross between the XGS 136 and the XGS 3300 both ways | [vlan-mtu-2026-11-06.md](../measurements/vlan-mtu-2026-11-06.md) |
+| [02-vlan-lif-1496.png](measurements/vlan-mtu-2026-11-06/02-vlan-lif-1496.png) | With the VLAN's LIF at 1,496, a tagged 1,518 is refused and a 1,514 passes | [vlan-mtu-2026-11-06.md](../measurements/vlan-mtu-2026-11-06.md) |
+| [03-vlan-lif-switched-off.png](measurements/vlan-mtu-2026-11-06/03-vlan-lif-switched-off.png) | The same with VLAN LIFs switched off: the entry, kept at 1,496, still refuses | [vlan-mtu-2026-11-06.md](../measurements/vlan-mtu-2026-11-06.md) |
+| [06-no-vlan-lif.png](measurements/vlan-mtu-2026-11-06/06-no-vlan-lif.png) | A VLAN id never seen, no VLAN LIF: the port's LIF of 1,500 lets the tagged 1,518 through | [vlan-mtu-2026-11-06.md](../measurements/vlan-mtu-2026-11-06.md) |
+| [07-fix-136.png](measurements/vlan-mtu-2026-11-06/07-fix-136.png) | XGS 136 with the fix: a vlan over a port of 1,500 takes 1,500 and its full-size frames cross | [vlan-mtu-2026-11-06.md](../measurements/vlan-mtu-2026-11-06.md) |
+| [08-fix-first-3300.png](measurements/vlan-mtu-2026-11-06/08-fix-first-3300.png) | First XGS 3300 with the fix: the same, and its VLAN LIF at 1,500 | [vlan-mtu-2026-11-06.md](../measurements/vlan-mtu-2026-11-06.md) |
+| [09-fix-no-vlan-lif.png](measurements/vlan-mtu-2026-11-06/09-fix-no-vlan-lif.png) | First XGS 3300 with the fix: a VLAN id never seen passes 1,514 and 1,518 at a port of 1,500 | [vlan-mtu-2026-11-06.md](../measurements/vlan-mtu-2026-11-06.md) |
+| [10-fix-both-3300s.png](measurements/vlan-mtu-2026-11-06/10-fix-both-3300s.png) | Both XGS 3300s with the fix, ports at 1,500 | [vlan-mtu-2026-11-06.md](../measurements/vlan-mtu-2026-11-06.md) |
+| [11-fix-top-and-bridge.png](measurements/vlan-mtu-2026-11-06/11-fix-top-and-bridge.png) | A vlan over a bridge member takes 1,500 with the fix; raising the member itself is refused on both families | [vlan-mtu-2026-11-06.md](../measurements/vlan-mtu-2026-11-06.md) |
 
 ### measurements/xgs136-after-boot-2026-10-19/ (8)
 

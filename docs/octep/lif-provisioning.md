@@ -283,6 +283,15 @@ produces such a frame. It is written down because the day something does - a jum
 a VLAN-tagged 1504-byte frame - the symptom is a port that works for small frames and not large
 ones, and that is a long way from the LIF table unless somebody wrote this sentence first.
 
+**Measured since.** The gate holds on this family for a frame longer than its LIF's MTU
+([the MTU is the LIF's](../findings/the-mtu-is-the-lifs.md), 2026-10-12). For a tagged frame it is
+the VLAN's own LIF that decides, the tag left out: a VLAN LIF at 1,496 let a tagged 1,514-byte frame
+through and refused a tagged 1,518, while with no VLAN LIF for the tag a port's LIF of 1,500 let the
+tagged 1,518 through (issue 1052, 2026-11-06,
+[the measurements](../measurements/vlan-mtu-2026-11-06.md)). A VLAN LIF takes its vlan's MTU
+(section F), and a vlan took its port's MTU less four until both drivers gave every port VLAN_MTU.
+An entry switched off when its vlan went keeps its MTU and goes on deciding for that tag.
+
 ## F. A VLAN subinterface's own entry (discovery 10, 2026-10-24)
 
 The index's low twelve bits are the VLAN. Until 2026-10-24 the driver made only each port's VLAN 0,

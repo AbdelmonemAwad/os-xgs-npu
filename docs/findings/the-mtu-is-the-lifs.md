@@ -98,6 +98,15 @@ and a decrypted connection crosses it. That is the peer's setting, not this path
   host-path ones; whether an accelerated flow forwards a 9,000-byte frame port to port was not
   measured.
 
+## A VLAN's frames meet the VLAN's LIF (issue 1052, 2026-11-06)
+
+A vlan(4) over a front port came out four bytes short - 1,496 at a port of 1,500 - on both families,
+because neither driver offered VLAN_MTU. On this family the shortfall reached the coprocessor too: a
+VLAN's own LIF is made with the vlan's MTU, and a tagged frame is held to that LIF, the tag left out -
+at 1,496 a tagged 1,514-byte frame passed and a tagged 1,518 did not. With no VLAN LIF for its tag, a
+port's LIF of 1,500 let the tagged 1,518 through. So VLAN_MTU on the port is the whole fix: the vlan
+takes 1,500, and its LIF with it. [The measurements](../measurements/vlan-mtu-2026-11-06.md).
+
 ## Lessons
 
 - **The number was right and the reason was wrong.** 1,506 was the arithmetic of one buffer; the
@@ -106,6 +115,10 @@ and a decrypted connection crosses it. That is the peer's setting, not this path
   transmit slot were computed in two places with one constant; changing the constant in one of
   them took the appliance off its WAN. One macro for the stride, used in both, is the fix and the
   rule.
+- **An entry switched off is still an entry.** A VLAN LIF switched off when its vlan went kept its
+  MTU of 1,496 in the coprocessor's table and went on refusing that tag's full-size frames; the first
+  reading of issue 1052 blamed the port's LIF for it, and only a VLAN id the coprocessor had never
+  seen told the two apart.
 
 ## Where it sits
 

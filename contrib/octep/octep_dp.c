@@ -12497,6 +12497,20 @@ octep_dp_if_ioctl(if_t ifp, u_long cmd, caddr_t data)
 		if_setmtu(ifp, ifr->ifr_mtu);
 		break;
 	}
+	case SIOCSIFCAP: {
+		int mask = ifr->ifr_reqcap ^ if_getcapenable(ifp);
+
+		/*
+		 * VLAN_MTU is the one capability here that can be turned off (`ifconfig oxpN
+		 * -vlanmtu`): a vlan(4) configured over the port after that is four bytes short of it
+		 * again, as before issue 1052. One configured before keeps what it was given.
+		 */
+		if ((mask & IFCAP_VLAN_MTU) != 0) {
+			if_togglecapenable(ifp, IFCAP_VLAN_MTU);
+			VLAN_CAPABILITIES(ifp);
+		}
+		break;
+	}
 	case SIOCADDMULTI:
 	case SIOCDELMULTI: {
 		struct octep_dp_if *dif = if_getsoftc(ifp);
@@ -12610,8 +12624,17 @@ octep_dp_if_attach(struct octep_softc *sc, uint16_t tag)
 	 * so OPNsense never saw it go down or come up again and never applied it on a link-up -
 	 * the half of issue 911 where replugging a LAN port changed nothing.
 	 */
-	if_setcapabilities(ifp, IFCAP_LINKSTATE);
-	if_setcapenable(ifp, IFCAP_LINKSTATE);
+	/*
+	 * VLAN_MTU: a vlan(4) over the port carries the port's whole MTU, the tag on top - IEEE
+	 * 802.1Q's 1,518-byte frame at 1,500 - where without it the stack keeps every vlan four bytes
+	 * short (1,496, issue 1052). The tag stays software's. A transmit slot already holds a
+	 * 9,000-byte frame with its tag (OCTEP_DP_TXBUF_SIZE), and the fast path takes the longer frame:
+	 * with no VLAN LIF for its tag, a port's LIF of 1,500 let a tagged 1,518 through; a VLAN's own
+	 * LIF is made with the vlan's MTU (octep_dp_vlan_lifs), and at 1,496 it refused the full 1,500
+	 * that VLAN_MTU now gives the vlan (measured 2026-11-06).
+	 */
+	if_setcapabilities(ifp, IFCAP_LINKSTATE | IFCAP_VLAN_MTU);
+	if_setcapenable(ifp, IFCAP_LINKSTATE | IFCAP_VLAN_MTU);
 	octep_ipsec_if_attach(sc, ifp);
 	dif->ifp = ifp;
 	sc->dp_nif++;
