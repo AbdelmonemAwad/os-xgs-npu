@@ -8,9 +8,16 @@
 An alert for nothing teaches its reader to ignore the next one, and one missed is a scan nobody saw;
 both are decided here, from `pfctl -ss -vv` text and windows of numbers, without pf.
 """
+import fcntl
 import importlib.util
+import io
+import json
 import os
+import shutil
 import sys
+import tempfile
+import weakref
+from contextlib import redirect_stdout
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 spec = importlib.util.spec_from_file_location(
@@ -99,6 +106,66 @@ check('not before the host has history enough', alerts, [])
 small = {'192.168.1.30': dict(quiet['192.168.1.30'], sent=100e6)}
 alerts = an.judge(small, dict((k, dict(v)) for k, v in baseline.items()), 2000, warmup=3)
 check('not below the floor, however unusual for the host', alerts, [])
+
+# A whole run against a directory of its own, a pf that answers one state and a clock that moves only
+# when the run sleeps (the review of 2026-11-06, D8): a run that finds the last minute's still
+# reading ends at once and reads nothing, and a window lets each reading go once it is added - until
+# then the two ran side by side, and all six readings were held to the window's end.
+work = tempfile.mkdtemp()
+saved = (an.subprocess.run, an.time.sleep, an.time.monotonic, an.enabled, an.log, an.snapshot)
+try:
+    asked = []
+
+    class Done:
+        returncode = 0
+        stdout = state('g1', 'tcp', '192.168.1.20:2000', '203.0.113.7:443', 3, 10, 10)
+
+    def fake_run(cmd, **kw):
+        asked.append(cmd)
+        return Done()
+
+    clock = [0.0]
+
+    def sleep(seconds):
+        clock[0] += seconds
+
+    an.subprocess.run = fake_run
+    an.time.sleep = sleep
+    an.time.monotonic = lambda: clock[0]
+    an.enabled = lambda: True
+    an.log = lambda message: None
+    with open(os.path.join(work, 'status.json'), 'w', encoding='utf-8') as fh:
+        json.dump({'last': {'message': 'the last window'}}, fh)
+    held = open(os.path.join(work, 'lock'), 'w')
+    fcntl.flock(held, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    out = io.StringIO()
+    with redirect_stdout(out):
+        rc = an.main(['--for', '10', '--dir', work])
+    check('a run while the last is still reading ends at once: pf not read', (rc, asked), (0, []))
+    check("and says the last window's summary", json.loads(out.getvalue()), {'message': 'the last window'})
+    held.close()
+    with redirect_stdout(io.StringIO()):
+        an.main(['--for', '10', '--dir', work])
+    check('the last run over, the next reads pf', len(asked), 2)
+
+    class Reading(dict):
+        """A reading that can be watched for being let go of."""
+
+    seen, alive = [], []
+
+    def snapshot():
+        alive.append(sum(1 for r in seen if r() is not None))
+        reading = Reading(an.inbound_states(Done.stdout))
+        seen.append(weakref.ref(reading))
+        return reading
+
+    an.snapshot = snapshot
+    an.run(50, 3)
+    check("a window's six readings", len(seen), 6)
+    check('of them, no more than its first and the last are held at once', max(alive), 2)
+finally:
+    (an.subprocess.run, an.time.sleep, an.time.monotonic, an.enabled, an.log, an.snapshot) = saved
+    shutil.rmtree(work, ignore_errors=True)
 
 print('all passed' if not failures else f'{failures} failed')
 sys.exit(1 if failures else 0)

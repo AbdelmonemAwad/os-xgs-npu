@@ -207,6 +207,60 @@ try:
     w.save()
     check('the cut connections counted by fingerprint', jc.load(jc.STATUS, {})['totals'], {CURL: 2, OTHER: 2})
     check('the fingerprints seen', [r['ja4'] for r in jc.seen()['seen']], [OTHER])
+
+    # Two connections cut in one reading, with "Cut in hardware" on (no config.xml: the default), and
+    # a third in hardware that is neither: its client used the first's port to the second's server
+    # (the review of 2026-11-06, D12). Only the two are dropped on the coprocessor - until then the
+    # ends of every state cut were one set, and the third, its source the first's and its
+    # destination the second's, was dropped with them.
+    SS2 = ''.join('all tcp %s <- %s       ESTABLISHED:ESTABLISHED\n'
+                  '   age 00:00:57, expires in 24:00:00, 10:10 pkts, 1000:1000 bytes, rule 96\n'
+                  '   id: %s creatorid: 41397420\n' % (dst, src, sid)
+                  for sid, src, dst in (('a52ad56a00000000', '192.168.1.40:50000', '203.0.113.20:443'),
+                                        ('b52ad56a00000000', '192.168.1.41:50001', '203.0.113.21:443'),
+                                        ('c52ad56a00000000', '192.168.1.40:50000', '203.0.113.21:443')))
+
+    def word(ip):
+        """The XGS 3300's table writes an IPv4 address as its 32-bit word, low byte first."""
+        return '0x' + bytes(reversed([int(x) for x in ip.split('.')])).hex()
+
+    TABLE = ''.join('%4d rev 1  proto 6  sweep asks pf with the orig tuple, list 1\n'
+                    '      orig  %s:%d -> %s:%d  slot 7 rev 1  active  in oxp2\n'
+                    '      reply %s:%d -> %s:%d  slot 8 rev 1  active  in oxp3\n'
+                    % (i, word(s), sp, word(d), dp, word(d), dp, word(s), sp)
+                    for i, s, sp, d, dp in ((2, '192.168.1.40', 50000, '203.0.113.20', 443),
+                                            (3, '192.168.1.41', 50001, '203.0.113.21', 443),
+                                            (4, '192.168.1.40', 50000, '203.0.113.21', 443)))
+    verdicts, said = [], ['']
+
+    def fake_run_hw(cmd, **kw):
+        if cmd[0] == jc.PFCTL and cmd[1:] == ['-ss', '-vv']:
+            return Done(SS2)
+        if cmd[0] == jc.PFCTL and cmd[1:3] == ['-k', 'id']:
+            killed.append(cmd[4])
+            return Done()
+        if cmd[0] == '/sbin/sysctl' and cmd[1] == '-n':
+            if cmd[2] == 'dev.octep.0.dp.flow_table':
+                return Done(TABLE)
+            return Done(said[0]) if cmd[2] == 'dev.octep.0.dp.flow_verdict' else Done('', 1)
+        if cmd[0] == '/sbin/sysctl':
+            value = cmd[1].split('=', 1)[1]
+            verdicts.append(value)
+            said[0] = 'connection %s: verdict 1 (drop) on the coprocessor\n' % value.split()[0]
+            return Done()
+        return Done('', 1)
+    jc.subprocess.run = fake_run_hw
+    killed.clear()
+    jc.STATUS = os.path.join(work, 'status-hw.json')
+    with open(jc.EVE, 'w', encoding='utf-8', newline='\n') as fh:
+        fh.write(eve(T0, '192.168.1.40', 50000, '203.0.113.20', 443, CURL))
+        fh.write(eve(T0, '192.168.1.41', 50001, '203.0.113.21', 443, CURL))
+        fh.write(eve(T0, '192.168.1.40', 50000, '203.0.113.21', 443, OTHER))
+    config(CURL)
+    s = jc.Watch().once()
+    check('two connections cut in pf, and not the third', sorted(killed), ['a52ad56a00000000', 'b52ad56a00000000'])
+    check('on the coprocessor too: those two dropped, not the one with an end of each',
+          (s.get('dropped'), verdicts), (2, ['2 1', '3 1']))
     jc.time.time = real_time
 finally:
     shutil.rmtree(work, ignore_errors=True)

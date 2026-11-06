@@ -26,6 +26,7 @@ on; it is off until then.
     anomaly.py --status     the last window, the hosts followed, the last alerts
     anomaly.py --for 10 --warmup 3 --dir /tmp/x     a test: shorter, with history of its own
 """
+import fcntl
 import ipaddress
 import json
 import math
@@ -240,13 +241,15 @@ def run(seconds, warmup=WARMUP):
             save(STATUS, status)
         return status['last']
     before = snapshot()
-    snaps = [before] if before is not None else None
+    # Each reading is added to what the window has seen as it comes, and let go of. Until 2026-11-06
+    # every reading was kept to the end of the window and only then put together: six readings of
+    # pf's state table held at once, where the first and what they add up to are all it needs.
+    after = union([before]) if before is not None else None
     end = time.monotonic() + seconds
-    while snaps is not None and time.monotonic() < end:
+    while after is not None and time.monotonic() < end:
         time.sleep(max(0.0, min(STEP, end - time.monotonic())))
         snap = snapshot()
-        snaps = None if snap is None else snaps + [snap]
-    after = union(snaps) if snaps is not None else None
+        after = None if snap is None else union([after, snap])
     now = int(time.time())
     if before is None or after is None:
         summary = {'run': now, 'message': 'watching for unusual traffic: pf states could not be read'}
@@ -308,6 +311,19 @@ def main(argv):
         STATUS = os.path.join(STATE_DIR, 'status.json')
         BASELINE = os.path.join(STATE_DIR, 'baseline.json')
     try:
+        # One run at a time. A run lasts its window and the time its six readings of pf take, so with
+        # a big state table it can outlast the minute, and until 2026-11-06 the next minute's run then
+        # started beside it: both counted the seconds they shared into the hosts' history, each could
+        # report again what the other had just reported, the later one's save put back the alerts as
+        # they were when it started, and the two wrote the same .tmp file at once. Now the run that
+        # finds the last one still reading ends at once, with the last window's summary.
+        os.makedirs(STATE_DIR, exist_ok=True)
+        lock = open(os.path.join(STATE_DIR, 'lock'), 'w')
+        try:
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except OSError:
+            print(json.dumps(load(STATUS, {}).get('last', {}), sort_keys=True))
+            return 0
         print(json.dumps(run(seconds, warmup), sort_keys=True))
     except Exception as e:      # never fail cron
         log(f'stopped: {e}')

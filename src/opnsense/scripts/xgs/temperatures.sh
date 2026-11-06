@@ -19,8 +19,8 @@
 #
 # The driver holds each value and refuses it once it is five minutes old, so if this stops running
 # the widget shows nothing rather than a frozen number. Read-only on the hardware: nothing here is
-# written anywhere but those sysctls, the XGS 3300 flags' state file and the system log. Quiet
-# unless asked (-v), because it runs every minute.
+# written anywhere but those sysctls, the XGS 3300's state files and their boot token, and the
+# system log. Quiet unless asked (-v), because it runs every minute.
 #
 # The XGS 3300's bank also holds flags (2026-10-27): a fan under speed, the power supplies, the
 # reset flags. They are said in the system log, tag xgs-sensors, when one changes, and at a boot's
@@ -37,10 +37,23 @@ say() { [ "${VERBOSE}" = 1 ] && echo "$1"; return 0; }
 tell() { /usr/bin/logger -t xgs-sensors -p daemon.notice "$1"; say "$1"; }
 fault() { /usr/bin/logger -t xgs-sensors -p daemon.warning "$1"; say "$1"; }
 
+# The boot the state files below belong to: a token the first run of a boot leaves in /var/run, which
+# is emptied at boot - as the start hook 07-npuep-gate keeps the ARMADA's. Until 2026-11-06 it was
+# kern.boottime, which moves when the clock is stepped (by a second within one boot, measured on
+# 2026-10-14 - offload.sh), and each step made the next run a new boot's first reading: a flag not as
+# a healthy board has it was said again, and a module without a memory sensor was asked again. This
+# kernel has no kern.boot_id.
+TOKEN=/var/run/xgs-sensors-boot
+boot_token() {
+	[ -s "${TOKEN}" ] || /usr/bin/od -An -N8 -tx8 /dev/urandom 2>/dev/null | /usr/bin/tr -d ' \n' > "${TOKEN}"
+	TOK=$(/bin/cat "${TOKEN}" 2>/dev/null)
+	echo "${TOK:--}"
+}
+
 FLAGS=/var/db/os-xgs-npu/sensor-flags
 # flags <fan 0 under> <fan 1 under> <internal good> <external good> <reset flag 0> <reset flag 1>
 flags() {
-	BOOT=$(/sbin/sysctl -n kern.boottime | /usr/bin/sed -n 's/^{ sec = \([0-9]*\),.*/\1/p')
+	BOOT=$(boot_token)
 	OBOOT=
 	[ -f "${FLAGS}" ] && read -r OBOOT OF0 OF1 OPI OPE OR0 OR1 < "${FLAGS}"
 	/bin/mkdir -p "${FLAGS%/*}"
@@ -78,7 +91,7 @@ flags() {
 NOSENSOR=/var/db/os-xgs-npu/memory-sensor
 memory() {
 	/sbin/sysctl -N dev.octep.0.temperature.memory > /dev/null 2>&1 || return 0
-	BOOT=$(/sbin/sysctl -n kern.boottime | /usr/bin/sed -n 's/^{ sec = \([0-9]*\),.*/\1/p')
+	BOOT=$(boot_token)
 	[ "$(/bin/cat "${NOSENSOR}" 2> /dev/null)" = "none ${BOOT}" ] && { say "memory: no sensor on this module"; return 0; }
 	LINK=/usr/local/opnsense/scripts/npuctl/mgmt-link.sh
 	[ -x "${LINK}" ] || return 0

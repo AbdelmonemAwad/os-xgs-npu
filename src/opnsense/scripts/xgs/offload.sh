@@ -179,6 +179,27 @@ if [ "${ready}" != 1 ]; then
 	exit 1
 fi
 
+# ---------------------------------------------------------------------- one command at a time
+
+# The write below goes through the driver's one set of rpc sysctls - rpc.fw_cfg and rpc.cmd staged,
+# rpc.post, the answer in rpc.last - and tools/octep-fpcnt.sh, which the Datapath counters tab runs
+# (fpcounters.py), stages its counter read, command 44, in the same rpc.cmd. Until 2026-11-06 nothing
+# kept the two apart: a read staged between this script's rpc.cmd and its rpc.post had command 44
+# posted in the gate's place, the gate not written, and that read's rc taken for the gate's. So the
+# rest runs again under the lock octep-fpcnt.sh takes. A lock not had - held past thirty seconds by a
+# reader that hung, or not to be made - is said in the log, and the gate, which nothing else opens at
+# a boot, is written without it: lockf answers its own failures from 64 up, this script 0 to 2.
+: ${RPC_LOCK:=/var/run/xgs-octep-rpc.lock}
+if [ -z "${OCTEP_RPC_LOCKED:-}" ]; then
+	OCTEP_RPC_LOCKED=1 XGS_CUT_HW=$((ips / 4)) XGS_COPIES=$((mrr / 16)) \
+	    /usr/bin/lockf -k -t 30 "${RPC_LOCK}" /bin/sh "$0" "$([ "${want}" = 1 ] && echo on || echo off)"
+	rc=$?
+	case ${rc} in
+	0|1|2)	exit ${rc} ;;
+	esac
+	log "the coprocessor's rpc lock was not had (lockf ${rc}); the gate is written without it"
+fi
+
 # ---------------------------------------------------------------------- write it
 
 cur=$(scn ${S}.rpc.fw_cfg)
