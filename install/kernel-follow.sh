@@ -565,6 +565,13 @@ if ! /bin/mkdir -p "${BUILDROOT}"; then
 	exit 1
 fi
 /bin/cp "${SRCTREE}"/Makefile "${SRCTREE}"/*.c "${SRCTREE}"/*.h "${BUILDROOT}/"
+# Said once this run's copy is in place, to this run's output alone - syslog has "building against"
+# already: XGS: Updates counts the objects in ${BUILDROOT} as its update's build from this line on,
+# while it is the last line of the update's account (update.py, progress). Until 2026-11-06 it counted
+# them from "building against" above, when the directory still held the build before - whichever run
+# of this script had made it - so the page could show that build, finished, for a moment as its
+# update's.
+echo "compiling $(/bin/ls "${BUILDROOT}"/*.c | /usr/bin/wc -l | /usr/bin/tr -d ' ') sources in ${BUILDROOT}"
 
 BUILDLOG=/var/db/os-xgs-npu/build.log
 if ! ( cd "${BUILDROOT}" && /usr/bin/make SYSDIR="${SYSDIR}" ) > "${BUILDLOG}" 2>&1; then

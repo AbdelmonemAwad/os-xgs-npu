@@ -102,9 +102,13 @@ APPLY = os.path.join(STATE, 'apply.json')
 LOG = os.path.join(STATE, 'apply.log')
 # What install.sh's driver build leaves behind while it runs: the kernel follower's own account, and
 # the directory it compiles in. The progress bar reads both; install/install.sh and
-# install/kernel-follow.sh name the same two paths.
+# install/kernel-follow.sh name the same two paths. Neither is an update's alone - every run of the
+# follower compiles in that directory, and an install started by hand writes that account too - so
+# install.sh starts the account with a line that names its run, BUILD_RUN and the rest, and prints
+# the same line in its own output, which is the update's log (this_build).
 BUILD_LOG = '/var/db/os-xgs-npu/install-build.log'
 BUILDROOT = '/var/db/os-xgs-npu/build'
+BUILD_RUN = "the driver's build is logged in "
 # How far back to look for a commit whose checks passed. Unauthenticated, GitHub allows sixty
 # requests an hour from one address, and each commit looked at is one request.
 LOOK_BACK = 5
@@ -476,6 +480,19 @@ def read_text(path):
         return ''
 
 
+def this_build(log_lines):
+    """The lines of the driver's build this update ran, out of BUILD_LOG - None when the account there
+    is another run's. install.sh starts the account with a line naming its run - its process and the
+    time - and prints that line in its own output too, which is this update's log (log_lines); an
+    account whose first line is not among them is an earlier install's, one an install started by
+    hand is writing, or not begun yet."""
+    build = read_text(BUILD_LOG).splitlines()
+    first = build[0].strip() if build else ''
+    if not first.startswith(BUILD_RUN) or not any(line.strip() == first for line in log_lines):
+        return None
+    return build[1:]
+
+
 def progress(state):
     """How far an update has got, read from what it leaves behind - never estimated from the clock.
 
@@ -485,7 +502,17 @@ def progress(state):
     object files appearing beside the sources in the follower's build directory: five of nine
     compiled is five ninths of the way. Before 2026-10-18 the page showed one fixed line for all of
     it, and the log sat at "== kernel module ==" for minutes, because the build writes to a log of
-    its own."""
+    its own.
+
+    Only what THIS update left counts. The build's account is read when it is this update's
+    (this_build), and the build directory from the follower's "compiling" line on, while that is the
+    account's last line and the update still runs: the follower holds its lock from before that line
+    until it ends, so no other run of it compiles there meanwhile - before the line the directory
+    holds the build before this one, and once the update has stopped, anybody's. Until 2026-11-06
+    both were read whoever had written them, and an XGS 126's update that had stopped during the build
+    showed 95%, "Building the driver", taken from what later runs had left in the account and the
+    directory (#661). When this update's own traces cannot say how far it has got, the percentage is
+    None, and the page shows the steps without a number."""
     if state.get('status') not in ('running', 'done', 'failed'):
         return None
     lines = read_text(LOG).splitlines()
@@ -503,25 +530,35 @@ def progress(state):
         percent = min(34, 12 + 3 * before)
     if any(header.startswith('== kernel module') for header in headers):
         step, percent = 'sources', 35
-        build = read_text(BUILD_LOG)
-        if 'building against' in build:
+        build = this_build(lines)
+        if build is None:
+            percent = None
+        elif any(line.startswith('building against') for line in build):
             step, percent = 'build', 40
-            try:
-                names = os.listdir(BUILDROOT)
-            except OSError:
-                names = []
-            sources = sum(1 for n in names if n.endswith('.c'))
-            objects = min(sources, sum(1 for n in names if n.endswith('.o')))
-            if sources:
-                percent = 40 + int(50 * objects / sources)
-                detail = '%d/%d' % (objects, sources)
-        for line in build.splitlines():
-            if line.startswith('built '):
-                percent, detail = max(percent, 92), ''
-            elif line.startswith('installed '):
-                percent = max(percent, 95)
+            said = [line.rstrip() for line in build if line.strip()]
+            if said and said[-1].startswith('compiling '):
+                if state.get('status') != 'running':
+                    percent = None
+                else:
+                    try:
+                        sources = int(said[-1].split()[1])
+                    except (IndexError, ValueError):
+                        sources = 0
+                    try:
+                        names = os.listdir(BUILDROOT)
+                    except OSError:
+                        names = []
+                    objects = min(sources, sum(1 for n in names if n.endswith('.o')))
+                    if sources > 0:
+                        percent = 40 + int(50 * objects / sources)
+                        detail = '%d/%d' % (objects, sources)
+            for line in build:
+                if line.startswith('built '):
+                    percent, detail = max(percent or 0, 92), ''
+                elif line.startswith('installed '):
+                    percent = max(percent or 0, 95)
     if any(header.startswith(('== loader', '== installed')) for header in headers):
-        step, percent, detail = 'finish', max(percent, 96), ''
+        step, percent, detail = 'finish', max(percent or 0, 96), ''
     if state.get('status') == 'done':
         step, percent, detail = 'finish', 100, ''
     return {'step': step, 'percent': percent, 'detail': detail,
