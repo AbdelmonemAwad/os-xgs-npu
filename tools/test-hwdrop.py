@@ -42,7 +42,9 @@ OCTEP = ''.join(
     % (i, word(s), sp, word(d), dp, word(d), dp, word(s), sp)
     for i, s, sp, d, dp in ((2, '10.0.0.2', 50001, '198.51.100.7', 443),
                             (3, '10.0.0.2', 50002, '203.0.113.9', 443),
-                            (4, '10.0.0.3', 50003, '198.51.100.7', 80)))
+                            (4, '10.0.0.3', 50003, '198.51.100.7', 80),
+                            # the port of 2 used again, to the server of 3
+                            (5, '10.0.0.2', 50001, '203.0.113.9', 443)))
 NPUEP = ''.join(
     '  %d rev 1 plain 12s | orig mflow 5 nhop 2 %s:%d -> %s:%d | reply mflow 6 nhop 1 %s:%d -> %s:%d  active\n'
     % (i, s, sp, d, dp, d, dp, s, sp)
@@ -101,8 +103,18 @@ check('XGS 3300: through dp.flow_verdict, by slot',
 d = Driver('octeontx')
 use(d)
 check('XGS 3300: a JA4 cut drops only the connection with both its ends',
-      hd.drop_ends({('10.0.0.2', 50002), ('203.0.113.9', 443)}, cfg.name), 1)
+      hd.drop_ends([{('10.0.0.2', 50002), ('203.0.113.9', 443)}], cfg.name), 1)
 check('XGS 3300: that one', d.writes, [('dev.octep.0.dp.flow_verdict', '3 1')])
+
+# Two states cut at once: a connection whose source is one's and destination the other's is neither
+# (the review of 2026-11-06, D12) - until then the ends of both were one set, and 5 was dropped too.
+d = Driver('octeontx')
+use(d)
+check('XGS 3300: two cut at once drop those two only',
+      hd.drop_ends([{('10.0.0.2', 50001), ('198.51.100.7', 443)}, {('10.0.0.2', 50002), ('203.0.113.9', 443)}],
+                   cfg.name), 2)
+check('XGS 3300: not the one that takes an end from each', d.writes,
+      [('dev.octep.0.dp.flow_verdict', '2 1'), ('dev.octep.0.dp.flow_verdict', '3 1')])
 
 d = Driver('armada')
 use(d)

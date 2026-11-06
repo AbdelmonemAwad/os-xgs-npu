@@ -270,13 +270,11 @@ class Watch:
         all_states = states(text)
         cuts = to_cut(matched, all_states, time.time())
         # On the coprocessor first, at once and both ways, when "Cut in hardware" is on: every
-        # connection both of whose ends belong to a state being cut, as pf names them - original
-        # and translated - so a translated connection is found by either side's addresses.
-        ends = set()
-        for sid, _proto, st_ends, _age, _over in all_states:
-            if sid in cuts:
-                ends |= st_ends
-        summary['dropped'] = hwdrop.drop_ends(ends) if ends else 0
+        # connection both of whose ends belong to one state being cut, as pf names them - original
+        # and translated - so a translated connection is found by either side's addresses. Each
+        # state's ends are kept apart (hwdrop.drop_ends): until 2026-11-06 they were one set.
+        groups = [st_ends for sid, _proto, st_ends, _age, _over in all_states if sid in cuts]
+        summary['dropped'] = hwdrop.drop_ends(groups) if groups else 0
         per_conn = {}
         totals = st.setdefault('totals', {})
         for sid, ev in cuts.items():

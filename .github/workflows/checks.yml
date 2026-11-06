@@ -160,6 +160,18 @@ jobs:
       - name: Unusual traffic
         run: python3 tools/test-anomaly.py
 
+      # The XGS 136's rows on the IPsec page, from the driver's list and setkey -D: an association in
+      # UDP (NAT-T), its ports in brackets after its addresses, is a row like any other.
+      # tools/test-ipsec.py.
+      - name: The IPsec page's associations
+        run: python3 tools/test-ipsec.py
+
+      # The offload gate and a counter read through the XGS 3300 driver's one set of rpc sysctls, each
+      # under the same lock: the gate's own command is the one posted for it, and the read's after it
+      # (flock stands in for lockf). tools/test-rpc-lock.py.
+      - name: One rpc command at a time
+        run: python3 tools/test-rpc-lock.py
+
       # What XGS: Updates offers and what an update does with it, GitHub stood in for: an update
       # checks again and stops on a failed check; a build that diverged is not taken back to an
       # older release (issue 677).
@@ -171,6 +183,12 @@ jobs:
       # the names portstats.py, coprocessor.py and temperatures.sh give the ports, from the same table.
       - name: Models and their ports
         run: python3 tools/test-models.py
+
+      # The boot temperatures.sh keeps the XGS 3300's flags and its memory sensor's answer for, a token
+      # in /var/run: a flag not as a healthy board has it is said once a boot, and a clock stepped
+      # within the boot does not say it again. tools/test-temperatures.py.
+      - name: The coprocessor's flags once a boot
+        run: python3 tools/test-temperatures.py
 
       - name: Early NPU reset assembly guard (no hardware access)
         run: python3 tools/test-npuctl-guard.py

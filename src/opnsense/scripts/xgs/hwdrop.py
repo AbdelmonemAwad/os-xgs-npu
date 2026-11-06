@@ -15,7 +15,8 @@ nothing for it, and the pf kill cuts it as before.
 
     import hwdrop
     hwdrop.drop_addresses(contains)  connections with either end in contains (an `in` test)
-    hwdrop.drop_ends(ends)           connections both of whose ends, (address, port), are in ends
+    hwdrop.drop_ends(groups)         connections both of whose ends, (address, port), are in one of
+                                     groups - each the ends of one pf state being cut
 
 Each returns how many connections the coprocessor took DROP for. Never raises.
 """
@@ -84,8 +85,12 @@ def drop_addresses(contains, path=CONFIG):
                               for a in (address(f.get('src', '')), address(f.get('dst', '')))), path)
 
 
-def drop_ends(ends, path=CONFIG):
+def drop_ends(groups, path=CONFIG):
+    # Both ends in the same state's. Until 2026-11-06 the ends of every state being cut were one set,
+    # so a connection that took its source from one of them and its destination from another was
+    # dropped though it was not cut: a client that used one port to two servers, its connection to
+    # the first cut in the same reading as another client's to the second, lost both.
     def both(f):
-        a, b = address(f.get('src', '')), address(f.get('dst', ''))
-        return (a, f.get('sport')) in ends and (b, f.get('dport')) in ends
+        a, b = (address(f.get('src', '')), f.get('sport')), (address(f.get('dst', '')), f.get('dport'))
+        return any(a in ends and b in ends for ends in groups)
     return drop(both, path)

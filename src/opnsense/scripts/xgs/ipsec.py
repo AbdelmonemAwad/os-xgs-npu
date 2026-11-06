@@ -37,7 +37,10 @@ TABLE_LINE = re.compile(r'^\s*\d+\s+handle\s+(\d+)\s+rev\s+\d+\s+(encrypt|decryp
 SAS_LINE = re.compile(r'^(\S+)\s+spi\s+(0x[0-9a-f]+)\s+(encrypt|decrypt)\s+(inet6?)\s+alg\s+\d+'
                       r'(?:\s+win\s+(\d+))?(\s+esn)?\s+-?\d+s ago\s*(?:\|\s*(.*))?$', re.I)
 KERNEL_SPI = re.compile(r'\bspi=\d+\(0x([0-9a-f]+)\)')
-KERNEL_ENDS = re.compile(r'^([0-9a-fA-F.:]+) ([0-9a-fA-F.:]+)$')
+# A block's first line, its two addresses; an association in UDP (NAT-T) has each one's port after it
+# in brackets, "192.0.2.1[4500] 198.51.100.2[4500]", as setkey prints it (pfkey_sadump). Until
+# 2026-11-06 the brackets were not allowed for, and on the XGS 136 such an association had no row.
+KERNEL_ENDS = re.compile(r'^([0-9a-fA-F.:]+)(?:\[\d+\])? ([0-9a-fA-F.:]+)(?:\[\d+\])?$')
 # an association's counts in setkey -D: what its lifetime runs on, and the part the driver reported
 KERNEL_BYTES = re.compile(r'^\s*current: (\d+)\(bytes\)')
 KERNEL_ALLOC = re.compile(r'^\s*allocated: (\d+)')

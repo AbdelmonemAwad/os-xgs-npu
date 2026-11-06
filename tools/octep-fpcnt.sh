@@ -29,6 +29,16 @@
 #
 set -u
 
+# One command through the driver's rpc sysctls at a time. They are one set - rpc.cmd and its range
+# staged, rpc.post, the answer's buffer in rpc.buf - and scripts/xgs/offload.sh stages the offload
+# gate, command 2, in the same rpc.cmd. Until 2026-11-06 nothing kept the two apart, and a read here
+# staged between that write's rpc.cmd and its rpc.post had itself posted in the gate's place. Both
+# stage under this lock now, waited for up to thirty seconds.
+RPC_LOCK=${RPC_LOCK:-/var/run/xgs-octep-rpc.lock}
+if [ -z "${OCTEP_RPC_LOCKED:-}" ]; then
+	OCTEP_RPC_LOCKED=1 exec /usr/bin/lockf -k -t 30 "$RPC_LOCK" /bin/sh "$0" "$@"
+fi
+
 DEV=${DEV:-dev.octep.0}
 mode=nonzero
 file=
