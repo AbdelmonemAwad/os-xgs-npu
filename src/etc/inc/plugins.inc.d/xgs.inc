@@ -190,15 +190,18 @@ function xgs_devices()
      * cable. Declining the capability is better than leaving a switch in the GUI that breaks a
      * port.
      *
-     * And both families' front ports are volatile, as OPNsense's own VLANs, LAGGs and USB NICs are:
-     * a device that is not there at every boot. They exist only once the coprocessor is up, and
-     * rc.bootup asks for an interface assignment when a device it does not take as volatile is
-     * missing - on the console, and when nobody presses a key in time it assigns LAN and WAN itself
-     * from the devices it has (console.inc: LAN the first, WAN the second), the management link to
-     * the coprocessor among them, and writes that to config.xml. So one boot whose coprocessor did not
-     * come up could take the WAN away for good (the review of 2026-11-06). console.inc's
-     * is_interface_mismatch() is the one place OPNsense reads the key; the ARMADA entry carries
-     * nothing else, so its MAC setting stays as it was.
+     * And every device the two drivers make is volatile, as OPNsense's own VLANs, LAGGs and USB NICs
+     * are: a device that is not there at every boot. The front ports, the management link to the
+     * coprocessor (oxmgmt0, mvmgmt0 - install.sh assigns it) and the inspector's port (oxips0) exist
+     * only once the coprocessor is up, and rc.bootup asks for an interface assignment when a device
+     * it does not take as volatile is missing: on the console, and when nobody presses a key in time
+     * it makes one itself and writes it to config.xml. Measured on the second XGS 3300 (2026-11-06),
+     * one boot with the driver held off by a device hint and the front ports volatile but not
+     * oxmgmt0: "Default interfaces not found", nobody at the console, and config.xml was left with
+     * lan on igb0 and nothing else assigned - the WAN, the front ports and MGMT gone. console.inc's
+     * is_interface_mismatch() is the one place OPNsense reads the key. The second entry has the form
+     * of OPNsense's own for USB NICs and tunnels, a pattern and nothing else, so the ARMADA ports'
+     * MAC setting stays as it was.
      */
     return [[
         'pattern' => '^oxp[0-9]',
@@ -208,10 +211,8 @@ function xgs_devices()
         'type' => 'xgs',
         'descr' => gettext('XGS front port'),
     ], [
-        'pattern' => '^npup[0-9]',
+        'pattern' => '^npup[0-9]|^oxmgmt[0-9]|^mvmgmt[0-9]|^oxips[0-9]',
         'volatile' => true,
-        'type' => 'xgs',
-        'descr' => gettext('XGS front port'),
     ]];
 }
 

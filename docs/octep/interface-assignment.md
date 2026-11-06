@@ -15,7 +15,12 @@ differs from the plan below.
   is asked once. A freshly installed appliance meets it at the first boot of its disk: the live boot
   from the stick has no driver yet, so OPNsense's own assignment runs there as it always did.
 - **Only on a box nobody has set up.** If one front port is assigned already, the hook marks the
-  box and changes nothing - so installing or updating this on an appliance in service is safe.
+  box and changes nothing ~~- so installing or updating this on an appliance in service is safe~~.
+  **Since 2026-11-06 also when one is named anywhere else in the configuration** - a VLAN's or a
+  QinQ's parent, a LAGG's member, a PPP link's port: until then a box using its front ports only
+  that way was taken as one nobody had set up, and the boot after **Assign the ports again** wrote
+  WAN and LAN over its own. And a WAN on a device the configuration makes (PPPoE, a VLAN, a LAGG),
+  which does not exist yet at that point of the boot, is kept like one whose device exists.
   This is stricter than rule 1 below, which would have filled the gaps on a box set up by hand.
 - **The names.** On the XGS 3300 from the driver, as rule 6 asks, but without a new sysctl: octep
   already names every front port in its interface description from the port's tag ("XGS front port
@@ -106,10 +111,22 @@ GUI). Nothing is asked and nothing blocks: the box boots either way.
 - The driver's bring-up runs from `rc.syshook early`, which `/usr/local/etc/rc` calls before
   `rc.bootup`; the twelve `oxpN` devices are up before OPNsense looks for them.
 - `rc.bootup` calls `is_interface_mismatch()` and, when the configured devices are missing, loops
-  on `set_networking_interfaces_ports(true)` - an interactive assignment on the console that holds
-  the boot until someone answers. That loop is OPNsense's manual way, and it stays.
+  on `set_networking_interfaces_ports(true)` - ~~an interactive assignment on the console that holds
+  the boot until someone answers~~ an assignment on the console which, when no key is pressed in
+  time, makes one itself - LAN the first device it lists, WAN the second - and writes it to
+  config.xml (read in `console.inc`, 2026-11-06). That loop is OPNsense's manual way, and it stays.
+  It skips what a plugin declares volatile, and asks nothing at all on a box with a locked
+  interface (**Prevent interface removal**).
 - `xgs_devices()` in `src/etc/inc/plugins.inc.d/xgs.inc` registers the `^oxp[0-9]` class, with no
-  `names`, so it invents nothing; `get_interface_list()` lists the ports as hardware.
+  `names`, so it invents nothing; `get_interface_list()` lists the ports as hardware. **Since
+  2026-11-06 every device the two drivers make is volatile** - the front ports of both families,
+  the management link (`oxmgmt0`, `mvmgmt0`, which `install.sh` assigns) and the inspector's port
+  (`oxips0`) - as OPNsense's own VLANs, LAGGs and USB NICs are: a boot whose coprocessor did not
+  come up asks for no assignment and writes none. Before, one such boot on the second XGS 3300 -
+  the driver held off by a device hint for that boot, the front ports already volatile but not
+  `oxmgmt0` - printed "Default interfaces not found", nobody was at the console, and OPNsense wrote
+  an assignment of its own: `lan` on `igb0` and nothing else, the WAN, the sixteen front ports and
+  MGMT gone from config.xml.
 - The bench box was assigned by hand, port by port: `oxp0` F1, `oxp1` F2, `oxp2` Port1, `oxp3`
   Port2 (WAN), `oxp4` to `oxp9` Port3 to Port8, `oxp10` F3, `oxp11` F4, the host's own NIC `igb0`
   as MGMT, a bridge of nine ports as LAN. That is the reference the automatic result is compared
