@@ -184,11 +184,17 @@ def run():
         added[name], current[name] = new, now
         summary['lists'][name] = {'entries': len(now), 'added': len(new), 'cut': 0}
 
+    # Whether pf's states were read: when they were not, the new entries are kept new for the next run
+    # rather than written into the snapshot - until 2026-11-06 they were written, and their open
+    # connections were never looked at again.
+    states_read = True
     if any(added.values()):
         try:
-            text = subprocess.run([PFCTL, '-ss', '-vv'], capture_output=True, text=True, errors='replace', timeout=120).stdout
+            done = subprocess.run([PFCTL, '-ss', '-vv'], capture_output=True, text=True, errors='replace', timeout=120)
+            states_read = done.returncode == 0
+            text = done.stdout if states_read else ''
         except (OSError, subprocess.SubprocessError):
-            text = ''
+            states_read, text = False, ''
         all_states = states(text)
         killed = set()
         for name, new in added.items():
@@ -207,6 +213,11 @@ def run():
         summary['cut'] = len(killed)
 
     for name in added:
+        if added[name] and not states_read:
+            summary['lists'][name]['error'] = 'pf states not read - its new entries are looked at again next run'
+            log(f"{name}: {len(added[name])} new entr{'y' if len(added[name]) == 1 else 'ies'} not looked at - "
+                "pf states could not be read; again at the next run")
+            continue
         # what was compared, not a second reading: an entry added since is new at the next run
         save(snapshot_path(name), sorted(current[name]))
         info = summary['lists'][name]
