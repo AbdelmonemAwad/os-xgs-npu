@@ -13,6 +13,40 @@ release on an appliance you can reach before you trust it with a network you dep
 
 Nothing yet.
 
+## 0.1.0-alpha.14 - 2026-11-06
+
+### Fixes
+
+- octep: a port is handed frames only once ether_ifattach() has run ([#1027](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1027))
+- octep: BAR2 is read and written only while BAR0's readiness register holds its magic ([#1030](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1030))
+- reporter.py: #818's first install is not a driver that failed ([#1039](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1039))
+- 06-npuctl: the XGS 116 r1 (AMDA0208-0001) gets the coprocessor's reset pulse at boot ([#1040](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1040))
+- 06-npuctl: the reset pulse for the ARMADA models not run here, narrowed by #1049 to boards 201 and 208 - thanks to @Joka07 ([#1048](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1048))
+- 06-npuctl: reset pulse only on boards whose values have run at boot - 201 and 208 ([#1049](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1049))
+- mcp2210.py: the pins read with 0x31 - 0x32 set all nine to outputs at every pulse ([#1051](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1051))
+
+### Improvements and additions
+
+- octep, reset_reason.py: the comments #768's measurements proved wrong, corrected ([#1032](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1032))
+- Contribution templates, and Arabic that may follow a contributor's change ([#1042](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1042))
+- Forms: every form of the project's repositories, on the site and in the README ([#1044](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1044))
+- Compatibility page: an owner's board and version kept as the form asks for them ([#1043](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1043))
+
+### Documentation
+
+- docs: a panic's record on XGS 3300 and XGS 136 - the VGA console keeps the debugger's script past the watchdog; 988 and 1005 corrected ([#1038](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1038))
+- docs: the release check's F15, #1004's race, and alpha.13 as an update brings it ([#1028](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1028))
+- docs: the coprocessor console's login covered in nine photographs, and left out of the text ([#1029](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1029))
+- docs: a coprocessor's reset and BAR2, and the guard that kept the host up in every run since - it narrows the race to about a microsecond, it does not close it ([#1031](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1031))
+- docs: #768's guard on the second XGS 3300, and U4's recovery the whole way ([#1033](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1033))
+- docs: #768's stage 1e - BAR2 read about eighty thousand times a second through the reset ([#1034](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1034))
+- docs: the XGS 136 under #1005's load thirty times, every coprocessor access timed - 30 of 30 lived ([#1035](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1035))
+- docs: #988's case six times on the XGS 136 - taken up in place, the clock set back from 2097, 6 of 6 lived ([#1036](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1036))
+
+### Thanks
+
+To @Joka07, for the first outside contribution: his report of an XGS 116 r1 that booted without its front ports (#1037), his fix with its test (#1040), and his run of it on the appliance, which proved board 208's reset values at boot. His report also found that the early hook had left every ARMADA model but the XGS 136 without its reset pulse since v0.1.0-alpha.5 (#1047): the XGS 116, 116w and 126 get it with this release, and the XGS 87, 107 and 138 wait for a run on their own board (#1050).
+
 ## 0.1.0-alpha.13 - 2026-11-04
 
 ### Fixes
