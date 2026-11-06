@@ -63,7 +63,7 @@ def log(message):
 
 def family():
     try:
-        out = subprocess.run(['/bin/sh', BOARD], capture_output=True, text=True, timeout=30).stdout.split()
+        out = subprocess.run(['/bin/sh', BOARD], capture_output=True, text=True, errors='replace', timeout=30).stdout.split()
     except (OSError, subprocess.SubprocessError):
         return ''
     return out[1] if len(out) > 1 else ''
@@ -74,7 +74,7 @@ def coprocessor(seconds, command):
     try:
         # no input: the runner's ssh would read whatever this was started with
         done = subprocess.run(['/bin/sh', NPU_RUN, str(seconds), command], stdin=subprocess.DEVNULL,
-                              capture_output=True, text=True, timeout=seconds + 90)
+                              capture_output=True, text=True, errors='replace', timeout=seconds + 90)
     except (OSError, subprocess.SubprocessError) as failure:
         return '', str(failure)
     if done.returncode == 75:

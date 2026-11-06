@@ -211,7 +211,7 @@ def mtime(path):
 def boottime():
     try:
         text = subprocess.run(['/sbin/sysctl', '-n', 'kern.boottime'], capture_output=True,
-                              text=True, timeout=10).stdout
+                              text=True, errors='replace', timeout=10).stdout
         return int(text.split('sec =')[1].split(',')[0])
     except (IndexError, ValueError, OSError, subprocess.SubprocessError):
         return 0

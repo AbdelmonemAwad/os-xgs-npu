@@ -41,7 +41,7 @@ SWITCH_PORTS = 10
 
 
 def sysctl(*args):
-    return subprocess.run(['/sbin/sysctl'] + list(args), capture_output=True, text=True).stdout
+    return subprocess.run(['/sbin/sysctl'] + list(args), capture_output=True, text=True, errors='replace').stdout
 
 
 def discover():

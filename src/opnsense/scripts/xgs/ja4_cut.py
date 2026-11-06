@@ -254,7 +254,7 @@ class Watch:
         if not matched:
             return summary
         try:
-            text = subprocess.run([PFCTL, '-ss', '-vv'], capture_output=True, text=True, timeout=120).stdout
+            text = subprocess.run([PFCTL, '-ss', '-vv'], capture_output=True, text=True, errors='replace', timeout=120).stdout
         except (OSError, subprocess.SubprocessError):
             summary['error'] = 'pfctl -ss could not be read'
             log(f"{len(matched)} connection{'' if len(matched) == 1 else 's'} with a listed fingerprint "

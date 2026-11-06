@@ -140,7 +140,7 @@ def place(on, zones, overlay):
 def pf_table(zoneid):
     try:
         out = subprocess.run([PFCTL, '-t', '__captiveportal_zone_%d' % zoneid, '-T', 'show'],
-                             capture_output=True, text=True, timeout=30).stdout
+                             capture_output=True, text=True, errors='replace', timeout=30).stdout
     except (OSError, subprocess.SubprocessError):
         return set()
     return {line.strip() for line in out.splitlines() if line.strip() and '/' not in line}
@@ -173,7 +173,7 @@ def token(address, luid):
 def driver():
     for oid in OIDS:
         try:
-            done = subprocess.run(['/sbin/sysctl', '-n', oid], capture_output=True, text=True, timeout=10)
+            done = subprocess.run(['/sbin/sysctl', '-n', oid], capture_output=True, text=True, errors='replace', timeout=10)
         except (OSError, subprocess.SubprocessError):
             continue
         if done.returncode == 0:
@@ -302,7 +302,7 @@ class Users:
         held, counts = read_table(text)
         if set(tokens) != held:
             done = subprocess.run(['/sbin/sysctl', oid + '=' + ' '.join(tokens)], capture_output=True,
-                                  text=True, timeout=60)
+                                  text=True, errors='replace', timeout=60)
             if done.returncode != 0:
                 summary['error'] = 'the driver refused the table: ' + (done.stderr.strip() or done.stdout.strip())
             _, text = driver()

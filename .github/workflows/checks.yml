@@ -169,6 +169,11 @@ jobs:
       - name: The reset bridge's commands (no hardware access)
         run: python3 tools/test-mcp2210-commands.py
 
+      # Every command the scripts read as text is decoded with errors='replace': one byte that is not
+      # UTF-8 - a coprocessor's console gives them - raised past every handler and stopped the script.
+      - name: Command output decoded without stopping on a bad byte
+        run: python3 tools/test-decodes.py
+
       # The coprocessor's watchdog feeder as scripts/xgs/feeder.py reads it, continues it and starts
       # it again, with the coprocessor's answers made up (#768).
       - name: The coprocessor's watchdog feeder

@@ -46,7 +46,7 @@ KERNEL_HW = re.compile(r'hw offl allocated: (\d+)\s+hw offl: (\d+)\(bytes\)')
 
 def run(argv):
     try:
-        out = subprocess.run(argv, capture_output=True, text=True, timeout=10)
+        out = subprocess.run(argv, capture_output=True, text=True, errors='replace', timeout=10)
     except (OSError, subprocess.SubprocessError):
         return None
     return out.stdout if out.returncode == 0 else None

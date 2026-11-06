@@ -104,7 +104,7 @@ SEEN_ON = {'AMDA0201': 'AMDA0201-0003', 'AMDA0202': 'AMDA0202-0004'}
 
 def run(argv, timeout=60):
     try:
-        out = subprocess.run(argv, capture_output=True, text=True, timeout=timeout, stdin=subprocess.DEVNULL)
+        out = subprocess.run(argv, capture_output=True, text=True, errors='replace', timeout=timeout, stdin=subprocess.DEVNULL)
     except (OSError, subprocess.SubprocessError):
         return ''
     return out.stdout
