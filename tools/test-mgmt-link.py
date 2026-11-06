@@ -4,8 +4,9 @@
 # Copyright (c) 2026 Abdelmonem Awad <eg2@live.com>
 #
 """mgmt-link.sh coprocessor away from the appliance: how often it tells the coprocessor its address,
-through what, and when it stops (#1010). npu-run.sh, ping, ifconfig, logger, board.sh, sleep and ssh
-are stand-ins that keep what they were asked, in a copy of the script whose paths point at them.
+through what, and when it stops (#1010); and mgmt-link.sh trust, which gives the coprocessor this
+host's key the same way. npu-run.sh, ping, ifconfig, logger, board.sh, sleep and ssh are stand-ins
+that keep what they were asked, in a copy of the script whose paths point at them.
 
     python3 tools/test-mgmt-link.py
 """
@@ -40,7 +41,7 @@ class Coprocessor(unittest.TestCase):
     def nth(self, name):
         return '$(grep -c "^%s " "%s")' % (name, self.calls)
 
-    def run_script(self, ping_from=None, busy=0):
+    def run_script(self, ping_from=None, busy=0, cmd='coprocessor'):
         """ping answers from its ping_from-th call (None: never); npu-run.sh refuses (75) its first
         `busy` calls."""
         ping = 'exit 1' if ping_from is None else '[ %s -ge %d ] && exit 0; exit 1' % (self.nth('ping'), ping_from)
@@ -59,9 +60,15 @@ class Coprocessor(unittest.TestCase):
         script = os.path.join(self.dir, 'mgmt-link.sh')
         with open(script, 'w', encoding='utf-8', newline='\n') as f:
             f.write(text)
+        # a key already made, so that trust has one to give
+        key = os.path.join(self.dir, 'id_ed25519_npu')
+        with open(key, 'w', newline='\n') as f:
+            f.write('not a key\n')
+        with open(key + '.pub', 'w', newline='\n') as f:
+            f.write('ssh-ed25519 TESTKEYBODY xgs-host-to-npu\n')
         env = dict(os.environ, PATH=self.dir + os.pathsep + os.environ.get('PATH', ''),
-                   MGMT_LINK_HELD='1', CONSOLE='/dev/null', NPU_RUN=npu, START_WAIT='300')
-        done = subprocess.run(['/bin/sh', script, 'coprocessor'], env=env, capture_output=True,
+                   MGMT_LINK_HELD='1', CONSOLE='/dev/null', NPU_RUN=npu, START_WAIT='300', KEY=key)
+        done = subprocess.run(['/bin/sh', script, cmd], env=env, capture_output=True,
                               text=True, timeout=60)
         with open(self.calls) as f:
             return done, f.read().splitlines()
@@ -100,6 +107,25 @@ class Coprocessor(unittest.TestCase):
         self.assertEqual(len(self.tells(calls)), 300 // 30 + 1)
         self.assertLessEqual(sum(int(c.split()[1]) for c in calls if c.startswith('sleep ')), 300)
         self.assertIn('does not answer at 169.254.254.2 after about 300 s', done.stdout)
+
+    def test_the_key_waits_for_the_console_behind_a_look(self):
+        """trust runs when the link's ssh is refused, and every look of feeder.py goes over the console
+        then as well: it waits for the console's lock as long as the address does, not npu-run.sh's
+        5 s (A11)."""
+        done, calls = self.run_script(cmd='trust')
+        self.assertEqual(done.returncode, 0)
+        tells = self.tells(calls)
+        self.assertEqual(len(tells), 1)
+        self.assertTrue(tells[0].startswith("npu-run 15 xgs-remount.sh rw; grep -qF 'TESTKEYBODY' "))
+        self.assertIn('npu-run-env NO_LINK=1 WAIT=30', calls)
+        self.assertIn('the coprocessor trusts', done.stdout)
+
+    def test_the_key_is_asked_again_while_the_console_is_held(self):
+        done, calls = self.run_script(cmd='trust', busy=2)
+        self.assertEqual(done.returncode, 0)
+        waits = [c.split('WAIT=')[1] for c in calls if c.startswith('npu-run-env ')]
+        self.assertEqual(waits, ['30', '30', '30'])
+        self.assertIn('the coprocessor trusts', done.stdout)
 
     def test_nothing_is_written_to_the_console_by_the_script_itself(self):
         with open(SCRIPT, encoding='utf-8') as f:
