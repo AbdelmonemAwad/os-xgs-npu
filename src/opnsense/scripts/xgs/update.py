@@ -66,6 +66,10 @@ import tarfile
 import time
 import urllib.error
 import urllib.request
+try:
+    import fcntl
+except ImportError:		# not on the appliance: the tests, run elsewhere
+    fcntl = None
 
 REPO = 'AbdelmonemAwad/os-xgs-npu'
 GITHUB_API = 'https://api.github.com'
@@ -524,10 +528,67 @@ def progress(state):
             'started_at': state.get('started_at'), 'finished_at': state.get('finished_at')}
 
 
+def take_apply_lock():
+    """The lock an update holds from its first step to its last - install.sh, which it runs, inherits
+    it - so a 'running' record whose lock nobody holds is of an update that stopped: the appliance
+    restarted under it, or it was killed. The descriptor, or None while another update holds it."""
+    if fcntl is None:
+        return -1
+    os.makedirs(STATE, exist_ok=True)
+    fd = os.open(os.path.join(STATE, 'apply.lock'), os.O_RDWR | os.O_CREAT, 0o600)
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError:
+        os.close(fd)
+        return None
+    return fd
+
+
+def let_go(fd):
+    if fd is not None and fd >= 0:
+        os.close(fd)
+
+
+def runs_this_boot(state):
+    """An update started by a version before the lock - one taking this version in - holds none: its
+    own process, still there in this boot, is what says it runs. A process number from before this
+    boot names nobody, or somebody else."""
+    try:
+        started = int(state.get('started_at') or 0)
+        if started and started < boottime():
+            return False
+        os.kill(int(state.get('pid') or 0), 0)
+        return True
+    except (OSError, ValueError, TypeError):
+        return False
+
+
+def settled(state):
+    """A 'running' record nobody runs any more, said for what it is: an update that stopped and
+    was not completed. Until 2026-11-06 such a record stayed 'running' across every reboot - an XGS
+    126's from 2026-10-31, whose update the appliance restarted under (#661) - and the page kept
+    Check and Update off for good, so no update was started from it again."""
+    if state.get('status') != 'running':
+        return state
+    lock = take_apply_lock()
+    if lock is None:
+        return state
+    let_go(lock)
+    if runs_this_boot(state):
+        return state
+    state = dict(state, status='failed', finished_at=int(time.time()),
+                 message='the update stopped before it finished - the appliance restarted under it, '
+                         'or it was stopped - and nothing after that step was done; check for updates '
+                         'and update again')
+    state.pop('pid', None)
+    write_json(APPLY, state)
+    return state
+
+
 def status():
     # Take what this boot loaded while the files still show it, before any update rewrites them.
     snapshot = boot_snapshot()
-    state = read_json(APPLY, {}) or {}
+    state = settled(read_json(APPLY, {}) or {})
     since_boot = bool(state.get('status') == 'done' and state.get('finished_at', 0) > boottime())
     driver_changed = state.get('driver_changed', True) is not False
     if 'reboot' in state:
@@ -562,13 +623,34 @@ def log():
 
 
 def apply():
+    """One update, under the lock from its first step to its last (take_apply_lock). An error nobody
+    expected - a download cut short (IncompleteRead), an archive that ends early (EOFError), a full
+    disk - ended it with its record still 'running' and its reason nowhere, since daemon(8) sends this
+    script's own output to /dev/null; it is recorded as the update's failure now."""
+    lock = take_apply_lock()
+    if lock is None:
+        return out({'status': 'error', 'message': 'an update is already running'})
+    try:
+        return apply_locked(lock)
+    except Exception as error:		# anything at all: the record must not stay 'running'
+        message = 'the update stopped on an error: %s: %s' % (type(error).__name__, error)
+        state = read_json(APPLY, {}) or {}
+        if state.get('status') == 'running' and state.get('pid') == os.getpid():
+            write_json(APPLY, dict(state, status='failed', message=message, finished_at=int(time.time())))
+            try:
+                with open(LOG, 'a', encoding='utf-8') as handle:
+                    handle.write(message + '\n')
+            except OSError:
+                pass
+        return out({'status': 'error', 'message': message})
+    finally:
+        let_go(lock)
+
+
+def apply_locked(lock):
     state = read_json(APPLY, {}) or {}
-    if state.get('status') == 'running' and state.get('pid'):
-        try:
-            os.kill(int(state['pid']), 0)
-            return out({'status': 'error', 'message': 'an update is already running'})
-        except (OSError, ValueError):
-            pass
+    if state.get('status') == 'running' and runs_this_boot(state):
+        return out({'status': 'error', 'message': 'an update is already running'})
     # Checked again, now, never taken from the stored answer (issue 677): a check that failed since,
     # or an answer hours old, must not choose what is installed.
     found = run_check()
@@ -653,9 +735,19 @@ def apply():
 
     say('running its install/install.sh - this builds the driver and takes a few minutes')
     say('')
+    # The installer inherits the lock: should this script be stopped while it runs, the update is
+    # still running for as long as the installer is.
     proc = subprocess.Popen(['/bin/sh', 'install/install.sh'], cwd=tree, stdout=logf,
-                            stderr=subprocess.STDOUT)
+                            stderr=subprocess.STDOUT, pass_fds=(lock,) if lock >= 0 else ())
     rc = proc.wait()
+    if rc == 3:
+        return fail('install/install.sh installed everything but the driver: its build failed (%s '
+                    'says why), so the driver that runs is the one from before, and the next boot '
+                    'loads it too. Nothing was rebooted; update again once the cause is fixed' % BUILD_LOG)
+    if rc == 2:
+        return fail('install/install.sh installed everything, but there is no driver for the kernel '
+                    'the next boot will use: DO NOT REBOOT until one is built - the end of this log says '
+                    'how. Nothing was rebooted')
     if rc != 0:
         return fail('install/install.sh failed with status %d; nothing was rebooted, and the '
                     'driver that is running stays as it was' % rc)

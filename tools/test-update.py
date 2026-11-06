@@ -11,10 +11,12 @@ apply() checks again itself and stops with the check's error; and a build that h
 newest release is not taken back to it when it is dated after it. GitHub's answers are stood in for
 here, and the state directory is a temporary one.
 """
+import http.client
 import importlib.util
 import os
 import sys
 import tempfile
+import time
 import urllib.error
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -121,6 +123,45 @@ up.get = github('behind')
 r = up.apply()
 check('apply() with nothing newer: an error', r.get('status'), 'error')
 check('apply() with nothing newer: no update started', os.path.exists(up.APPLY), False)
+
+# #661: an update the appliance restarted under left its record 'running' for good, and the page kept
+# Check and Update off. A 'running' record from before this boot, whose lock nobody holds, is an update
+# that stopped; one of this boot whose process is there still runs.
+now = int(time.time())
+up.boottime = lambda: now - 100
+up.write_json(up.APPLY, {'status': 'running', 'pid': 99999999, 'sha': 'c' * 40, 'started_at': now - 86400})
+st = up.settled(up.read_json(up.APPLY, {}))
+check('a running record from before this boot: failed', st.get('status'), 'failed')
+check('... said to have stopped before it finished', 'stopped before it finished' in st.get('message', ''), True)
+check('... and written so', up.read_json(up.APPLY, {}).get('status'), 'failed')
+up.write_json(up.APPLY, {'status': 'running', 'pid': os.getpid(), 'sha': 'c' * 40, 'started_at': now - 10})
+check('a running record of this boot whose process is there: still running',
+      up.settled(up.read_json(up.APPLY, {})).get('status'), 'running')
+
+if up.fcntl is not None:
+    held = up.take_apply_lock()
+    check('apply() while another update holds the lock: refused',
+          up.apply().get('message'), 'an update is already running')
+    up.let_go(held)
+
+# An error none of the steps expected - a download cut short - ended the update with its record still
+# 'running' and its reason in /dev/null; it is the update's failure now.
+os.unlink(up.APPLY)
+up.run_check = lambda: {'status': 'ok', 'update_available': True,
+                        'target': {'sha': 'c' * 40, 'date': '2026-11-06T00:00:00Z', 'tag': ''}}
+
+
+def cut_short(*args, **kwargs):
+    raise http.client.IncompleteRead(b'partial', 1000)
+
+
+up.urllib.request.urlopen = cut_short
+r = up.apply()
+check('a download cut short: an error', r.get('status'), 'error')
+record = up.read_json(up.APPLY, {})
+check('... recorded as failed', record.get('status'), 'failed')
+check('... with its reason', 'IncompleteRead' in record.get('message', ''), True)
+check('... and the lock let go', up.take_apply_lock() is not None, True)
 
 print('all passed' if not failures else f'{failures} failed')
 sys.exit(1 if failures else 0)
