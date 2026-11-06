@@ -121,9 +121,11 @@ try:
         def __init__(self, out='', rc=0):
             self.stdout, self.returncode = out, rc
 
+    ss_fails = []
+
     def fake_run(cmd, **kw):
         if cmd[1:] == ['-ss', '-vv']:
-            return Done(SS)
+            return Done('', 1) if ss_fails else Done(SS)
         if cmd[1:3] == ['-k', 'id']:
             killed.append(cmd[4])
             return Done()
@@ -159,7 +161,14 @@ try:
     s = w.once()
     check('nothing listed: nothing read, nothing cut', (s['read'], s['cut'], killed), (0, 0, []))
 
+    # pf's states could not be read: nothing cut, and the reading has not moved - the same lines are
+    # matched again at the next one (until 2026-11-06 the offset moved first and they were lost)
     config(CURL)
+    ss_fails.append(1)
+    s = w.once()
+    check('pf states not read: nothing cut, said', (s['cut'], killed, s.get('error')),
+          (0, [], 'pfctl -ss could not be read'))
+    ss_fails.clear()
     s = w.once()
     check('a fingerprint newly listed is looked for in the whole log, and its connection cut',
           (s['read'], s['matched'], sorted(killed)), (2, 1, ['352ad56a00000000', '452ad56a00000000']))
