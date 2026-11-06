@@ -3,7 +3,8 @@
 # SPDX-License-Identifier: BSD-2-Clause
 # Copyright (c) 2026 Abdelmonem Awad <eg2@live.com>
 #
-# Let the coprocessor's switch chip carry jumbo frames on every port, at every boot.
+# Let the coprocessor's switch chip carry jumbo frames on every port, at every boot - and again after
+# the coprocessor has been taken up again in place (recover.sh), whose own boot sets the ports back.
 #
 #   switch-jumbo.sh            each of the ten switch ports to 10,240 bytes; says what it found
 #   switch-jumbo.sh --check    read only
@@ -93,13 +94,16 @@ fi
 USE_SSH=0
 if /bin/sh ${LIB}/npuctl/mgmt-link.sh ssh true > /dev/null 2>&1; then
 	USE_SSH=1
-elif [ ${CHECK} = 0 ] && /bin/pgrep -f 'mgmt-link.sh coprocessor' > /dev/null 2>&1; then
+elif [ ${CHECK} = 0 ] && [ -z "${SWITCH_JUMBO_LOCKED:-}" ] && /bin/pgrep -f 'mgmt-link.sh coprocessor' > /dev/null 2>&1; then
 	# THE ADDRESS FIRST. The boot hook is still giving the coprocessor its end of the link (mgmt-link.sh
 	# coprocessor, in the background, for up to about five minutes), so the link is waited for here
 	# rather than the console taken: over the console this script's sessions, back to back, held it
 	# some 70 s, and the address waited behind them - the link answered 184 to 263 s into the boots
 	# where that happened on 2026-11-04, against 128 to 159 s where the address came first (#1018).
-	# Once the boot hook has given up, the console is used as before.
+	# Once the boot hook has given up, the console is used as before. Waited for once, here, before
+	# the console's lock is asked for: until 2026-11-06 this script's second run, under that lock,
+	# came through here as well and waited up to six minutes more while holding it - the very lock
+	# the boot hook's own tells of the address queue for.
 	log "the coprocessor's management link does not answer yet while its address is being given - waited for"
 	waited=0
 	while [ ${waited} -lt 360 ] && /bin/pgrep -f 'mgmt-link.sh coprocessor' > /dev/null 2>&1; do
@@ -139,23 +143,59 @@ if [ ${USE_SSH} = 0 ] && ! npu_up; then
 	exit 0
 fi
 
+# THE WATCH FIRST, as npu-run.sh keeps it (#1002, #1012): feeder.py marks URGENT when it has to ask
+# the console whether the coprocessor still runs, and its answer has to come before the coprocessor's
+# own watchdog acts. While the mark is younger than a minute (and not from the future, after a clock
+# stepped back) this script does not take the console: it waits before asking for the lock, and a run
+# that finds the mark once it holds the lock - or between its rounds - gives the console up at once
+# (76) and is begun again once the mark has gone, up to three times; every round reads all ten ports
+# afresh, so a run cut short leaves nothing half done. Until 2026-11-06 it did not look at the mark,
+# and the watch could wait behind this script's console session, of a minute or more.
+URGENT=/var/run/xgs-npu-console.urgent
+urgent() {
+	m=$(/usr/bin/stat -f %m "${URGENT}" 2>/dev/null) || return 1
+	d=$(( $(/bin/date +%s) - m ))
+	[ "${d}" -ge 0 ] && [ "${d}" -lt 60 ]
+}
+kept_for_watch() { # in the run under the lock: gives the console up while the mark is fresh
+	[ ${USE_SSH} = 0 ] && [ -n "${SWITCH_JUMBO_LOCKED:-}" ] && urgent || return 0
+	log "the console is kept for the watch over the coprocessor - given up, to be begun again"
+	exit 76
+}
+
 # One session at a time on the console. npu-run.sh holds this lock for each of its own, and on the
 # XGS 3300 the management link's boot hook asks through it every ten seconds until its coprocessor
 # answers - on a boot on 2026-10-23 this script's second and third rounds of reads came back empty
 # while it did, and the ports were left at 2,048. So everything this does over the console runs
 # under the same lock, waited for up to two minutes.
 if [ ${USE_SSH} = 0 ] && [ -z "${SWITCH_JUMBO_LOCKED:-}" ]; then
-	# the console's logger (console_log.py) stands aside, as for npu-run.sh, until this is done
-	/usr/bin/touch /var/run/xgs-console-log.pause
-	SWITCH_JUMBO_LOCKED=1 /usr/bin/lockf -k -t 120 /var/run/xgs-npu-console.lock /bin/sh "$0" "$@"
-	rc=$?
-	/bin/rm -f /var/run/xgs-console-log.pause
+	tries=0
+	while :; do
+		w=0
+		urgent && log "the console is kept for the watch over the coprocessor - waited for"
+		while urgent && [ ${w} -lt 300 ]; do
+			sleep 5
+			w=$((w + 5))
+		done
+		# the console's logger (console_log.py) stands aside, as for npu-run.sh, until this is done
+		/usr/bin/touch /var/run/xgs-console-log.pause
+		SWITCH_JUMBO_LOCKED=1 /usr/bin/lockf -k -t 120 /var/run/xgs-npu-console.lock /bin/sh "$0" "$@"
+		rc=$?
+		/bin/rm -f /var/run/xgs-console-log.pause
+		tries=$((tries + 1))
+		[ ${rc} = 76 ] && [ ${tries} -lt 3 ] && continue
+		break
+	done
 	if [ ${rc} = 75 ]; then
 		log "the coprocessor's console stayed busy for two minutes - nothing was read or written"
 		[ ${CHECK} = 0 ] && state "not set: the coprocessor's console stayed busy"
+	elif [ ${rc} = 76 ]; then
+		log "the console was kept for the watch over the coprocessor three times - the ports stay as they were"
+		[ ${CHECK} = 0 ] && state "not set: the coprocessor's console was kept for the watch over it"
 	fi
 	exit ${rc}
 fi
+kept_for_watch
 
 # One command on the coprocessor, its output on stdout. Over ssh, or the console: logged in only if
 # the console asks, the output cut out between two markers sent in two quoted halves (the console
@@ -209,6 +249,7 @@ if [ "${HAVE}" != "${WANT}" ]; then
 		    "mkdir -p ${NPU_DIR} && cat > ${NPU_MVSW}.new && chmod 755 ${NPU_MVSW}.new && mv ${NPU_MVSW}.new ${NPU_MVSW}" \
 		    < "${MVSW}" 2>/dev/null
 	else
+		kept_for_watch
 		B64=/var/run/switch-jumbo.b64
 		openssl base64 -A -in "${MVSW}" > "${B64}"
 		TXT=$(md5 -q "${B64}")
@@ -265,6 +306,7 @@ R=/var/run/switch-jumbo.reads
 round=0
 while [ ${round} -lt 3 ]; do
 	round=$((round + 1))
+	kept_for_watch
 	read_all > "${R}"
 	writes=""
 	todo=0
@@ -301,6 +343,7 @@ while [ ${round} -lt 3 ]; do
 	log "round ${round}:${summary} - written where a majority read 2,048"
 	sleep 2
 done
+kept_for_watch
 read_all > "${R}"
 left=""
 for p in 1 2 3 4 5 6 7 8 9 10; do
