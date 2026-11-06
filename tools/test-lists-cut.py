@@ -57,6 +57,39 @@ check('a translated state carries the address it was translated to',
 check('IPv6 ends, the port in brackets', st[2][1], ['2001:db8:2::2', '2001:db8:3::2'])
 check('a state line without "id" in it, and the status words, are not addresses', st[3][1], ['192.168.1.20', '192.168.1.5'])
 
+# run() when pf's states cannot be read: the new entries are not written into the snapshot, so the
+# next run looks at their connections (until 2026-11-06 they were written, and never looked at again).
+import tempfile
+with tempfile.TemporaryDirectory() as work:
+    lc.STATE_DIR, lc.STATUS = work, os.path.join(work, 'status.json')
+    lc.watched_lists = lambda path=None: ['blocked']
+    lc.table_entries = lambda name: {'203.0.113.7/32'}
+    lc.hwdrop.drop_addresses = lambda match: 0
+    said, killed, ss_fails = [], [], [1]
+    lc.log = said.append
+
+    class Done:
+        def __init__(self, out='', rc=0):
+            self.stdout, self.returncode = out, rc
+
+    def fake_run(cmd, **kw):
+        if cmd[1:] == ['-ss', '-vv']:
+            return Done('', 1) if ss_fails else Done(SS)
+        if cmd[1:3] == ['-k', 'id']:
+            killed.append(cmd[4])
+        return Done()
+    real_run, lc.subprocess.run = lc.subprocess.run, fake_run
+    try:
+        lc.run()
+        check('pf states not read: nothing cut, no snapshot written',
+              (killed, os.path.exists(lc.snapshot_path('blocked'))), ([], False))
+        check('and it is said', any('pf states could not be read' in s for s in said), True)
+        ss_fails.clear()
+        lc.run()
+        check('the next run looks at the new entry and cuts its connection', killed, [st[1][0]])
+    finally:
+        lc.subprocess.run = real_run
+
 m = lc.Matcher({'203.0.113.0/24', '2001:db8:1::/48', '198.51.100.9/32', '10.0.0.0/30', '10.0.0.4/30'})
 check('an address inside a listed network', '203.0.113.7' in m, True)
 check('one outside every listed network', '203.0.114.1' in m, False)
