@@ -20,6 +20,7 @@ Where something is a datasheet guess instead, it says so at the call site.
 Transport is a plain 64-byte write() then a 64-byte read() on the HID device - no report ID
 byte, which is what Sophos's code does and what FreeBSD's hidraw(4) gives you.
 
+    ./mcp2210.py find                    print the bridge's hidraw node, found by its USB ids
     ./mcp2210.py status                  read and decode; changes nothing
     ./mcp2210.py raw 20                  send one command byte, print the 64-byte reply
     ./mcp2210.py set-gpio 0xffff 0x0029  value, mask - THIS DRIVES THE NPU RESET LINE
@@ -31,7 +32,11 @@ import subprocess
 import time
 import sys
 
-DEV = '/dev/hidraw0'
+# The bridge's hidraw node: MCP2210_DEV when the caller found it already, else found by its USB ids
+# (find_bridge). It was /dev/hidraw0 by number until 2026-11-06, and nodes are numbered in the order
+# HID devices attach: a USB keyboard or a UPS that came first took hidraw0.
+DEV = os.environ.get('MCP2210_DEV', '')
+USB_IDS = ('0x04d8', '0x00de')
 REPORT = 64
 TIMEOUT = float(os.environ.get('MCP_TIMEOUT', '2.0'))
 ATTEMPTS = 4
@@ -91,25 +96,53 @@ def board_number():
 # to the coprocessor's reset and boot flash, and the coprocessor dropped off the bus.
 THIS_BOARD = board_number()
 
-# The boards whose pin values have been driven on real hardware. The commands that drive the NPU
-# control lines refuse anywhere else; the rest of the table is the vendor's, unverified.
-DRIVEN_ON = {201}
+# The boards whose pin values have been driven on real hardware: 201 here, 208 on an owner's XGS 116 r1
+# (#1040) - the boot hook pulses both since #1049. The commands that drive the NPU control lines
+# refuse anywhere else but VENDOR_ONLY's, below; the rest of the table is the vendor's, unverified.
+DRIVEN_ON = {201, 208}
 
-# The ARMADA boards this project has no appliance of, driven with the vendor's own values from the
-# table above: research and development, untested (scripts/xgs/board.sh marks them "rnd"). The 1U boards
-# (202-205) stay refused - their coprocessor is brought up without this bridge, and on the XGS 3300 the
-# bridge is wired to the coprocessor's reset and boot flash.
-VENDOR_ONLY = {200, 208, 224}
+# The ARMADA boards whose values are the vendor's table's alone and have run at no boot: 200 (XGS 87,
+# 107 and their w models) and 224 (XGS 138). The boot hook leaves them as power-on does (#1050), and so
+# does this tool now: until 2026-11-06 it drove them with those values for every other caller - an
+# in-place recovery (recover.sh) and contrib/npuep/reload.sh - where a wrong value keeps the
+# coprocessor held. XGS_NPUCTL_RND=1 drives them anyway, for a run on an owner's appliance with its
+# console watched, which is what admits a board (#1050). The 1U boards (202-205) stay refused - their
+# coprocessor is brought up without this bridge, and on the XGS 3300 the bridge is wired to the
+# coprocessor's reset and boot flash.
+VENDOR_ONLY = {200, 224}
+
+
+def find_bridge():
+    """The MCP2210's hidraw node, by its USB ids in the node's own pnpinfo; None when no node is it."""
+    try:
+        names = sorted((n for n in os.listdir('/dev') if re.fullmatch(r'hidraw\d+', n)),
+                       key=lambda n: int(n[6:]))
+    except OSError:
+        return None
+    for name in names:
+        try:
+            info = subprocess.run(['/sbin/sysctl', '-n', 'dev.hidraw.%s.%%pnpinfo' % name[6:]],
+                                  capture_output=True, text=True, timeout=5).stdout
+        except (OSError, subprocess.SubprocessError):
+            continue
+        if re.search(r'\bvendor=%s\b' % USB_IDS[0], info) and re.search(r'\bproduct=%s\b' % USB_IDS[1], info):
+            return '/dev/' + name
+    return None
 
 
 def may_drive(cmd):
     if THIS_BOARD in DRIVEN_ON:
         return True
     if THIS_BOARD in VENDOR_ONLY:
-        print('%s on AMDA%04d with the vendor\'s values (hold 0x%04X, release 0x%04X): this board is '
-              'research and development - untested here, no appliance to test on'
-              % (cmd, THIS_BOARD, NPU_VALUES[THIS_BOARD]['hold'], NPU_VALUES[THIS_BOARD]['release']))
-        return True
+        values = (cmd, THIS_BOARD, NPU_VALUES[THIS_BOARD]['hold'], NPU_VALUES[THIS_BOARD]['release'])
+        if os.environ.get('XGS_NPUCTL_RND') == '1':
+            print('%s on AMDA%04d with the vendor\'s values (hold 0x%04X, release 0x%04X), as '
+                  'XGS_NPUCTL_RND=1 asks: they have run at no boot here' % values)
+            return True
+        print('%s refused on AMDA%04d: its values (hold 0x%04X, release 0x%04X) are the vendor\'s '
+              'alone and have run at no boot (#1050); XGS_NPUCTL_RND=1 drives them, for a run with '
+              'the console watched' % values)
+        return False
     print('%s refused: board %s is not one whose NPU control lines this tool has driven (%s)'
           % (cmd, 'AMDA%04d' % THIS_BOARD if THIS_BOARD else 'unreadable',
              ', '.join('AMDA%04d' % b for b in sorted(DRIVEN_ON))))
@@ -290,11 +323,21 @@ def main(argv):
     if cmd in ('release', 'pulse', 'set-gpio') and not may_drive(cmd):
         return 2
 
+    dev = DEV or find_bridge()
+    if cmd == 'find':
+        if dev:
+            print(dev)
+        return 0 if dev else 1
+    if not dev:
+        print('no MCP2210 bridge (USB %s:%s) among the hidraw nodes' % USB_IDS)
+        print('if there is no hidraw node at all: kldload hidraw')
+        return 1
+
     # Buffered I/O would merge or split the 64-byte reports, so open unbuffered.
     try:
-        fh = open(DEV, 'r+b', buffering=0)
+        fh = open(dev, 'r+b', buffering=0)
     except OSError as exc:
-        print('cannot open %s: %s' % (DEV, exc))
+        print('cannot open %s: %s' % (dev, exc))
         print('if the node is missing: kldload hidraw')
         return 1
 
@@ -336,16 +379,34 @@ def main(argv):
             # then release it. `xgs-usb-spi-flash` does the release on its exit path, so a run
             # of -t is exactly this pair. One serial round trip, because the interesting thing
             # is what comes out of uart2 while it happens.
+            # The release is written on every way out, as the vendor's tool does: until 2026-11-06 a
+            # read between the two writes that went unanswered raised, and the coprocessor stayed held
+            # in reset for the whole boot. The reads around the writes only describe; a failed one is
+            # said, not fatal. And the pulse is good only when the lines read back released.
             hold = NPU_VALUES[THIS_BOARD]['hold']
             release = NPU_VALUES[THIS_BOARD]['release']
-            print('start   live 0x%04x' % live_gpio(fh))
+
+            def live_or_why(read):
+                try:
+                    return '0x%04x' % read(fh)
+                except (IOError, OSError, ValueError) as exc:
+                    return 'not read (%s)' % exc
+
+            print('start   live %s' % live_or_why(live_gpio))
             gpio_write(fh, hold, NPU_MASK)
-            print('hold    wrote 0x%04x mask 0x%04x -> live 0x%04x' % (hold, NPU_MASK, live_gpio(fh)))
-            time.sleep(0.5)
-            gpio_write(fh, release, NPU_MASK)
-            print('release wrote 0x%04x mask 0x%04x -> live 0x%04x' % (release, NPU_MASK, live_gpio(fh)))
+            try:
+                print('hold    wrote 0x%04x mask 0x%04x -> live %s' % (hold, NPU_MASK, live_or_why(live_gpio)))
+                time.sleep(0.5)
+            finally:
+                gpio_write(fh, release, NPU_MASK)
+            print('release wrote 0x%04x mask 0x%04x -> live %s' % (release, NPU_MASK, live_or_why(live_gpio)))
             time.sleep(1.0)
-            print('settled live 0x%04x, direction 0x%04x' % (live_gpio(fh), live_direction(fh)))
+            settled = live_gpio(fh)
+            print('settled live 0x%04x, direction %s' % (settled, live_or_why(live_direction)))
+            if (settled & NPU_MASK) != (release & NPU_MASK):
+                print('the lines did not settle released (0x%04x of mask 0x%04x, want 0x%04x)'
+                      % (settled & NPU_MASK, NPU_MASK, release & NPU_MASK))
+                return 1
 
         elif cmd == 'nvram':
             # 0x61 sub 0x20: the power-up chip settings the chip loads from its own NVRAM.

@@ -88,30 +88,50 @@ if /usr/sbin/pciconf -l 2>/dev/null |
     exit 0
 fi
 
-# hidraw(4) is what gives us /dev/hidraw0 for the bridge. hidbus attaches on its own but leaves
+# hidraw(4) is what gives the bridge its /dev/hidraw node. hidbus attaches on its own but leaves
 # no device node until a child driver claims it.
 if ! /sbin/kldstat -q -m hidraw; then
     /sbin/kldload hidraw 2>/dev/null
 fi
 
-if [ ! -c /dev/hidraw0 ]; then
-    log "no /dev/hidraw0 - no MCP2210 bridge on this machine, nothing to do"
-    exit 0
-fi
+# What this hook did, on the console as well as to the logger: it runs before syslog-ng, and its
+# logger lines reach no log (#1045), so a pulse that failed left nothing but missing ports.
+say() { log "$1"; echo "npuctl: $1"; }
 
 if [ ! -f "${NPUCTL}" ]; then
-    log "missing ${NPUCTL}"
+    say "missing ${NPUCTL}"
     exit 0
 fi
 
-out=$(/usr/local/bin/python3 "${NPUCTL}" pulse 2>&1)
-rc=$?
+# The bridge by its USB ids (04d8:00de), not as /dev/hidraw0: hidraw nodes are numbered in the
+# order HID devices attach, and a USB keyboard or a UPS that attached first took hidraw0 - the pulse
+# then went to it, or failed on it, and the coprocessor was never released.
+NODE=$(/usr/local/bin/python3 "${NPUCTL}" find 2>/dev/null)
+if [ -z "${NODE}" ]; then
+    say "no MCP2210 bridge (USB 04d8:00de) among the hidraw nodes - nothing to do"
+    exit 0
+fi
+
+# Three tries. The bridge's transport drops a reply now and then; a pulse cut by one is tried again,
+# and if none takes, the lines are released at least - the coprocessor must not be left held in
+# reset, which keeps every front port away for the whole boot.
+try=1
+while :; do
+    out=$(MCP2210_DEV="${NODE}" /usr/local/bin/python3 "${NPUCTL}" pulse 2>&1)
+    rc=$?
+    [ ${rc} -eq 0 ] && break
+    say "NPU reset pulse FAILED on ${NODE} (rc=${rc}, try ${try} of 3): ${out}"
+    [ ${try} -ge 3 ] && break
+    try=$((try + 1))
+    sleep 2
+done
 if [ ${rc} -eq 0 ]; then
-    log "NPU reset pulsed: ${out}"
+    say "NPU reset pulsed on ${NODE}$( [ ${try} -gt 1 ] && echo " at try ${try}"): ${out}"
 else
     # Not fatal. A firewall that boots without its NPU is still a firewall you can log into and
     # fix; one that refuses to boot is not.
-    log "NPU reset pulse FAILED (rc=${rc}): ${out}"
+    out=$(MCP2210_DEV="${NODE}" /usr/local/bin/python3 "${NPUCTL}" release 2>&1)
+    say "after three failed pulses, the lines released (rc=$?): ${out}"
 fi
 
 exit 0
