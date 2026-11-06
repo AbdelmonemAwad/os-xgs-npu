@@ -5,15 +5,16 @@ On 2026-11-06 everything this project runs on an appliance outside its two drive
 stop hooks, the scripts, the pages and their API, the installer and the updater, the problem reporter,
 the workflows and two plugins of the family - was read through for faults:
 [1072](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/1072) holds the register, 137 findings
-with their severity, evidence and state. **121 of them were fixed that day, in 45 pull requests, each
-run before it was merged - on the lab appliances, as an owner meets it, wherever an appliance can show
-it - and every one of them with its tests.** The rest are open or confirmed there.
+with their severity, evidence and state. **128 of them were fixed by the end of that day, in 48 pull
+requests, each run before it was merged - on the lab appliances, as an owner meets it, wherever an
+appliance can show it - and every one of them with its tests.** The rest are open or confirmed there.
+This page was first published that evening with 121 in 45; the three merged after it are added below.
 
 The appliances: the first XGS 3300 (vendor version 23), the second XGS 3300 (vendor version 22) and
 the XGS 136 (vendor version 21), on OPNsense 26.7 with this project's `main`. A change was put on an
 appliance over the installed files and the installed ones put back after, or installed by its own
-`install/install.sh`; a page was opened in a browser signed in as the user the change is for. Three
-of the day's runs follow, then every pull request with what it was run on.
+`install/install.sh`; a page was opened in a browser signed in as the user the change is for. Some of
+the day's runs follow, then every pull request with what it was run on.
 
 ## A recovery in place that reads OPNsense's reload
 
@@ -46,6 +47,44 @@ read at an Invalid Date with `main`; with the change, a warning that the account
 Settings, and the counters read again as they are.
 
 ![First XGS 3300, a user without XGS: Settings: the refused Clear said in a warning, the counters read again](../images/measurements/userland-review-2026-11-06/03-refused-clear-said-first-3300.jpg)
+
+## An update's lock that daemons kept
+
+[1102](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1102), U17: `update.py` handed its update lock
+to `install.sh` under whatever descriptor it had, and every daemon `install.sh` started or restarted
+inherited it. On the first XGS 3300, an update to `main` started as XGS: Updates' Update starts it: when
+it was done, devd, three cron processes and two of the plugin's Python daemons held the lock, and
+`lockf` could not take it - the next update would have been refused as already running. With the change,
+after a restart to free it, the same kind of update: nobody held it, and a second update asked straight
+after answered that nothing was newer.
+
+![First XGS 3300, main: after the update, six processes the installer started hold the update's lock](../images/measurements/userland-review-2026-11-06/04-update-lock-held-main-first-3300.png)
+
+![First XGS 3300, the change: after the update nobody holds it, and another update could take it at once](../images/measurements/userland-review-2026-11-06/05-update-lock-free-change-first-3300.png)
+
+## No fall-back to a kernel of another major release
+
+[1103](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1103), P19: the kernel follower sent the next
+boot to kernel.old wherever the module was built for it, whichever FreeBSD release kernel.old is. On the
+first XGS 3300's own sh, strings, grep and sed, with stand-ins in `/tmp` only - a kernel.old of FreeBSD
+14.3, a module stamped for it, a `nextboot` that only records what it is asked - against its real
+`/boot/kernel` of 15.1: `main`'s follower asked for kernel.old, the change's did not, and said why.
+
+![First XGS 3300: main's follower sends the next boot to a 14.3 kernel.old under 15.1; the change's does not](../images/measurements/userland-review-2026-11-06/06-no-fall-back-across-a-major-release-first-3300.png)
+
+## A download tried again, and a stray module taken off
+
+[1104](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1104), U14: an update's download was tried once.
+On the first XGS 3300, with `codeload.github.com` sent to 127.0.0.1 for the update's first 12 s, the
+first try failed, the update said it would try again in 30 s, and the second took it - done in 68 s,
+nothing of the download left behind. U11: an `octep.ko` left on an ARMADA appliance by an install of
+early October was followed instead of `npuep.ko`. On the XGS 136, four small stand-ins of it put in
+`/boot/modules`, then the same update: the change's `install.sh` took all four off. The `npuep.ko.undone`
+pair beside them was a lab script's own leftover of two days before, taken away after.
+
+![First XGS 3300: the download's first try refused, the second taken 30 s later, the update done](../images/measurements/userland-review-2026-11-06/07-download-tried-again-first-3300.png)
+
+![XGS 136: four stand-in octep.ko files taken off by the change's installer in an update](../images/measurements/userland-review-2026-11-06/08-stray-octep-taken-off-136.png)
 
 ## Every pull request, and what it was run on
 
@@ -94,6 +133,9 @@ Settings, and the counters read again as they are.
 | [1097](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1097) | D15 | device_facts.py, devices-table.py: the XGS 2100's and 2300's F1 and F2 on the switch on the site's pages, and the table stopped where the facts and models.py disagree | Under Linux: test-models.py (22) OK; on main's files 3 fail, each naming the XGS 2100's F1 as a switch port given a coprocessor MAC and PHY, and the branch's generator on main's facts stops with exit 1. Every site page that reads devices.json rendered offline from main and from the branch in eight languages (227 files each): the one difference is the wrong 88X5113 row gone from the 2100's and 2300's pages. No appliance: the change is the site's alone; the published pages are looked at after the site's build. |
 | [1099](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1099) | G5, G6, G7, G8, G9 | apply.php, status.volt, ports.volt, reports.volt, updates.volt, reporter.py: the flow maker's hand-set tunables removed, a refused action said, only an https issue address a link, the panel's tooltips named, and the API's text escaped once | test-apply under the first XGS 3300's PHP 13 of 13, test-reporter 57. G5: a row dev.octep.0.dp.auto = 0 with the page at 1 - main's Apply kept it and after a restart the flow maker ran 0; the branch's removed it and after a restart it stayed 1. G8 as a read-only user: main drew All zero at an Invalid Date, the branch a warning and the counters read again. G6: main a javascript: link and a title cut at its quote, the branch #958 as text and the whole reason. G7: main's twelve tooltips [object Object], the branch's none. G9: no text to compare on the box; the escaping read from Response.php. |
 | [1100](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1100) | O8, O9, P13, P15, P18 | recover.sh, kernel-follow.sh, reporter.py, early/05-xgs-report: reload's answer read, a refused detach asked again, a stamp never naming the wrong module, and a boot that crashed early reported | Under Linux: test-recover.py, test-kernel-follow.py, test-hooks.py, test-reporter.py OK. P18 on the first XGS 3300 and the XGS 136 through OPNsense's restart: the early hook ran, boots.json named the new boot, no unexpected-reset report. O8 on the first XGS 3300: the fast path stopped on purpose and taken up again in place in 279 s, OPNsense's reload run to its end. P15: kernel-follow.sh FORCE=1 built octep.ko in 9 s, its stamp right before and after, nothing VOID. Not on an appliance: a reload that stops, a refused detach (O9), a panic after the stop hook's line (P13). |
+| [1102](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1102) | U17 | update.py, install.sh: the update's lock on descriptor 9, closed for every daemon the installer starts | Under Linux: test-update.py (64) OK; it stops on main's update.py. FreeBSD's sh on the first XGS 3300: a child inherits descriptor 9, and sh sets no close-on-exec on a descriptor exec moves, so each daemon start closes 9 itself. First XGS 3300, A: an update to main 014d0ae8 as the Update button starts it - after it devd, three cron processes and two python3.13 held the lock, lockf could not take it. B after a restart: the branch's update.py and an update to its head 8a006fb7 in 43 s - nobody held the lock, lockf took it at once, and a second update asked straight after answered 'nothing to update to', not 'already running'. |
+| [1103](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1103) | P19 | kernel-follow.sh: the fall-back to kernel.old never across a FreeBSD major release | Under Linux: test-kernel-follow.py (18) OK; the two new major-release tests fail on main's script. First XGS 3300 on its own sh, strings, grep and sed: the stop hook's PINONLY=1 run with stand-ins in /tmp only - a kernel.old of FreeBSD 14.3-RELEASE-p16, a module stamped for it, a nextboot that only records - against the real /boot/kernel 15.1: main's exit 0 and -k kernel.old asked; the branch's exit 1, nothing asked, the reason said. Nothing in /boot touched, nothing to syslog. Not tested: a real major upgrade. |
+| [1104](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1104) | U11, U12, U13, U14, U15 | update.py, install.sh, uninstall.sh, verify.sh, kernel-follow.sh: an ARMADA appliance's stray octep.ko taken off, an uninstall that leaves nothing armed, verify.sh naming what is installed, a download tried again, and the releases read past the twenty newest | Under Linux: test-update.py (99), test-verify.py, test-kernel-follow.py, test-uninstall.py OK. U13: the branch's verify.sh on the first XGS 3300 and the 136 says the release installed, the last update and the installer's files - on the 136 one of 135 not as written. U15: as if alpha.2 were installed, main's check offered 1 release since it, the branch's 40. U14: on the first XGS 3300 codeload blocked for the first 12 s - the first download failed and the log said 'trying again in 30 s, try 2 of 3', the second took it, the update done in 68 s, no archive or tree left. U11: on the 136 four stand-in octep.ko files taken off by the branch's install.sh in the update. U12 not on an appliance: an uninstall takes the plugin off whole; by test-uninstall.py only. |
 | [os-kernelfollow 10](https://github.com/AbdelmonemAwad/os-kernelfollow/pull/10) | P16 | stop/21-kernelfollow, follow.sh: the fall-back armed first, on its own, and the cut-off said as it is - released in 1.0.3 | Under Linux: test-follow.py (17, new) OK; on main 16 fail. First XGS 3300, follow.sh's lock held 40 s by a stand-in, nothing registered: the installed follow.sh with PINONLY=1 waited for the lock until an outside limit cut it at 15 s, the branch's ended at once (2); the installed stop hook with LIMIT=5 said the next boot takes kernel.old with nothing armed (no nextboot.conf), the branch's said what it found. No fall-back actually armed on an appliance (nothing registered needs one). |
 | [os-watchdog 10](https://github.com/AbdelmonemAwad/os-watchdog/pull/10) | B15 | stop/24-watchdog: the host's watchdog disarmed after the slow stop hooks, not first - released in 1.0.2 | The XGS 136: the branch's 24-watchdog in place of 04-watchdog for one restart, the installed one put back after. The stop order as the console printed it: before, watchdog first of all; with it, after octep and kernelfollow. install.sh and uninstall.sh as they now are not run on an appliance (sh -n passes). |
 
