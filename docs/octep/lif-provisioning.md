@@ -32,9 +32,9 @@ measurement is at the end of this page.
 `bringup.sh` installs a LIF and a port binding for every front port. Twice, in two loops.
 
 For the two SFP cages, at `sc ${S}.rpc.cmd=3; sc ${S}.rpc.post=1`
-(`src/opnsense/scripts/octep/bringup.sh:401`) followed by `cmd=5` on the next line. For the ten
+(`src/opnsense/scripts/octep/bringup.sh:482`) followed by `cmd=5` on the next line. For the ten
 ports behind the switch, the same pair at
-`sc ${S}.rpc.cmd=3; sc ${S}.rpc.post=1` (`src/opnsense/scripts/octep/bringup.sh:459`).
+`sc ${S}.rpc.cmd=3; sc ${S}.rpc.post=1` (`src/opnsense/scripts/octep/bringup.sh:544`).
 
 Command 3 is `LIF_ADD_UPDATE` and command 5 is `PPORT_UPDATE`
 (`contrib/octep/octep.h:2632`, `contrib/octep/octep.h:2859`). The flags are set once before both loops, at
@@ -158,11 +158,11 @@ resolves to an interface; that interface has no LIF behind it. Which is a precis
 Three things are missing, and they compound:
 
 1. **The result is never read.** `bringup.sh` posts and moves on - `rpc.post=1` at
-   `src/opnsense/scripts/octep/bringup.sh:401` and `:459`, with no read of `rpc.last` after either.
+   `src/opnsense/scripts/octep/bringup.sh:482` and `:544`, with no read of `rpc.last` after either.
    Every other far-side call in that script checks its status; these two do not. The script's own
    cage loop says why that matters, at
    `# THE STATUS IS PART OF THE ANSWER. nwa.last is the driver's one last-reply buffer`
-   (`src/opnsense/scripts/octep/bringup.sh:356`) - the same reasoning, applied to NetAgent and not
+   (`src/opnsense/scripts/octep/bringup.sh:431`) - the same reasoning, applied to NetAgent and not
    to RPC.
 2. **There is no read-back.** `LIF_ADD_UPDATE` in `octep` is reachable only from the sysctl path; the
    driver has no LIF programming thread and nothing re-checks the table.
@@ -192,7 +192,7 @@ the worst shape for a thing nobody reads back.
 right and says why: *"The logical interface first, then the tag that resolves to it - the vendor's
 order, from `usfp_netdev_mv.c`, which adds the LIF and only then updates the port tables. Posting
 the tag first leaves a window in which a frame off the wire resolves to an interface that has no
-usable logical interface behind it yet"* (`src/opnsense/scripts/octep/bringup.sh:396`).
+usable logical interface behind it yet"* (`src/opnsense/scripts/octep/bringup.sh:477`).
 
 ### Creating is not idempotent
 
@@ -232,7 +232,7 @@ the receive-filter reconcile already makes in this driver
 
 Not from `bringup.sh`. A shell loop cannot read a reply and branch on it without parsing
 `rpc.last`, and the write gate is deliberately shut at the end of the script, at
-`sc ${S}.rpc.allow_write=0` (`src/opnsense/scripts/octep/bringup.sh:681`) - so a reconciler driven
+`sc ${S}.rpc.allow_write=0` (`src/opnsense/scripts/octep/bringup.sh:766`) - so a reconciler driven
 from outside would need that gate held open for the life of the machine, which defeats it.
 
 That argues for the driver, on its own taskqueue, for the same reason `npuep` put it on a thread:
@@ -265,7 +265,7 @@ destination-MAC check runs; in L2 it does not (`docs/npuep/rpc.md:133`). `octep`
 is that port's hardware filter - which is exactly the failure the cage loop was fixed for on
 2026-10-03: a LIF installed with `rpc.lif_mac` still at zero *"held a logical interface whose
 address was 00:00:00:00:00:00 and matched nothing"*
-(`src/opnsense/scripts/octep/bringup.sh:350`).
+(`src/opnsense/scripts/octep/bringup.sh:425`).
 
 ### And an MTU hazard this page will not assert
 
