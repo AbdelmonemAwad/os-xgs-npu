@@ -123,12 +123,16 @@ else
     onow=$(uname -v)
     if [ -z "${obuilt}" ]; then
         note "no build stamp beside it, so this cannot tell whether it matches"
+    elif [ "${obuilt}" != "${onow}" ] &&
+        [ "${obuilt}" = "$(strings -a /boot/kernel/kernel 2>/dev/null | grep -m1 -E '^FreeBSD [0-9].*stable/[^ ]+')" ]; then
+        # Built for the kernel in /boot, which the next boot uses - read the way kernel-follow.sh reads
+        # it: the follower rebuilt it after an update, and the driver running is the one from before.
+        # Until 2026-11-06 this was a failure of the chain, and said there were no working front ports.
+        ok "octep.ko is built for the kernel the next boot will use; the driver running is from before"
+        printf '        built  : %s\n        running: %s\n' "${obuilt}" "${onow}"
     elif [ "${obuilt}" != "${onow}" ]; then
         bad "octep was built against a different kernel - rebuild: sh contrib/octep/build.sh"
-        printf '        built  : %s
-' "${obuilt}"
-        printf '        running: %s
-' "${onow}"
+        printf '        built  : %s\n        running: %s\n' "${obuilt}" "${onow}"
         if kldstat -q -n octep.ko.prev; then
             note "the driver running is octep.ko.prev, the module kept for this kernel - the bring-up took it instead"
         else

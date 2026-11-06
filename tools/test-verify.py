@@ -32,6 +32,8 @@ STUBS = {
     'sysctl': ('[ "$1" = -n ] && [ "$2" = dev.cpu.0.temperature ] && [ "${FAKE_TEMP}" = 1 ] '
                '&& { echo 46.0C; exit 0; }; exit 1'),
     'php': 'echo amdtemp',
+    # the kernel in /boot read as kernel-follow.sh reads it; the test's stand-in kernel is a text file
+    'strings': 'cat "$2" 2>/dev/null',
     'python3': 'case "$*" in *models.py*) echo "AMDA0215-0003 rev XGS_3300" ;; esac; exit 0',
 }
 
@@ -104,6 +106,25 @@ with tempfile.TemporaryDirectory() as tmp:
 
     rc, out = run(tmp, FAKE_TEMP='0', stamp='FreeBSD 15.1-RELEASE-p4 an older kernel')
     check('both failing: the ports come first', (PORTS_FAIL in out, ELSEWHERE in out), (True, False))
+
+    # After an update the kernel follower built octep.ko for the kernel now in /boot: nothing is broken,
+    # the reboot loads it (until 2026-11-06 this said there were no working front ports).
+    NEXT = 'FreeBSD 15.1-RELEASE-p7 stable/26.7-n284200-0123456789ab SMP'
+    os.makedirs(os.path.join(tmp, 'root', 'boot', 'kernel'), exist_ok=True)
+    with open(os.path.join(tmp, 'root', 'boot', 'kernel', 'kernel'), 'w', encoding='utf-8') as f:
+        f.write('@(#)something else\n' + NEXT + '\nmore\n')
+    rc, out = run(tmp, stamp=NEXT)
+    check('octep built for the next boot\'s kernel: exit 0', rc, 0)
+    check('octep built for the next boot\'s kernel: said so',
+          'ok    octep.ko is built for the kernel the next boot will use' in out, True)
+    check('octep built for the next boot\'s kernel: the ports are not blamed', PORTS_FAIL in out, False)
+    rc, out = run(tmp, stamp='FreeBSD 15.1-RELEASE-p4 an older kernel')
+    check('octep built for neither kernel: still a failure of the chain', (rc, PORTS_FAIL in out), (1, True))
+    with open(os.path.join(tmp, 'root', 'boot', 'kernel', 'kernel'), 'w', encoding='utf-8') as f:
+        f.write(KERNEL + '\n')
+    rc, out = run(tmp)
+    check('the next boot\'s kernel the running one: a healthy 3300 as before',
+          (rc, 'ok    octep matches this kernel' in out), (0, True))
 
 print('%d failure(s)' % failures)
 sys.exit(1 if failures else 0)
