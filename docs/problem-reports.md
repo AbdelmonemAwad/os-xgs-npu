@@ -105,7 +105,10 @@ report says what is known about why:
 - no dump, the message buffer cleared, and a dump device configured: memory was cleared - a loss of
   power or a reset by the hardware; a panic would have written a dump;
 
-and the last twenty lines the system log had before the boot - and, when the message buffer kept the
+and ~~the last twenty lines the system log had before the boot~~ the last twenty lines the system log had
+before the boot from the kernel, the logger, devd, the address clients (dhclient, dhcp6c) and this
+plugin's own programs - other programs' lines carry the names an owner chose, a gateway's or a user's,
+and went into public issues with them (corrected 2026-11-06) - and, when the message buffer kept the
 boot before, what its kernel said last: the trap and panic lines if there are any, and its last ten.
 
 **What the host's chipset recorded** goes in too, since 2026-10-18. The AMD FCH beside the host's
@@ -165,7 +168,10 @@ link-local ones say nothing about anybody and stay~~ loopback, unspecified and l
 an IPv6 link-local address made from a MAC address: it names the hardware as the MAC does, and goes as
 `<ipv6 link-local>` - corrected 2026-10-27, #844), MAC addresses, e-mail addresses, the SMBIOS
 serials and UUID, the coprocessor's serials, the host name and the domain, key blocks, key fingerprints,
-and any long run of hex digits.
+and any long run of hex digits. An address that ends a sentence, or follows a word and a colon, went out
+whole until 2026-11-06 - none of the reports published before was found with one - and a serial the
+kernel or a tool prints as "Serial Number" (a disk's) goes since the same day. The vendor's coprocessor
+build in the appliance table stays, though it reads as an address.
 
 At most five new reports and twenty repeats a day leave one appliance, and the relay holds each
 appliance to twenty and itself to five hundred; the owner's own Send is never refused.
