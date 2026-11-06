@@ -10,7 +10,28 @@ eMMC with what each partition holds - for the Coprocessor tab of XGS: Overview.
     coprocessor.py slots     the same, and open each eMMC partition nothing has mounted - the root
                              slot not running and the first partition - read-only for a moment,
                              for what it holds
-    coprocessor.py show      print what was read last, without asking the coprocessor
+    coprocessor.py show      print what was read last, without asking the coprocessor, and the read
+                             under way if there is one
+    coprocessor.py start collect|slots
+                             what the tab's buttons run, through configd: the read started in the
+                             background, and what was read last printed at once
+
+IN THE BACKGROUND, ONE AT A TIME (since 2026-11-06). Over the coprocessor's console a read takes a
+minute and more - the console is shared one session at a time, and each session logs in - and configd
+answers a page's action for two minutes at most. Until 2026-11-06 the page read in configd's own time,
+and a read of the closed partitions - over the console a session of 60 s and one of 90, each with some
+seven seconds more - came back to it as no reading at all. Now the buttons start the read and are
+answered at once with the last reading and the read under way ("reading": what, and since when), and
+the page asks show again until that is gone. A read holds LOCK for as long as it runs; one asked while
+another runs waits for it, and takes its answer when that answer covers what was asked.
+
+IN SESSIONS OF SESSION SECONDS AT MOST (since 2026-11-06). The watch over the coprocessor (feeder.py)
+has to have its console within URGENT_WAIT, 30 s, once the management link goes silent, and a session
+holds the console its seconds and some seven more at most (npu-run.sh). Until then a read was one
+session of 60 s and the closed partitions one of 90; now each piece of PIECES is a session of its own,
+and so is each closed partition. A session refused the console - another caller's, or kept for the
+watch - is asked again a little later. A piece that does not answer is left out of the reading, not
+guessed: the watchdog's and the memory errors' then read "not read yet", never "not fed".
 
 READ ONLY. Every command here reads: files, /proc, /sys, the flash's own strings. Nothing is
 written to the coprocessor's flash or eMMC, its U-Boot environment above all - which root slot it
@@ -31,6 +52,7 @@ the coprocessor alone.
 Codes, not words, for what the page shows in its own language: a partition's role, where a chip's
 name comes from.
 """
+import fcntl
 import json
 import os
 import re
@@ -51,43 +73,68 @@ STATE = '/var/db/os-xgs-npu/coprocessor.json'
 # the last reading that read the coprocessor, kept when a look cannot (last_good below)
 LAST_GOOD = '/var/db/os-xgs-npu/coprocessor.last-good.json'
 CONSOLE = ('/var/log/xgs/npu-console.log', '/var/log/xgs/npu-console.log.1')
+# A read under way (IN THE BACKGROUND above): LOCK held by it for as long as it runs, and READING
+# saying what it reads and since when - written by start a moment before the read itself has LOCK, and
+# then by the read, with its process.
+LOCK = '/var/run/xgs-coprocessor.lock'
+READING = '/var/run/xgs-coprocessor.reading'
+STARTING = 15			# how long a read started counts as under way before it has LOCK
+DAEMON = '/usr/sbin/daemon'
+# One session on the console (IN SESSIONS above): read for SESSION seconds at most, and waiting up to
+# LOCK_WAIT for the console's lock rather than npu-run.sh's 5 s - a read runs in the background now, and
+# waiting out another caller's session costs it nothing. Refused (BUSY), it is asked again PAUSE seconds
+# on, TRIES times in all; the watch's mark is fresh for a minute at most.
+SESSION = 20
+LOCK_WAIT = 20
+BUSY = 75			# npu-run.sh's exit when the console is another caller's, or kept for the watch
+TRIES = 3
+PAUSE = 15
 
-# One line a fact, each with its key first. Joined with "; " so the console's path, which sends a
-# command as one line, takes it as well as the management link does.
-READ = '; '.join([
-    'echo "sfversion $(cat /etc/sfversion 2>/dev/null)"',
-    'echo "kernel $(uname -r)"',
-    'echo "os $(. /etc/os-release 2>/dev/null; echo $PRETTY_NAME)"',
-    'echo "model $(tr -d "\\000" < /proc/device-tree/model 2>/dev/null)"',
-    'echo "compatible $(tr "\\000" " " < /proc/device-tree/compatible 2>/dev/null)"',
-    'echo "cmdline $(cat /proc/cmdline)"',
-    'echo "cpus $(grep -c ^processor /proc/cpuinfo)"',
-    'echo "memkb $(awk "/MemTotal/ {print \\$2}" /proc/meminfo)"',
-    'sed "s/^/mtd /" /proc/mtd',
-    'grep mmcblk /proc/partitions | sed "s/^/part /"',
-    'grep mmcblk /proc/mounts | sed "s/^/mount /"',
-    'df -k 2>/dev/null | grep -E "mmcblk|^/dev/root" | sed "s/^/df /"',
-    'for d in /sys/block/mmcblk*; do [ -f $d/device/name ] && echo "emmc ${d##*/} $(cat $d/device/name) '
-    '$(cat $d/device/manfid 2>/dev/null) $(cat $d/device/date 2>/dev/null)"; done',
-    'for p in /persistent/*; do [ -e "$p" ] && echo "persist ${p##*/}"; done',
-    'strings /dev/mtd0 2>/dev/null | grep -m1 -E "v[0-9]+\\.[0-9]+\\(release\\)" | sed "s/^/atf /"',
-    # the U-Boot the flash holds, as it names itself - its version carries the SDK it was built from,
-    # which the system copies' kernels carry too (2026-10-29)
-    'strings /dev/mtd0 2>/dev/null | grep -m1 -E "U-Boot 20[0-9][0-9]\\.[0-9][0-9]" | sed "s/^/ubootflash /"',
-    # its own watchdog, the process that keeps it fed, and its memory error counters (discovery 24)
-    'echo "wdt $(dmesg | grep -o -m1 -E "(sbsa-gwdt|orion_wdt|[a-z0-9_-]*wdt)[^:]*: Initiali[sz]ed[^,]*")"',
-    'for p in /proc/[0-9]*; do ls -l $p/fd 2>/dev/null | grep -q /dev/watchdog && '
-    'echo "wdtfeed $(tr "\\000" " " < $p/cmdline)"; done',
-    'n=0; ce=0; ue=0; for f in $(find /sys/devices/system/edac -name ce_count 2>/dev/null); do n=$((n+1)); '
-    'ce=$((ce+$(cat $f))); [ -f ${f%ce_count}ue_count ] && ue=$((ue+$(cat ${f%ce_count}ue_count))); done; '
-    'echo "edac $n $ce $ue"',
+# One line a fact, each with its key first, in pieces of one session each - "end <piece>" its last
+# line, so that a piece cut short is told from one that ran to its end. Joined with "; " so the
+# console's path, which sends a command as one line, takes it as well as the management link does.
+PIECES = (
+    # who the coprocessor is, and its storage: the rest is asked only once this has answered
+    ('identity', '; '.join([
+        'echo "sfversion $(cat /etc/sfversion 2>/dev/null)"',
+        'echo "kernel $(uname -r)"',
+        'echo "os $(. /etc/os-release 2>/dev/null; echo $PRETTY_NAME)"',
+        'echo "model $(tr -d "\\000" < /proc/device-tree/model 2>/dev/null)"',
+        'echo "compatible $(tr "\\000" " " < /proc/device-tree/compatible 2>/dev/null)"',
+        'echo "cmdline $(cat /proc/cmdline)"',
+        'echo "cpus $(grep -c ^processor /proc/cpuinfo)"',
+        'echo "memkb $(awk "/MemTotal/ {print \\$2}" /proc/meminfo)"',
+        'sed "s/^/mtd /" /proc/mtd',
+        'grep mmcblk /proc/partitions | sed "s/^/part /"',
+        'grep mmcblk /proc/mounts | sed "s/^/mount /"',
+        'df -k 2>/dev/null | grep -E "mmcblk|^/dev/root" | sed "s/^/df /"',
+        'for d in /sys/block/mmcblk*; do [ -f $d/device/name ] && echo "emmc ${d##*/} $(cat $d/device/name) '
+        '$(cat $d/device/manfid 2>/dev/null) $(cat $d/device/date 2>/dev/null)"; done',
+        'for p in /persistent/*; do [ -e "$p" ] && echo "persist ${p##*/}"; done',
+    ])),
+    ('flash', '; '.join([
+        'strings /dev/mtd0 2>/dev/null | grep -m1 -E "v[0-9]+\\.[0-9]+\\(release\\)" | sed "s/^/atf /"',
+        # the U-Boot the flash holds, as it names itself - its version carries the SDK it was built
+        # from, which the system copies' kernels carry too (2026-10-29)
+        'strings /dev/mtd0 2>/dev/null | grep -m1 -E "U-Boot 20[0-9][0-9]\\.[0-9][0-9]" | sed "s/^/ubootflash /"',
+    ])),
+    # its own watchdog, the process that keeps it fed, and its memory error counters (discovery 24) -
+    # in one piece, so that a watchdog is never shown without what feeds it
+    ('health', '; '.join([
+        'echo "wdt $(dmesg | grep -o -m1 -E "(sbsa-gwdt|orion_wdt|[a-z0-9_-]*wdt)[^:]*: Initiali[sz]ed[^,]*")"',
+        'for p in /proc/[0-9]*; do ls -l $p/fd 2>/dev/null | grep -q /dev/watchdog && '
+        'echo "wdtfeed $(tr "\\000" " " < $p/cmdline)"; done',
+        'n=0; ce=0; ue=0; for f in $(find /sys/devices/system/edac -name ce_count 2>/dev/null); do n=$((n+1)); '
+        'ce=$((ce+$(cat $f))); [ -f ${f%ce_count}ue_count ] && ue=$((ue+$(cat ${f%ce_count}ue_count))); done; '
+        'echo "edac $n $ce $ue"',
+    ])),
     # the build its fast path carries (2026-10-29): eight hex digits, a plus and a kind in brackets,
     # read out of the running executable of the coprocessor's busiest processes through /proc - the
     # fast path is the busiest by its threads - so no file of the coprocessor's software is named
-    'v=; for p in $(for d in /proc/[0-9]*; do echo "$(ls $d/task 2>/dev/null | wc -l) $d"; done | '
-    'sort -rn | head -3 | cut -d" " -f2); do v=$(grep -a -o -E "[0-9a-f]{8}\\+\\([A-Z]+\\)" $p/exe '
-    '2>/dev/null | head -1); [ -n "$v" ] && break; done; echo "fastpath $v"',
-])
+    ('fastpath', 'v=; for p in $(for d in /proc/[0-9]*; do echo "$(ls $d/task 2>/dev/null | wc -l) $d"; done | '
+     'sort -rn | head -3 | cut -d" " -f2); do v=$(grep -a -o -E "[0-9a-f]{8}\\+\\([A-Z]+\\)" $p/exe '
+     '2>/dev/null | head -1); [ -n "$v" ] && break; done; echo "fastpath $v"'),
+)
 
 # eMMC makers by their JEDEC manufacturer id, the ones these boards carry or might
 MAKERS = {0x02: 'SanDisk', 0x11: 'Kioxia', 0x13: 'Micron', 0x15: 'Samsung', 0x45: 'SanDisk',
@@ -115,6 +162,47 @@ def run(argv, timeout=60):
     except (OSError, subprocess.SubprocessError):
         return ''
     return out.stdout
+
+
+def npu_run(seconds, command):
+    """One session through npu-run.sh: (what it printed, its exit; None when it could not be run). Its
+    timeout is well past the session's own most - the link's try, the wait for the lock and the session -
+    so that it never fires: it would leave npu-run.sh's lockf holding the console."""
+    try:
+        done = subprocess.run(['/bin/sh', NPU_RUN, str(seconds), command], capture_output=True, text=True,
+                              errors='replace', timeout=seconds + LOCK_WAIT + 60, stdin=subprocess.DEVNULL,
+                              env=dict(os.environ, NPU_RUN_WAIT=str(LOCK_WAIT)))
+    except (OSError, subprocess.SubprocessError):
+        return '', None
+    return done.stdout, done.returncode
+
+
+def ask(command, end):
+    """One session of SESSION seconds at most: (what it printed, whether its last line, end, came). The
+    exit says nothing of that over the link - it is the command's own, its last loop's - so the line is
+    looked for. Refused the console (BUSY), it is asked again PAUSE seconds on, TRIES times in all."""
+    for attempt in range(TRIES):
+        out, rc = npu_run(SESSION, '%s; echo "%s"' % (command, end))
+        if rc != BUSY:
+            return out, end in [line.strip() for line in out.splitlines()]
+        if attempt + 1 < TRIES:
+            time.sleep(PAUSE)
+    return '', False
+
+
+def read_pieces():
+    """PIECES, a session each, in order: (the names of those that ran to their end, what they printed).
+    What a piece cut short printed is left out, and nothing more is asked once who the coprocessor is
+    (identity) has not answered."""
+    answered, text = set(), ''
+    for name, command in PIECES:
+        out, done = ask(command, 'end ' + name)
+        if done:
+            answered.add(name)
+            text += out + '\n'
+        elif name == 'identity':
+            break
+    return answered, text
 
 
 def sysctl(name):
@@ -237,24 +325,25 @@ def storage(facts, parts, mounts, df, emmc, persist):
 
 def look_inside(devices):
     """Each partition named, mounted read-only for a moment: its vendor build, its system, how much
-    it holds, its top level. One command for all of them."""
-    steps = ['mkdir -p /tmp/xgs-slot']
-    for p in devices:
-        steps.append(
-            'if mount -t ext4 -o ro,noload /dev/%s /tmp/xgs-slot 2>/dev/null; then '
-            'echo "slot %s sfversion $(cat /tmp/xgs-slot/etc/sfversion 2>/dev/null)"; '
-            'echo "slot %s os $(. /tmp/xgs-slot/etc/os-release 2>/dev/null; echo $PRETTY_NAME)"; '
-            'echo "slot %s usedkb $(du -sk /tmp/xgs-slot 2>/dev/null | cut -f1)"; '
-            'echo "slot %s boot $(ls /tmp/xgs-slot/boot 2>/dev/null | tr "\\n" " ")"; '
-            'echo "slot %s modules $(ls /tmp/xgs-slot/lib/modules 2>/dev/null | tr "\\n" " ")"; '
-            'umount /tmp/xgs-slot; else echo "slot %s unmountable"; fi' % ((p,) * 7))
-    steps.append('rmdir /tmp/xgs-slot')
+    it holds, its top level. A session for each (IN SESSIONS above) - until 2026-11-06 one of 90 s for
+    all of them - each at a mount point of its own, so that a look cut short over the link leaves its
+    own partition mounted there and not under the next one's look."""
     seen = {}
-    for line in run(['/bin/sh', NPU_RUN, '90', '; '.join(steps)], timeout=150).splitlines():
-        w = line.split(' ', 3)
-        if len(w) >= 3 and w[0] == 'slot':
-            entry = seen.setdefault(w[1], {})
-            entry[w[2]] = w[3].strip() if len(w) > 3 else ''
+    for p in devices:
+        at = '/tmp/xgs-slot-' + p
+        command = ('mkdir -p {at}; if mount -t ext4 -o ro,noload /dev/{p} {at} 2>/dev/null; then '
+                   'echo "slot {p} sfversion $(cat {at}/etc/sfversion 2>/dev/null)"; '
+                   'echo "slot {p} os $(. {at}/etc/os-release 2>/dev/null; echo $PRETTY_NAME)"; '
+                   'echo "slot {p} usedkb $(du -sk {at} 2>/dev/null | cut -f1)"; '
+                   'echo "slot {p} boot $(ls {at}/boot 2>/dev/null | tr "\\n" " ")"; '
+                   'echo "slot {p} modules $(ls {at}/lib/modules 2>/dev/null | tr "\\n" " ")"; '
+                   'umount {at}; else echo "slot {p} unmountable"; fi; rmdir {at}').format(at=at, p=p)
+        out, _ = ask(command, 'end ' + p)
+        for line in out.splitlines():
+            w = line.split(' ', 3)
+            if len(w) >= 3 and w[0] == 'slot' and w[1] == p:
+                entry = seen.setdefault(w[1], {})
+                entry[w[2]] = w[3].strip() if len(w) > 3 else ''
     return seen
 
 
@@ -364,9 +453,9 @@ def collect(slots=False):
             assembly = models.this()[0] or ''
         except Exception:
             assembly = ''
-    text = run(['/bin/sh', NPU_RUN, '60', READ], timeout=120)
+    answered, text = read_pieces()
     facts, mtd, parts, mounts, df, emmc, persist = parse(text)
-    if not facts.get('kernel'):
+    if 'identity' not in answered or not facts.get('kernel'):
         answer = {'at': int(time.time()), 'error': 'unread', 'assembly': assembly}
         # a reading from before LAST_GOOD existed is kept there before this one replaces it
         if not os.path.exists(LAST_GOOD) and last_good():
@@ -390,29 +479,32 @@ def collect(slots=False):
                 'firmware': fw,
             },
             'chips': chips(assembly, facts),
-            'health': health(facts),
+            # not read - its session refused or cut short - is None, which the page shows as not read
+            # yet: health() of nothing is a watchdog that nothing feeds
+            'health': health(facts) if 'health' in answered else None,
             'flash': mtd,
             'emmc': disks,
         }
+        inside, closed = {}, []
         if slots:
             closed = [r['partition'] for d in disks for r in d['partitions'] if not r['mounted']]
             inside = look_inside(closed) if closed else {}
-            for d in disks:
-                for r in d['partitions']:
-                    if r['partition'] in inside:
-                        r['inside'] = inside[r['partition']]
+        # what an earlier look inside found stays, for the partitions this one did not look into - a
+        # session each since 2026-11-06, and one of them refused loses nothing that was known of it
+        last = last_good()
+        for d in answer['emmc']:
+            for r in d['partitions']:
+                if r['partition'] in inside:
+                    r['inside'] = inside[r['partition']]
+                    continue
+                for od in last.get('emmc', []):
+                    for orow in od.get('partitions', []):
+                        if orow.get('partition') == r['partition'] and orow.get('inside'):
+                            r['inside'] = orow['inside']
+        if slots and (inside or not closed):
             answer['slots_at'] = int(time.time())
-        else:
-            # what an earlier look inside found stays, for the partitions it was about
-            last = last_good()
-            for d in answer['emmc']:
-                for r in d['partitions']:
-                    for od in last.get('emmc', []):
-                        for orow in od.get('partitions', []):
-                            if orow.get('partition') == r['partition'] and orow.get('inside'):
-                                r['inside'] = orow['inside']
-            if last.get('slots_at'):
-                answer['slots_at'] = last['slots_at']
+        elif last.get('slots_at'):
+            answer['slots_at'] = last['slots_at']
         # after the closed copies' contents are in, from this look or the last
         answer['software']['sdk'] = sdk_match(facts, fw, answer['emmc'])
     write(STATE, answer)
@@ -445,16 +537,109 @@ def last_good():
     return state if state and 'error' not in state else show(LAST_GOOD)
 
 
+def locked():
+    """Whether a read holds LOCK now. Asked with a shared lock, given back at once: a read that comes
+    for LOCK meanwhile waits that moment, and is never refused for it."""
+    try:
+        fd = os.open(LOCK, os.O_RDONLY)
+    except OSError:
+        return False
+    try:
+        fcntl.flock(fd, fcntl.LOCK_SH | fcntl.LOCK_NB)
+    except OSError:
+        return True
+    finally:
+        os.close(fd)
+    return False
+
+
+def under_way():
+    """The read under way, {'what': collect or slots, 'since': when it began}, or None: one that holds
+    LOCK, or one started less than STARTING seconds ago that has not taken it yet. A read that died
+    holds no lock, and its READING is soon too old to count."""
+    mark = show(READING)
+    mark = mark if isinstance(mark, dict) else {}
+    since = mark.get('since') if isinstance(mark.get('since'), int) else None
+    if locked() or (since is not None and 0 <= time.time() - since < STARTING):
+        return {'what': mark.get('what') if mark.get('what') in ('collect', 'slots') else 'collect',
+                'since': since}
+    return None
+
+
+def shown():
+    """What show prints: what was read last, and as "reading" the read under way, if there is one."""
+    out = show()
+    now = under_way()
+    if now:
+        out['reading'] = now
+    return out
+
+
+def read(what):
+    """collect or slots, one at a time (LOCK, held for as long as it runs). One asked while another runs
+    waits for it, and takes its answer when that came after this was asked and covers what was asked -
+    a read of the closed partitions covers a plain read, not the other way round."""
+    asked = int(time.time())
+    try:
+        fd = os.open(LOCK, os.O_RDWR | os.O_CREAT, 0o644)
+    except OSError:
+        fd = None		# no lock to be had: read as before 2026-11-06 rather than not at all
+    try:
+        waited = False
+        if fd is not None:
+            try:
+                fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except OSError:
+                fcntl.flock(fd, fcntl.LOCK_EX)
+                waited = True
+        if waited:
+            last = show()
+            if 'error' not in last and (last.get('at') or 0) >= asked and \
+                    (what == 'collect' or (last.get('slots_at') or 0) >= asked):
+                return last
+        try:
+            write(READING, {'what': what, 'since': int(time.time()), 'pid': os.getpid()})
+        except OSError:
+            pass
+        try:
+            return collect(slots=(what == 'slots'))
+        finally:
+            try:
+                os.unlink(READING)
+            except OSError:
+                pass
+    finally:
+        if fd is not None:
+            os.close(fd)
+
+
+def start(what):
+    """The tab's buttons, through configd ([coprocessor.collect], [coprocessor.slots]): the read started
+    in the background as its own process - detached by daemon(8), as plugins.py starts an update - unless
+    one is under way, and what was read last answered at once, with the read under way."""
+    if under_way() is None:
+        try:
+            write(READING, {'what': what, 'since': int(time.time())})
+            subprocess.Popen([DAEMON, '-f', sys.executable, os.path.abspath(__file__), what],
+                             stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        except OSError:
+            try:
+                os.unlink(READING)
+            except OSError:
+                pass
+    return shown()
+
+
 def main(argv):
     what = argv[1] if len(argv) > 1 else 'show'
-    if what == 'collect':
-        print(json.dumps(collect()))
-    elif what == 'slots':
-        print(json.dumps(collect(slots=True)))
+    if what in ('collect', 'slots'):
+        print(json.dumps(read(what)))
+    elif what == 'start' and len(argv) > 2 and argv[2] in ('collect', 'slots'):
+        print(json.dumps(start(argv[2])))
     elif what == 'show':
-        print(json.dumps(show()))
+        print(json.dumps(shown()))
     else:
-        print(json.dumps({'error': 'usage: coprocessor.py collect|slots|show'}))
+        print(json.dumps({'error': 'usage: coprocessor.py collect|slots|show|start collect|slots'}))
         return 1
     return 0
 

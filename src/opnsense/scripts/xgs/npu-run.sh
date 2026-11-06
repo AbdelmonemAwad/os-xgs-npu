@@ -13,8 +13,10 @@
 # 2026-10-23. Otherwise its root console on /dev/cuau2: logged in only if the console asks,
 # the command sent between two markers that are each written in two quoted halves (the console
 # echoes the command line, and the echo must not match), the output cut out between them, logged out
-# again if this logged in. <seconds> is how long the console is read for, so it has to cover the
-# command: a command that has to outlast it is started in the background on the coprocessor.
+# again if this logged in. <seconds> is how long the console is read for at most, so it has to cover the
+# command: a command that has to outlast it is started in the background on the coprocessor. The session
+# ends once the end marker has come (since 2026-11-06), and holds the console no longer than its command
+# takes and some seven seconds - <seconds> and those seven when the marker does not come.
 #
 # ONE AT A TIME on the console. A second caller waits for the first, up to a few seconds
 # (NPU_RUN_WAIT, 5), and then gives up with exit 75; the start hook's switch-jumbo.sh, which reads the
@@ -214,8 +216,24 @@ if clean | grep -q 'login:'; then
 	in=1
 fi
 printf 'echo "---NPU""BEGIN---"; %s; echo "---NPU""END---"\r' "${CMD}" > "${DEV}"
-sleep "${SECS}"
+# Read for <seconds> at most, and no longer than it takes the end marker to come. Until 2026-11-06 the
+# whole <seconds> were slept however soon the command answered, and the reader waited for after them: every
+# session held the console its seconds and some seven more, and coprocessor.py's 60 and 90 held it
+# longer than the watch over the coprocessor waits for a session under way (feeder.py's URGENT_WAIT,
+# 30 s). A command that does not answer is read as long as before - the logout typed at <seconds>, and
+# the reader read to its own end - so that nothing typed comes later than it did, to a coprocessor that
+# may be restarting into its boot firmware by then (recover.sh's reboot).
+t=0
+while [ ${t} -lt ${SECS} ] && ! clean | grep -q '^---NPUEND---'; do
+	sleep 1
+	t=$((t + 1))
+done
 [ ${in} = 1 ] && printf 'exit\r' > "${DEV}"
+if clean | grep -q '^---NPUEND---'; then
+	# answered: a second for the logout's own lines if this logged in, and the reader stopped
+	[ ${in} = 1 ] && sleep 1
+	kill ${rd} 2> /dev/null
+fi
 wait
 OUT=$(clean | awk '/^---NPUBEGIN---/ {on=1; seen=1; next} /^---NPUEND---/ {on=0; done=1} on; END {exit !done}')
 rc=$?

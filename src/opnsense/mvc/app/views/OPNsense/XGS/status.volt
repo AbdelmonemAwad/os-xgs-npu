@@ -721,17 +721,26 @@
                 (d.slots_at ? ' - ' + "{{ lang._('closed partitions read') }}" + ' ' + new Date(d.slots_at * 1000).toLocaleString() : ''));
         }
 
-        function copro_read(what) {
-            const $b = $('#coproReadAct, #coproSlotsAct');
-            $b.prop('disabled', true);
-            ajaxCall('/api/xgs/status/coprocessor', {'read': what}, function (d) {
-                $b.prop('disabled', false);
-                copro(d);
-            });
-        }
-        ajaxGet('/api/xgs/status/coprocessor', {}, function (d) {
+        /* The read itself runs in the background since 2026-11-06 - over the coprocessor's console it
+           takes longer than configd answers for, and the tab was told nothing could be read - and every
+           answer is the last reading, with "reading" while one is under way: the buttons stay off, the
+           refresh icon turns, and the tab asks again every three seconds until the read is done. */
+        let copro_next = null;
+        function copro_follow(d) {
             copro(d);
-        });
+            const busy = !!(d && d.reading);
+            $('#coproReadAct, #coproSlotsAct').prop('disabled', busy);
+            $('#coproReadAct i').toggleClass('fa-spin', busy);
+            clearTimeout(copro_next);
+            copro_next = busy ? setTimeout(function () {
+                ajaxGet('/api/xgs/status/coprocessor', {}, copro_follow);
+            }, 3000) : null;
+        }
+        function copro_read(what) {
+            $('#coproReadAct, #coproSlotsAct').prop('disabled', true);
+            ajaxCall('/api/xgs/status/coprocessor', {'read': what}, copro_follow);
+        }
+        ajaxGet('/api/xgs/status/coprocessor', {}, copro_follow);
         $('#coproReadAct').on('click', function () { copro_read('collect'); });
         $('#coproSlotsAct').on('click', function () { copro_read('slots'); });
 

@@ -659,8 +659,13 @@
             $('#plugins-count').text(offered ? String(offered) : '');
             $('#pluginsUpdateAllAct').prop('disabled', !offered || queueRunning)
                 .find('.xgs-count').text(offered ? ' (' + offered + ')' : '');
-            $('#plugins-checked').text(d && d.checked_at ? "{{ lang._('Last checked') }}" + ' ' + whenAt(d.checked_at) : '');
-            return busy;
+            /* A check runs in the background since 2026-11-06, and the list says while it does: the
+               button stays off and the list is read again until the check is done. */
+            const checking = !!(d && d.checking);
+            $('#pluginsCheckAct').prop('disabled', checking);
+            $('#plugins-checked').text(checking ? "{{ lang._('Checking for updates...') }}" :
+                (d && d.checked_at ? "{{ lang._('Last checked') }}" + ' ' + whenAt(d.checked_at) : ''));
+            return busy || checking;
         }
 
         /*
@@ -713,13 +718,12 @@
         }
         pluginsLoad();
 
+        /* Answered at once since 2026-11-06, the check running on: the list is followed, and it says
+           when the button is back. */
         $('#pluginsCheckAct').click(function () {
-            const $b = $(this).prop('disabled', true);
+            $(this).prop('disabled', true);
             $('#plugins-checked').text("{{ lang._('Checking for updates...') }}");
-            ajaxCall('/api/xgs/updates/pluginsCheck', {}, function () {
-                $b.prop('disabled', false);
-                pluginsLoad();
-            });
+            ajaxCall('/api/xgs/updates/pluginsCheck', {}, pluginsFollow);
         });
 
         $(document).on('click', '.xgs-plugin-update', function () {

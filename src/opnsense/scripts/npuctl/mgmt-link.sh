@@ -149,7 +149,8 @@ coprocessor)
 		/sbin/ifconfig "${LINK}" up 2>/dev/null || true
 	fi
 	# Told, then asked over the link; told again while it does not answer there, for about START_WAIT
-	# seconds - a round is a tell (npu-run.sh reading 5 s: about 12 s), two echoes and a wait of 15 s,
+	# seconds - a round is a tell (npu-run.sh reading 5 s at most: about 12 s until 2026-11-06, as long
+	# as the command and the login around it since), two echoes and a wait of 15 s,
 	# counted rather than timed. A tell that went through is asked after 3 s, and the rest of the 15
 	# waited only if the link is still silent: waited whole, it put the link's first answer 9 s later
 	# on the first XGS 3300 and 21 s later on the XGS 136 (2026-11-04). Told once and left, a link
