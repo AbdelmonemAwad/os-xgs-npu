@@ -246,6 +246,13 @@ jobs:
           command -v php > /dev/null || sudo apt-get install -y --no-install-recommends php-cli > /dev/null
           python3 tools/test-firewall-hook.py
 
+      # "Never offloaded" as scripts/xgs/flow_exclude.php reads it: a list longer than the 64 entries
+      # the drivers keep is everything kept with the host, not refused. tools/test-flow-exclude.py.
+      - name: Never offloaded past the driver's 64
+        run: |
+          command -v php > /dev/null || sudo apt-get install -y --no-install-recommends php-cli > /dev/null
+          python3 tools/test-flow-exclude.py
+
       # Every model as the README and the site's home page show it, written from models.py.
       - name: The device tables are current
         run: python3 tools/devices-table.py --check
