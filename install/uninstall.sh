@@ -162,7 +162,7 @@ rm -rf /var/db/os-xgs-npu/update
 # The problem reporter: the script, its hooks, its place in OPNsense's status, and its queue. Its
 # cron entry goes when the crontab is next written without xgs.inc, below.
 rm -f "${PREFIX}/opnsense/scripts/xgs/reporter.py" "${PREFIX}/etc/rc.syshook.d/start/65-xgs-report" \
-    "${PREFIX}/etc/rc.syshook.d/stop/90-xgs-report" \
+    "${PREFIX}/etc/rc.syshook.d/stop/90-xgs-report" "${PREFIX}/etc/rc.syshook.d/early/05-xgs-report" \
     "${PREFIX}/opnsense/mvc/app/library/OPNsense/System/Status/XGSReporterStatus.php"
 rm -rf /var/db/os-xgs-npu/reports
 rm -f "${PREFIX}/opnsense/scripts/xgs/reset_reason.py" "${PREFIX}/etc/rc.syshook.d/start/06-xgs-reset-reason" \

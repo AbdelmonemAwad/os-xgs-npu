@@ -1,0 +1,25 @@
+#!/bin/sh
+#-
+# SPDX-License-Identifier: BSD-2-Clause
+# Copyright (c) 2026 Abdelmonem Awad <eg2@live.com>
+#
+# This boot written down for the problem reporter as it begins: after OPNsense's 05-upgrade, which may
+# reboot from here, and before anything of this plugin's runs - the coprocessor's reset (06-npuctl),
+# its driver's load (07-npuep, 08-octep) - and before rc.bootup configures the rest.
+#
+# The reporter's own look is the start hook 65-xgs-report, much later, and until 2026-11-06 it was the
+# first to write a boot down (boots.json). A boot that went before it - a panic in a driver's load, a
+# hang ended by a watchdog - was never one: at the next boot the end of the boot before it was judged
+# instead, with this boot's evidence, and found orderly, and the crash went unreported (the review's
+# P18). The reporter takes this record away when its look runs (scripts/xgs/reporter.py, from_reset),
+# so one still here at the next boot is a boot that never got that far: it is kept beside the others
+# like it for the next look to judge, each between its own start and the next one's.
+
+D=/var/db/os-xgs-npu/reports
+/bin/mkdir -p "${D}" 2> /dev/null
+if [ -s "${D}/boot-started" ]; then
+	/bin/cat "${D}/boot-started" >> "${D}/boots-unreported" 2> /dev/null
+fi
+/sbin/sysctl -n kern.boottime 2> /dev/null | /usr/bin/sed -n 's/^{ sec = \([0-9]*\),.*/\1/p' \
+    > "${D}/boot-started" 2> /dev/null
+exit 0

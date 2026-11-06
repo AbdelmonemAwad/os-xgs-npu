@@ -3,12 +3,15 @@
 # SPDX-License-Identifier: BSD-2-Clause
 # Copyright (c) 2026 Abdelmonem Awad <eg2@live.com>
 #
-"""The order of the shutdown's hooks, and four small hooks' gates, away from the appliance.
+"""The order of the shutdown's hooks, and five small hooks' gates, away from the appliance.
 
   - stop: both watchdogs - the coprocessor's watch (feeder.py) and the host's timer (watchdog.sh) -
     stopped after the kernel follower's rebuild, the longest stop hook, and before 80-freebsd takes the
     network; until 2026-11-06 they were stopped first, and the rebuild ran with neither. And an install
     takes away their hooks by the old names, which would stop them first still.
+  - early/05-xgs-report: each boot written down as it begins, after OPNsense's 05-upgrade and before
+    the coprocessor's reset and its driver's load, and one whose look at boot never ran kept for the
+    reporter's next (the review of 2026-11-06, P18).
   - 65-xgs-report: the reset's record moved to the boot's time as it reads now (reset_reason.py
     follow) before the reporter is started.
   - 71-xgs-npu-clock: five minutes of tries that all failed said once, at their end.
@@ -61,6 +64,18 @@ class StopOrder(unittest.TestCase):
             self.assertNotIn('src/etc/rc.syshook.d/stop/%s"' % old, text)
 
 
+class EarlyOrder(unittest.TestCase):
+
+    def test_the_boot_is_written_down_before_the_coprocessor_and_its_driver(self):
+        """The problem reporter's record of the boot (P18 of the review of 2026-11-06) before the
+        coprocessor's reset and its driver's load, and after OPNsense's 05-upgrade, which may reboot."""
+        names = sorted(os.listdir(os.path.join(HOOKS, 'early')) + ['05-upgrade'])
+        self.assertIn('05-xgs-report', names)
+        for later in ('06-npuctl', '07-npuep', '08-octep'):
+            self.assertLess(names.index('05-xgs-report'), names.index(later))
+        self.assertGreater(names.index('05-xgs-report'), names.index('05-upgrade'))
+
+
 @unittest.skipUnless(POSIX, 'the hooks run under /bin/sh')
 class Hooks(unittest.TestCase):
 
@@ -99,6 +114,39 @@ class Hooks(unittest.TestCase):
             if wait_for is None or any(c.startswith(wait_for) for c in calls) or time.time() > deadline:
                 return calls
             time.sleep(0.1)
+
+    def test_the_early_report_hook_keeps_a_boot_no_look_took_away(self):
+        """05-xgs-report: each boot's start written down, and one still there at the next boot - its
+        look, which takes it away, never ran - kept beside the others like it for the reporter."""
+        state = os.path.join(self.dir, 'reports')
+        clock = os.path.join(self.dir, 'clock')
+
+        def boot(when):
+            with open(clock, 'w') as f:
+                f.write('%d\n' % when)
+            self.hook('early', '05-xgs-report', {
+                '/var/db/os-xgs-npu/reports': state,
+                '/sbin/sysctl': self.stub('sysctl', 'echo "{ sec = $(cat %s), usec = 0 } Sat Oct 17 '
+                                                    '08:52:00 2026"' % clock)})
+
+        def read(name):
+            try:
+                with open(os.path.join(state, name)) as f:
+                    return f.read().split()
+            except FileNotFoundError:
+                return None
+
+        boot(1000)
+        self.assertEqual((read('boot-started'), read('boots-unreported')), (['1000'], None))
+        boot(2000)						# the boot of 1000 went before its look
+        self.assertEqual((read('boot-started'), read('boots-unreported')), (['2000'], ['1000']))
+        os.unlink(os.path.join(state, 'boot-started'))	# the look of 2000 ran, and took its record
+        os.unlink(os.path.join(state, 'boots-unreported'))
+        boot(3000)
+        self.assertEqual((read('boot-started'), read('boots-unreported')), (['3000'], None))
+        boot(4000)
+        boot(5000)
+        self.assertEqual((read('boot-started'), read('boots-unreported')), (['5000'], ['3000', '4000']))
 
     def test_the_report_hook_moves_the_reset_record_first(self):
         self.hook('start', '65-xgs-report', {

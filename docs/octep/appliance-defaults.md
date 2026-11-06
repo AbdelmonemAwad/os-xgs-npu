@@ -156,7 +156,15 @@ hang, its host never frozen~~. Until 2026-10-26 an OCTEON TX appliance with IPse
 coprocessor got that restart: the module cannot be unloaded once the kernel's ESP transform points
 into it. Now its device is detached and attached again with the module loaded, and both XGS 3300s were
 taken up in place with their tunnels on the coprocessor
-([photographed](../measurements/coprocessor-recovery-2026-10-26.md#with-ipsec-associations-on-an-octeon-tx-coprocessor)). "Say so, and nothing more", ~~the default,~~ leaves the driver's lines in
+([photographed](../measurements/coprocessor-recovery-2026-10-26.md#with-ipsec-associations-on-an-octeon-tx-coprocessor)).
+That detach, which the driver can refuse with "try again" - an IPsec association being put on the
+coprocessor, a ring still being serviced - is asked again since 2026-11-06, six times five seconds
+apart, where its first refusal restarted the appliance. And since then OPNsense's reload
+counts on both families: one that did not run to its end - PHP stopping in it - is a recovery not done,
+and the appliance is restarted, where until then the heartbeat alone said the recovery was done. Both
+were found in a review of the code. A refused detach asked again and a reload that stops are tested
+with stand-ins (`tools/test-recover.py`); on an appliance, a recovery whose reload ran to its end -
+the first XGS 3300, 2026-11-06, its fast path stopped on purpose and taken up again in 279 s. "Say so, and nothing more", ~~the default,~~ leaves the driver's lines in
 the system log and a problem report (`fast-path-stopped`). "Restart the appliance after 2, 5 or 10
 minutes" has `scripts/xgs/fastpath.py`, run every minute, restart it cleanly once the fast path has
 gone that long without an answer - the problem report collected first, ~~so it goes out with the boot

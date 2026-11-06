@@ -53,7 +53,10 @@
 # WHAT IT WILL NOT DO. It never replaces a working module with one that failed to build, and it never
 # stamps a module it did not just compile. If anything fails it leaves what is installed exactly
 # where it was and says so loudly, because an appliance that still has its ports and a warning in the
-# log is better than one that has neither.
+# log is better than one that has neither. The one step that cannot be taken back is the new module's
+# move into place: if its stamp then cannot follow it, the module is left under a stamp that matches
+# no kernel, which the bring-up refuses, and not under the old one's (see "install, keeping the old
+# one").
 #
 # AND IT KEEPS THE PREVIOUS MODULE. The new module is stamped for the kernel on disk, which is not
 # the kernel that is running while this script runs. If the host ends up booting the old kernel again
@@ -612,8 +615,16 @@ log "built $(/usr/bin/stat -f%z "${BUILDROOT}/${DRIVER}.ko") bytes from ${NSRC} 
 #
 # A rebuild for the SAME kernel (FORCE=1, which install.sh uses) must leave .prev alone. Copying the
 # current module over it there would replace the only module for an older kernel - /boot/kernel.old
-# is one boot-menu choice away - with a second copy of the module for this one.
-if [ -n "${STAMP}" ] && [ "${STAMP}" != "${TARGET}" ] && [ -f "${MODULE}" ]; then
+# is one boot-menu choice away - with a second copy of the module for this one. Nor is a module
+# stamped VOID (below) kept: its stamp names no kernel, and .prev made of it would replace the module
+# kept for the old kernel with one no boot loads.
+#
+# Its old stamp goes first: .prev without one is never loaded - the bring-up takes it only where its
+# stamp is the kernel booted - while a copy that failed part-way under the stamp of the module it was
+# replacing would be loaded on that one's kernel (the review's P15, below).
+VOID="none: kernel-follow.sh was moving a module into place"
+if [ -n "${STAMP}" ] && [ "${STAMP}" != "${TARGET}" ] && [ "${STAMP}" != "${VOID}" ] && [ -f "${MODULE}" ]; then
+	/bin/rm -f "${MODULE}.prev.kernel"
 	/bin/cp -p "${MODULE}" "${MODULE}.prev" 2>/dev/null &&
 	    printf '%s\n' "${STAMP}" > "${MODULE}.prev.kernel" &&
 	    log "kept the previous module as ${MODULE}.prev, stamped ${STAMP}"
@@ -626,9 +637,47 @@ if ! /bin/cp "${BUILDROOT}/${DRIVER}.ko" "${MODULE}.new"; then
 	warn "could not write ${MODULE}.new; ${MODULE} is untouched"
 	exit 1
 fi
-printf '%s\n' "${TARGET}" > "${MODULE}.kernel.new"
-/bin/mv "${MODULE}.new" "${MODULE}"
-/bin/mv "${MODULE}.kernel.new" "${MODULE}.kernel"
+# AND NO MODULE IN PLACE UNDER ANOTHER KERNEL'S STAMP. The module and its stamp are two files, and no
+# rename moves two. Until 2026-11-06 the module was moved and then its stamp, neither step checked: a
+# failure between the two - or the stop hook's time limit - left the new module stamped for the kernel
+# running now, which the bring-up loads on that kernel, the silent wrong-offset load the stamp is
+# there to prevent; and a stamp that went in without its module was the same the other way (the
+# review's P15). So the new stamp is written and read back first. Then, where the module in place is
+# built for another kernel, its stamp becomes VOID, which matches no kernel: the bring-up refuses it,
+# and loads .prev where that is built for the kernel booted. Only then does the module move, and its
+# own stamp last. Each step is checked, and one that fails puts back what it can and says what is left.
+# Where the module in place is already built for this kernel, or there is none, the stamp held through
+# the move is this kernel's own, and nothing in between is refused.
+HOLD=${TARGET}
+if [ -f "${MODULE}" ] && [ "${STAMP}" != "${TARGET}" ]; then
+	HOLD=${VOID}
+fi
+printf '%s\n' "${TARGET}" > "${MODULE}.kernel.new" 2>/dev/null
+if [ "$(/bin/cat "${MODULE}.kernel.new" 2>/dev/null)" != "${TARGET}" ] ||
+    ! { printf '%s\n' "${HOLD}" > "${MODULE}.kernel.hold" && /bin/mv "${MODULE}.kernel.hold" "${MODULE}.kernel"; } 2>/dev/null; then
+	/bin/rm -f "${MODULE}.new" "${MODULE}.kernel.new" "${MODULE}.kernel.hold"
+	warn "could not write the stamp of the new module; ${MODULE} is untouched"
+	exit 1
+fi
+if ! /bin/mv "${MODULE}.new" "${MODULE}"; then
+	/bin/rm -f "${MODULE}.new" "${MODULE}.kernel.new"
+	if [ -z "${STAMP}" ]; then
+		/bin/rm -f "${MODULE}.kernel"
+	elif ! { printf '%s\n' "${STAMP}" > "${MODULE}.kernel.hold" && /bin/mv "${MODULE}.kernel.hold" "${MODULE}.kernel"; } 2>/dev/null; then
+		warn "could not move ${MODULE}.new into place, nor put back the stamp of the module that is there: it is stamped for no kernel now, so the bring-up refuses it and loads ${MODULE}.prev where that is built for the kernel booted"
+		exit 1
+	fi
+	warn "could not move ${MODULE}.new into place; ${MODULE} is untouched and still matches ${STAMP:-<nothing>}"
+	exit 1
+fi
+if ! /bin/mv "${MODULE}.kernel.new" "${MODULE}.kernel"; then
+	if [ "${HOLD}" = "${TARGET}" ]; then
+		/bin/rm -f "${MODULE}.kernel.new"
+	else
+		warn "${MODULE} is the module built for ${TARGET}, and its stamp could not be put beside it: it is stamped for no kernel, so the bring-up refuses it and loads ${MODULE}.prev where that is built for the kernel booted"
+		exit 1
+	fi
+fi
 /bin/chmod 0555 "${MODULE}" 2>/dev/null || true
 /bin/chmod 0444 "${MODULE}.kernel" 2>/dev/null || true
 

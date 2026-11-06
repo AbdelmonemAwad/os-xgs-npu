@@ -17,6 +17,7 @@ import json
 import os
 import re
 import shutil
+import subprocess
 import sys
 import tempfile
 import time
@@ -1054,6 +1055,144 @@ class ReporterTest(unittest.TestCase):
         self.assertNotIn(self.reporter.iso(BOOT - 3600), reset[0]['summary'])
         self.assertTrue(any('the second boot ends' in line for line in reset[0]['evidence']))
         self.assertFalse(any('the first boot ends' in line for line in reset[0]['evidence']))
+
+    # ------------------------------------------- a boot that went before its look, and a shutdown's end
+
+    def started(self, *boots):
+        """Boots the early hook 05-xgs-report wrote down that no look took away: they went before the
+        start hook ran the reporter."""
+        os.makedirs(self.state, exist_ok=True)
+        with open(os.path.join(self.state, 'boots-unreported'), 'w') as handle:
+            handle.write(''.join('%d\n' % b for b in boots))
+
+    def shut_down(self, when):
+        """The stop hook's record of a shutdown begun in order."""
+        os.makedirs(self.state, exist_ok=True)
+        with open(os.path.join(self.state, 'clean-shutdown'), 'w') as handle:
+            handle.write('%d\n' % when)
+
+    def resets(self):
+        return [e for e in self.reporter.entries().values() if e['kind'] == 'unexpected-reset']
+
+    def test_a_boot_that_went_before_its_look_is_the_one_reported(self):
+        # #1072, P18 (2026-11-06): no boot was written down before the start hook ran the reporter, so a
+        # boot that went in its driver's load was none - the boot before it was judged instead, found to
+        # have shut down in order, and the crash went unreported.
+        self.reporter.save('boots.json', {'last_boot': BOOT - 7200})
+        self.shut_down(BOOT - 3700)		# the boot looked at last, shut down in order
+        self.started(BOOT - 3600)		# the one after it, gone before its look
+        self.reporter.collect(at_boot=True)
+        reset = self.resets()
+        self.assertEqual(len(reset), 1)
+        self.assertIn('The boot that started at %s ended without an orderly shutdown'
+                      % self.reporter.iso(BOOT - 3600), reset[0]['summary'])
+        self.assertNotIn(self.reporter.iso(BOOT - 7200), reset[0]['summary'])
+        # every record taken away, so the next boot judges none of them again
+        for name in ('boots-unreported', 'boot-started', 'clean-shutdown'):
+            self.assertFalse(os.path.exists(os.path.join(self.state, name)), name)
+        self.assertEqual(self.reporter.load('boots.json', {})['last_boot'], BOOT)
+
+    def test_each_boot_since_the_last_look_is_judged_up_to_the_next_ones_start(self):
+        stamp = lambda t: time.strftime('%Y-%m-%dT%H:%M:%S+00:00', time.gmtime(t))
+        self.reporter.save('boots.json', {'last_boot': BOOT - 7200})
+        self.started(BOOT - 3600, BOOT - 1800)
+        self.write(self.log, ''.join([
+            self.line(13, 'kernel', 'the boot looked at last ends', stamp(BOOT - 3700)),
+            self.line(13, 'kernel', 'the first boot gone before its look ends', stamp(BOOT - 1900)),
+            self.line(13, 'kernel', 'the second ends', stamp(BOOT - 100))]), 'a')
+        problems = self.reporter.from_reset()
+        self.assertEqual([p['signature'] for p in problems],
+                         ['unexpected reset unread', 'unexpected reset unread', 'unexpected reset cold'])
+        for problem, started, said in zip(problems, (BOOT - 7200, BOOT - 3600, BOOT - 1800),
+                                          ('the boot looked at last ends', 'the first boot gone before its look ends',
+                                           'the second ends')):
+            self.assertIn('The boot that started at %s ended' % self.reporter.iso(started), problem['summary'])
+            self.assertEqual([line.split(': ', 1)[1] for line in problem['evidence'] if line.split(' ')[1] == 'kernel:'],
+                             [said], problem['evidence'])
+
+    def test_a_boot_gone_before_its_look_by_an_orderly_shutdown_is_not_reported(self):
+        # its owner shut it down while it booted; and the boot before it was ended by reboot(8), whose
+        # record the stop hook's, written again since, no longer is
+        self.reporter.save('boots.json', {'last_boot': BOOT - 7200})
+        self.machine.last = self.shutdown_record(BOOT - 3650)
+        self.shut_down(BOOT - 100)
+        self.started(BOOT - 3600)
+        self.assertEqual(self.reporter.from_reset(), [])
+
+    def test_a_shutdown_that_panicked_after_its_hooks_is_reported(self):
+        # #1072, P13 (2026-11-06): the stop hook writes its record as a shutdown begins, and the kernel's
+        # own part - its sync, the drivers' shutdown methods - comes after it; a panic there read as an
+        # orderly end, though the message buffer the restart kept held it.
+        self.reporter.save('boots.json', {'last_boot': BOOT - 3600})
+        self.shut_down(BOOT - 60)
+        self.machine.dmesg = ('---<<BOOT>>---\nCopyright (c) 1992-2025 The FreeBSD Project.\n'
+                              'Syncing disks, vnodes remaining... 0 done\n'
+                              'All buffers synced.\n'
+                              'Fatal trap 12: page fault while in kernel mode\n'
+                              'current process\t\t= 1 (init)\n'
+                              'panic: page fault\n'
+                              '---<<BOOT>>---\nCopyright (c) 1992-2025 The FreeBSD Project.\n')
+        self.reporter.collect(at_boot=True)
+        reset = self.resets()
+        self.assertEqual(len(reset), 1)
+        self.assertEqual(reset[0]['title'], 'the appliance panicked while it shut down')
+        self.assertIn('began an orderly shutdown and did not finish it', reset[0]['summary'])
+        self.assertIn('kernel: panic: page fault', reset[0]['evidence'])
+        self.assertEqual(reset[0]['id'], self.reporter.fingerprint(
+            'os-xgs-npu', 'unexpected-reset', 'unexpected reset panic in shutdown'))
+
+    def test_a_shutdown_that_finished_is_not_reported_from_its_message_buffer(self):
+        # the boot before as a support bundle's dmesg.txt keeps one that ended in order: its sync and its
+        # uptime, then the next boot
+        self.reporter.save('boots.json', {'last_boot': BOOT - 3600})
+        self.shut_down(BOOT - 60)
+        self.machine.dmesg = ('---<<BOOT>>---\nCopyright (c) 1992-2025 The FreeBSD Project.\n'
+                              '[2049] Syncing disks, vnodes remaining... 0 done\n'
+                              '[2050] All buffers synced.\n'
+                              '[2051] Uptime: 34m11s\n'
+                              '---<<BOOT>>---\nCopyright (c) 1992-2025 The FreeBSD Project.\n')
+        self.assertEqual(self.reporter.from_reset(), [])
+
+    @unittest.skipUnless(os.path.exists('/bin/sh') and sys.platform != 'win32', 'the hooks run under /bin/sh')
+    def test_the_hooks_and_the_look_across_a_boot_that_went(self):
+        """The early hook and the stop hook themselves, in copies that write into this test's state, and
+        the look at boot: a boot that went in its driver's load is the one reported at the next."""
+        hooks = os.path.join(HERE, '..', 'src', 'etc', 'rc.syshook.d')
+        clock = os.path.join(self.tmp, 'clock')
+
+        def hook(level, name):
+            with open(os.path.join(hooks, level, name), encoding='utf-8') as f:
+                text = f.read().replace('/var/db/os-xgs-npu/reports', self.state)
+            for real, stand_in in (('/sbin/sysctl', 'echo "{ sec = $(cat %s), usec = 0 } Sat Oct 17 08:52:00 2026"'),
+                                   ('/bin/date', 'cat %s')):
+                path = os.path.join(self.tmp, os.path.basename(real))
+                with open(path, 'w', newline='\n') as f:
+                    f.write('#!/bin/sh\n' + stand_in % clock + '\n')
+                os.chmod(path, 0o755)
+                text = text.replace(real, path)
+            path = os.path.join(self.tmp, name)
+            with open(path, 'w', encoding='utf-8', newline='\n') as f:
+                f.write(text)
+            self.assertEqual(subprocess.run(['/bin/sh', path], timeout=30).returncode, 0)
+
+        def at(when):
+            with open(clock, 'w') as f:
+                f.write('%d\n' % when)
+
+        for boot, gone in ((BOOT - 7200, False), (BOOT - 3600, True), (BOOT, False)):
+            at(boot)
+            hook('early', '05-xgs-report')
+            if gone:
+                continue			# it went in its driver's load, before its look
+            self.machine.boot = boot
+            self.reporter.collect(at_boot=True)
+            at(boot + 3000)
+            if boot != BOOT:
+                hook('stop', '90-xgs-report')
+        reset = self.resets()
+        self.assertEqual(len(reset), 1)
+        self.assertIn('The boot that started at %s ended without an orderly shutdown'
+                      % self.reporter.iso(BOOT - 3600), reset[0]['summary'])
 
     def test_untested_model_reports_are_told_apart_by_model(self):
         # #786: normalise() made AMDA0201 and AMDA0202 one string, and two models one issue.

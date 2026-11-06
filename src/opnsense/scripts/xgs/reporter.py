@@ -1272,15 +1272,18 @@ def from_crash(seen):
 
 # -------------------------------------------------------------------------------- the reset check
 
-def clean_since(previous):
-    """Whether the boot that started at `previous` ended in an orderly shutdown."""
+def clean_since(previous, until=None):
+    """Whether the boot that started at `previous` ended in an orderly shutdown - began one: what is
+    read here is written as a shutdown starts, and the kernel's part comes after it (from_reset).
+    `until`: the next boot's start, where that boot is not this one but one that went before it got as
+    far as this check - its end is then found before it or not at all."""
     # Written by rc.syshook.d/stop/90-xgs-report, which rc.reboot, rc.halt and rc.shutdown all run.
     try:
         with open(os.path.join(STATE, 'clean-shutdown'), 'r', encoding='utf-8') as handle:
             marker = handle.read().strip()
     except OSError:
         marker = ''
-    if marker.isdigit() and int(marker) >= previous:
+    if marker.isdigit() and int(marker) >= previous and (until is None or int(marker) < until):
         return True
     # A shutdown that did not pass through rc.syshook (reboot(8) at a shell) still leaves its utx
     # record. last(1) prints it with the year when asked, before the time - "shutdown time  Sat Oct
@@ -1289,7 +1292,10 @@ def clean_since(previous):
     # fell in cannot tell the two apart, and a record there is taken for the shutdown that ended the
     # boot before, written moments before this one started; this boot's own comes from a shell, long
     # after its first minute. Until 2026-11-06 a record up to a minute before the start counted too,
-    # and a boot that crashed after a quick restart was taken for one that had ended in order.
+    # and a boot that crashed after a quick restart was taken for one that had ended in order. Before
+    # `until`, the same way: a record whose minute starts before the next boot does is taken for this
+    # boot's end - the next one's own, in its first minute, would make this one's crash a miss, never a
+    # crash where there was none.
     for line in run(['/usr/bin/last', '-y', '-n', '30']).splitlines():
         if not line.startswith('shutdown time'):
             continue
@@ -1300,7 +1306,7 @@ def clean_since(previous):
             when = int(time.mktime(time.strptime(' '.join(match.group(1).split()), '%a %b %d %Y %H:%M')))
         except ValueError:
             continue
-        if when >= previous:
+        if when >= previous and (until is None or when < until):
             return True
     return False
 
@@ -1339,22 +1345,80 @@ def reset_reason(boot):
     return kept
 
 
+# The boots that went before this check, judged at the next that gets as far, at most: each is judged
+# from the system log, read again for it, and a boot loop left for days is a thousand of them.
+UNREPORTED_KEEP = 20
+
+
+def unreported_boots(previous, boot):
+    """The boots that began after `previous`, the last one this check ran in, and before `boot`, this
+    one, and never got as far as this check: oldest first, each one's start as the early hook
+    05-xgs-report wrote it down - the last UNREPORTED_KEEP of them."""
+    try:
+        with open(os.path.join(STATE, 'boots-unreported'), 'r', encoding='utf-8') as handle:
+            words = handle.read().split()
+    except OSError:
+        words = []
+    return sorted({int(w) for w in words if w.isdigit() and previous < int(w) < boot})[-UNREPORTED_KEEP:]
+
+
+def unread_end(started, until):
+    """The report of a boot that did not end in order and is not the one just before this: the boot
+    after it, which began at `until`, went too before it got as far as this check (from_reset). The
+    message buffer, a crash dump and the chipset's record are of the last reset, so the system log's
+    last lines before that boot are all that is known of how this one ended."""
+    return {
+        'part': 'os-xgs-npu', 'kind': 'unexpected-reset', 'at': until, 'occurrence': True,
+        'title': 'the appliance restarted without a shutdown',
+        'summary': ('The boot that started at %s ended without an orderly shutdown, and the boot after '
+                    'it, which started at %s, went too before the problem reporter could look at boot. '
+                    'The message buffer, a crash dump and the chipset\'s record are of the later reset, '
+                    'so what the system log had last before that boot is all that is known of how this '
+                    'one ended.' % (iso(started), iso(until))),
+        'evidence': last_lines_before(until, started),
+        'signature': 'unexpected reset unread',
+    }
+
+
 def from_reset():
     boot = boot_time()
     record = load('boots.json', {})
     previous = record.get('last_boot', 0)
-    problems = []
-    if previous and boot and previous != boot and not clean_since(previous):
+    # EVERY BOOT SINCE THE LAST LOOK, not only the last one it ran in. The early hook 05-xgs-report
+    # writes each boot down as it begins, and this takes the record away (below), so one left is a boot
+    # that went before the start hook ran this - a panic in a driver's load, a hang a watchdog ended.
+    # Until 2026-11-06 nothing wrote such a boot down: the end of the boot before it was judged
+    # instead, with this one's evidence, and found orderly, and the crash went unreported (the review's
+    # P18). Each is judged between its start and the next one's: the boot just before this one with
+    # everything that tells how it ended, the others with their last lines.
+    chain = ([previous] if previous else []) + unreported_boots(previous, boot)
+    problems = [unread_end(started, until) for started, until in zip(chain, chain[1:])
+                if not clean_since(started, until)]
+    previous = chain[-1] if chain else 0
+    ended = bool(previous and boot and previous != boot)
+    orderly = ended and clean_since(previous)
+    boots = run(['/sbin/dmesg', '-a']).split('---<<BOOT>>---') if ended else []
+    kept = len(boots) > 2
+    # What the kernel said last in the boot that ended, when the buffer kept it: a panic that wrote
+    # no dump is there and nowhere else - the kernel restarts the machine itself, which reads as a
+    # reboot to the chipset (2026-10-26: an XGS 126 reset a minute into a boot, bit 19 alone).
+    prior = boots[-2].splitlines() if kept else []
+    panicked = any(re.search(r'Fatal trap \d+|\bpanic: ', line) for line in prior)
+    # AND A SHUTDOWN THAT BEGAN IN ORDER IS NOT ONE THAT ENDED IN ORDER. Its record is written as the
+    # stop hooks run, and reboot(8)'s as that starts: OPNsense's last hook, shutdown(8) and the
+    # kernel's own part - the disks' sync, every driver's shutdown method - all come after it. A panic
+    # there is in the message buffer the restart kept, and is reported; until 2026-11-06 the record was
+    # taken for the end, and the panic was not (the review's P13). A hang there that only the power
+    # ended leaves nothing a boot can read - the disks were synced with the record on them, and the
+    # buffer went with the memory - and still reads as orderly.
+    if ended and (not orderly or panicked):
         dumpdev = sysctl('kern.shutdown.dumpdevname')
-        dumped = bool(dumpdev) and succeeds(['/sbin/savecore', '-C', '/dev/' + dumpdev])
-        boots = run(['/sbin/dmesg', '-a']).split('---<<BOOT>>---')
-        kept = len(boots) > 2
-        # What the kernel said last in the boot that ended, when the buffer kept it: a panic that wrote
-        # no dump is there and nowhere else - the kernel restarts the machine itself, which reads as a
-        # reboot to the chipset (2026-10-26: an XGS 126 reset a minute into a boot, bit 19 alone).
-        prior = boots[-2].splitlines() if kept else []
-        panicked = any(re.search(r'Fatal trap \d+|\bpanic: ', line) for line in prior)
-        if dumped:
+        dumped = not orderly and bool(dumpdev) and succeeds(['/sbin/savecore', '-C', '/dev/' + dumpdev])
+        if orderly:
+            why = ('Its shutdown began in order - its stop hooks ran, or reboot(8) wrote its record - but '
+                   'the message buffer the restart kept holds a kernel panic, below: the kernel panicked '
+                   'after that, and restarted the machine itself.')
+        elif dumped:
             why = 'A crash dump is waiting on the dump device: the kernel panicked, and the dump is reported on its own once savecore has saved it.'
         elif panicked:
             why = ('No crash dump was written, but the message buffer survived and holds a kernel panic - '
@@ -1381,22 +1445,27 @@ def from_reset():
                 if bits else ' The host\'s chipset recorded no cause for the reset (FCH S5_RESET_STATUS 0).')
         problems.append({
             'part': 'os-xgs-npu', 'kind': 'unexpected-reset', 'at': boot, 'occurrence': True,
-            'title': 'the appliance restarted without a shutdown',
-            'summary': 'The boot that started at %s ended without an orderly shutdown. %s%s' % (
+            'title': ('the appliance panicked while it shut down' if orderly else
+                      'the appliance restarted without a shutdown'),
+            'summary': ('The boot that started at %s began an orderly shutdown and did not finish it. %s%s'
+                        if orderly else 'The boot that started at %s ended without an orderly shutdown. %s%s') % (
                 iso(previous), why, said),
             'evidence': ((['reset reason: ' + reason.get('value', '') + ' - ' + '; '.join(
                 'bit %s: %s' % (b.get('bit'), b.get('reason')) for b in reason.get('bits', []))]
                 if reason else []) + last_lines_before(boot, previous)
                 + ['kernel: ' + line for line in msgbuf_evidence(prior, tail=10)]),
-            'signature': 'unexpected reset ' + ('dump' if dumped else 'panic' if panicked else 'warm' if kept
-                                                else 'cold')
+            'signature': 'unexpected reset ' + ('panic in shutdown' if orderly else 'dump' if dumped else
+                                                'panic' if panicked else 'warm' if kept else 'cold')
                          + (' bits ' + ','.join(named) if named else ''),
         })
     save('boots.json', {'last_boot': boot, 'previous': previous})
-    try:
-        os.unlink(os.path.join(STATE, 'clean-shutdown'))
-    except OSError:
-        pass
+    # The shutdown's record, this boot's own from the early hook, and the boots judged above: this
+    # boot got as far as its look.
+    for name in ('clean-shutdown', 'boot-started', 'boots-unreported'):
+        try:
+            os.unlink(os.path.join(STATE, name))
+        except OSError:
+            pass
     return problems
 
 
