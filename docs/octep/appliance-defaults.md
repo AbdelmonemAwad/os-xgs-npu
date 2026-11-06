@@ -147,8 +147,11 @@ taken up in place with their tunnels on the coprocessor
 ([photographed](../measurements/coprocessor-recovery-2026-10-26.md#with-ipsec-associations-on-an-octeon-tx-coprocessor)). "Say so, and nothing more", ~~the default,~~ leaves the driver's lines in
 the system log and a problem report (`fast-path-stopped`). "Restart the appliance after 2, 5 or 10
 minutes" has `scripts/xgs/fastpath.py`, run every minute, restart it cleanly once the fast path has
-gone that long without an answer - the problem report collected first, so it goes out with the boot
-it happened in - and never more than three times in 24 hours, so an appliance whose coprocessor does
+gone that long without an answer - the problem report collected first, ~~so it goes out with the boot
+it happened in~~ found and queued, not sent: every frame goes through the fast path that has stopped,
+so a send could only fail, and until 2026-11-06 a recovery or a restart waited up to 120 s for those
+sends with reporting automatic; the next boot sends it, and after a recovery in place it is sent
+behind it (#1072, F6) - and never more than three times in 24 hours, so an appliance whose coprocessor does
 not come back stays up for somebody to look at. ~~The default is off as the vendor's is~~ Until
 0.1.0-alpha.8.6 the default was to say so and nothing more, as the vendor's is: its host panics
 the box after 120 seconds without an answer, with that switched off unless asked for. A configuration
