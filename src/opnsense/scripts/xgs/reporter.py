@@ -270,8 +270,19 @@ def relay_url():
 KEY_BLOCK = re.compile(r'-----BEGIN [A-Z ]+-----.*?-----END [A-Z ]+-----', re.DOTALL)
 EMAIL = re.compile(r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b')
 MAC = re.compile(r'(?<![0-9A-Fa-f:])(?:[0-9A-Fa-f]{2}[:-]){5}[0-9A-Fa-f]{2}(?![0-9A-Fa-f:])')
-IPV4 = re.compile(r'(?<![\d.])(?:\d{1,3}\.){3}\d{1,3}(?:/\d{1,2})?(?![\d.])')
-IPV6 = re.compile(r'(?<![\w:.])(?:[0-9A-Fa-f]{0,4}:){2,7}[0-9A-Fa-f]{0,4}(?:%[\w.]+)?(?:/\d{1,3})?(?![\w:])')
+# An address may end a sentence, and a full stop after it is not a fifth part: "at 192.0.2.51." went
+# out whole when a dot after the address kept it. What keeps a longer dotted number - 1.2.3.4.5 - is
+# a digit beyond the dot, on either side. An IPv6 address may follow a word and a colon ("peer:..."),
+# which kept it whole as well; a match that is not an address is put back by address() either way.
+IPV4 = re.compile(r'(?<!\d)(?<!\d\.)(?:\d{1,3}\.){3}\d{1,3}(?:/\d{1,2})?(?!\.?\d)')
+IPV6 = re.compile(r'(?<![\w.])(?:[0-9A-Fa-f]{0,4}:){2,7}[0-9A-Fa-f]{0,4}(?:%[\w.]+)?(?:/\d{1,3})?(?![\w:])')
+# A disk's or a module's serial as the kernel and the tools print it, "Serial Number S3Z9...": the
+# machine's own serials are taken out by name, a disk's are not known by name (the support bundle's
+# dmesg.txt carried them).
+SERIAL_NUMBER = re.compile(r'(?i)\b(serial number|s/n)(\s*[:=]?\s*)[\w-]{4,}')
+# The vendor's coprocessor build is a version of four parts that can read as an address -
+# 21.0.0.169 - and the appliance table names it so: the table's own words keep it.
+VENDOR_BUILD = 'vendor build '
 # A key's fingerprint as the boot banner prints it - "SHA256" and sixteen hex pairs for the GUI's
 # certificate, "SHA256" and base64 for an SSH host key - and the second line of pairs it runs onto.
 FINGERPRINT = re.compile(r'\b(SHA256|SHA1|MD5)[: ]+(?:(?:[0-9A-Fa-f]{2}[ :]?){8,}|[A-Za-z0-9+/=]{16,})')
@@ -334,8 +345,10 @@ class Scrubber:
         text = FINGERPRINT.sub(lambda m: m.group(1) + ' <withheld>', text)
         text = MAC.sub('<mac>', text)
         text = HEX_PAIRS.sub('<withheld>', text)
+        text = SERIAL_NUMBER.sub(lambda m: m.group(1) + m.group(2) + '<withheld>', text)
         text = IPV6.sub(lambda m: address(m, '<ipv6>'), text)
-        text = IPV4.sub(lambda m: address(m, '<ipv4>'), text)
+        text = IPV4.sub(lambda m: m.group(0) if m.string[:m.start()].endswith(VENDOR_BUILD)
+                        else address(m, '<ipv4>'), text)
         text = LONG_HEX.sub('<hex>', text)
         return text
 
@@ -1181,15 +1194,25 @@ def clean_since(previous):
     return False
 
 
+# Whose lines an unexpected reset's evidence may carry: the kernel's, the logger's, the devices' and
+# address clients', and this plugin's own. Other programs write the names an owner chose - a gateway's
+# (dpinger), a user's (sshd, sudo, the GUI's audit), a tunnel's, a dynamic DNS host's - which the
+# cleaner does not know, and those lines went into public issues (#601).
+RESET_EVIDENCE_FROM = re.compile(r'^(kernel|syslog-ng|devd|dhclient|dhcp6c|xgs[\w.-]*|npuctl|npuep[\w.-]*|'
+                                 r'octep[\w.-]*)$')
+
+
 def last_lines_before(boot, since=0):
     """The system log's last lines before this boot: what the machine was doing when it went. Only
-    the boot that ended, from `since`: a line from a boot before it is about another one (#701)."""
+    the boot that ended, from `since`: a line from a boot before it is about another one (#701).
+    Only the programs RESET_EVIDENCE_FROM names."""
     lines = []
     for name in sorted(glob.glob(path('/var/log/system/system_*.log')))[-2:]:
         with open(name, 'r', encoding='utf-8', errors='replace') as handle:
             for line in handle:
                 match = SYSLOG.match(line.rstrip('\n'))
-                if match and since <= parse_stamp(match.group(2)) < boot - 5:
+                if (match and RESET_EVIDENCE_FROM.match(match.group(3)) and
+                        since <= parse_stamp(match.group(2)) < boot - 5):
                     lines.append('%s %s: %s' % (match.group(2), match.group(3), match.group(4).strip()))
                     lines = lines[-20:]
     return lines

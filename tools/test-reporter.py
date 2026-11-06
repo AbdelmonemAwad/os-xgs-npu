@@ -269,6 +269,23 @@ class ReporterTest(unittest.TestCase):
         self.assertNotIn('fe80::ff:fe00:1', text)
         self.assertIn('gateway <ipv6 link-local>%pppoe0/64', text)
 
+    def test_scrubber_takes_out_an_address_that_ends_a_sentence_and_a_disk_serial(self):
+        scrub = self.reporter.Scrubber()
+        text = scrub('My LAN gateway is 192.168.1.1. It stopped at 192.0.2.51.\n'
+                     'then ...198.51.100.7 and peer:2001:db8::5 went quiet.\n'
+                     'ada0: Serial Number S3Z9NB0K123456\nS/N: KX1234ZZ on the label')
+        for secret in ('192.168.1.1', '192.0.2.51', '198.51.100.7', '2001:db8::5', 'S3Z9NB0K123456',
+                       'KX1234ZZ'):
+            self.assertNotIn(secret, text)
+        self.assertIn('is <ipv4>. It', text)
+        self.assertIn('ada0: Serial Number <withheld>', text)
+        # what only looks like an address stays: a version of five parts, the vendor's build in the
+        # appliance table, a serial console
+        kept = scrub('version 1.2.3.4.5 and 10.0.0.1.2, Coprocessor software | vendor build 21.0.0.169, '
+                     'fast path 43e1f0dc, on the serial console at 38400')
+        for word in ('1.2.3.4.5', '10.0.0.1.2', 'vendor build 21.0.0.169', 'serial console'):
+            self.assertIn(word, kept)
+
     # ---------------------------------------------------------------------------------- the logs
 
     def test_first_pass_reads_no_history_then_new_lines_are_found(self):
@@ -605,6 +622,27 @@ class ReporterTest(unittest.TestCase):
         self.reporter.save('boots.json', {'last_boot': BOOT - 100})
         self.reporter.collect(at_boot=True)
         self.assertEqual(len(self.reporter.listing()['rows']), before)
+
+    def test_unexpected_reset_evidence_leaves_out_other_programs_lines(self):
+        # 2026-11-06: the names an owner chose - a gateway's, a user's - came in with other programs'
+        # lines (#601); only the kernel's, the logger's, devices', address clients' and ours are kept.
+        self.reporter.save('boots.json', {'last_boot': BOOT - 3600})
+        before = time.strftime('%Y-%m-%dT%H:%M:%S+00:00', time.gmtime(BOOT - 120))
+        self.write(self.log, ''.join([
+            self.line(13, 'dhcp6c', 'Sending Solicit on oxp3', before),
+            self.line(13, 'sshd', 'Accepted publickey for alice from 192.0.2.9 port 51234', before),
+            self.line(13, 'dpinger', 'MY_HOME_WAN_GW 192.0.2.1: Alarm latency 0us stddev 0us loss 100%', before),
+            self.line(13, 'kernel', '<6>[4021] oxp3: link state changed to DOWN', before),
+            self.line(13, 'xgs-watchdog', 'feeding the watchdog', before),
+        ]), 'a')
+        self.reporter.collect(at_boot=True)
+        reset = [e for e in self.reporter.entries().values() if e['kind'] == 'unexpected-reset']
+        self.assertEqual(len(reset), 1)
+        evidence = '\n'.join(reset[0]['evidence'])
+        for kept in ('Solicit', 'link state changed', 'feeding the watchdog'):
+            self.assertIn(kept, evidence)
+        for gone in ('alice', 'MY_HOME_WAN_GW', 'sshd', 'dpinger'):
+            self.assertNotIn(gone, evidence)
 
     def test_unexpected_reset_names_what_the_chipset_recorded(self):
         # As 06-xgs-reset-reason keeps it: the watchdog's bit, a reboot's, and one with no meaning.
