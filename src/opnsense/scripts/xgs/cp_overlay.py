@@ -137,7 +137,7 @@ def restart_portal():
     """The background process reads the file when it starts: restarted if the portal runs."""
     try:
         running = subprocess.run(['/usr/local/sbin/configctl', 'captiveportal', 'status'], capture_output=True,
-                                 text=True, timeout=30).stdout
+                                 text=True, errors='replace', timeout=30).stdout
         if 'is running' in running:
             subprocess.run(['/usr/local/sbin/configctl', 'captiveportal', 'restart'], capture_output=True,
                            timeout=60)

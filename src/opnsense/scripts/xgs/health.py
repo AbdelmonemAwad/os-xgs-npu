@@ -53,7 +53,7 @@ def collect():
     answer = {'at': int(time.time())}
     try:
         done = subprocess.run(['/bin/sh', NPU_RUN, '8', COMMAND], stdin=subprocess.DEVNULL,
-                              capture_output=True, text=True, timeout=100)
+                              capture_output=True, text=True, errors='replace', timeout=100)
         found = parse(done.stdout)
         if done.returncode != 0 and not found:
             answer['error'] = (done.stderr.strip() or 'exit %d' % done.returncode)[:200]

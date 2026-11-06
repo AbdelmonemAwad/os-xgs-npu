@@ -128,7 +128,7 @@ def inbound_states(text):
 
 def snapshot():
     try:
-        r = subprocess.run([PFCTL, '-ss', '-vv'], capture_output=True, text=True, timeout=120)
+        r = subprocess.run([PFCTL, '-ss', '-vv'], capture_output=True, text=True, errors='replace', timeout=120)
     except (OSError, subprocess.SubprocessError):
         return None
     return inbound_states(r.stdout) if r.returncode == 0 else None

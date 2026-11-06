@@ -76,7 +76,7 @@ RECOVER_SECONDS = 900
 
 def sysctl(name):
     try:
-        done = subprocess.run(['/sbin/sysctl', '-n', name], capture_output=True, text=True, timeout=10)
+        done = subprocess.run(['/sbin/sysctl', '-n', name], capture_output=True, text=True, errors='replace', timeout=10)
     except (OSError, subprocess.SubprocessError):
         return None
     return done.stdout.strip() if done.returncode == 0 else None
@@ -231,7 +231,7 @@ def run_recover(seconds=None):
     stopped at 900 s left only "did not finish", and not which of its steps it had been waiting in.
     subprocess.run keeps those lines in the TimeoutExpired it raises, as bytes even in text mode."""
     try:
-        done = subprocess.run([RECOVER], capture_output=True, text=True,
+        done = subprocess.run([RECOVER], capture_output=True, text=True, errors='replace',
                               timeout=seconds or RECOVER_SECONDS)
     except subprocess.TimeoutExpired as failure:
         said = failure.stdout or b''

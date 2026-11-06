@@ -77,7 +77,7 @@ def coprocessor(seconds, command):
     """One command on the coprocessor, through the runner every plugin shares. (stdout, ok)."""
     try:
         done = subprocess.run(['/bin/sh', NPU_RUN, str(seconds), command], capture_output=True,
-                              text=True, timeout=seconds + 90)
+                              text=True, errors='replace', timeout=seconds + 90)
     except (OSError, subprocess.SubprocessError) as failure:
         return '', str(failure)
     if done.returncode == 75:
@@ -90,7 +90,7 @@ def coprocessor(seconds, command):
 def cage_ports():
     """The cages this appliance has, from the port map: {label: port}, F1, F2 ... and A1 ..."""
     try:
-        found = json.loads(subprocess.run([PORTMAP], capture_output=True, text=True, timeout=30).stdout)
+        found = json.loads(subprocess.run([PORTMAP], capture_output=True, text=True, errors='replace', timeout=30).stdout)
     except (OSError, ValueError, subprocess.SubprocessError):
         return {}
     return {p['label']: p for p in found.get('ports') or [] if CAGE.match(str(p.get('label') or ''))}
@@ -106,7 +106,7 @@ def links_now(devices):
     out = {}
     for label, device in (devices or {}).items():
         try:
-            text = subprocess.run(['/sbin/ifconfig', device], capture_output=True, text=True,
+            text = subprocess.run(['/sbin/ifconfig', device], capture_output=True, text=True, errors='replace',
                                   timeout=10).stdout
         except (OSError, subprocess.SubprocessError):
             text = ''

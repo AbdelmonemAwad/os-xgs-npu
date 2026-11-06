@@ -46,7 +46,7 @@ PROTOCOLS = {1: 'ICMP', 6: 'TCP', 17: 'UDP', 50: 'ESP', 58: 'ICMPv6'}
 
 def sysctl(name):
     try:
-        done = subprocess.run(['/sbin/sysctl', '-n', name], capture_output=True, text=True, timeout=10)
+        done = subprocess.run(['/sbin/sysctl', '-n', name], capture_output=True, text=True, errors='replace', timeout=10)
     except (OSError, subprocess.SubprocessError):
         return None
     return done.stdout if done.returncode == 0 else None
@@ -171,7 +171,7 @@ def release(index):
         if sysctl(oid) is None:
             continue
         try:
-            done = subprocess.run(['/sbin/sysctl', oid + '=' + index], capture_output=True, text=True, timeout=30)
+            done = subprocess.run(['/sbin/sysctl', oid + '=' + index], capture_output=True, text=True, errors='replace', timeout=30)
         except (OSError, subprocess.SubprocessError) as e:
             answer['message'] = str(e)
             break

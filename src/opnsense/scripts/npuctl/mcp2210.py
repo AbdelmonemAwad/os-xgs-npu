@@ -85,7 +85,7 @@ def board_number():
     if not serial:
         try:
             serial = subprocess.run(['/bin/kenv', '-q', 'smbios.planar.serial'],
-                                    capture_output=True, text=True).stdout
+                                    capture_output=True, text=True, errors='replace').stdout
         except OSError:
             serial = ''
     m = re.search(r'AMDA0*([0-9]+)-', serial)
@@ -123,7 +123,7 @@ def find_bridge():
     for name in names:
         try:
             info = subprocess.run(['/sbin/sysctl', '-n', 'dev.hidraw.%s.%%pnpinfo' % name[6:]],
-                                  capture_output=True, text=True, timeout=5).stdout
+                                  capture_output=True, text=True, errors='replace', timeout=5).stdout
         except (OSError, subprocess.SubprocessError):
             continue
         if re.search(r'\bvendor=%s\b' % USB_IDS[0], info) and re.search(r'\bproduct=%s\b' % USB_IDS[1], info):

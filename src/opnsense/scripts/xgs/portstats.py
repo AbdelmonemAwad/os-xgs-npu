@@ -80,7 +80,7 @@ ERRORS = ('in_fcs_err', 'in_rx_err', 'in_undersize', 'in_fragments', 'in_oversiz
 def family():
     try:
         out = subprocess.run(['/bin/sh', BOARD], stdin=subprocess.DEVNULL, capture_output=True,
-                             text=True, timeout=10).stdout.split()
+                             text=True, errors='replace', timeout=10).stdout.split()
     except (OSError, subprocess.SubprocessError):
         return None
     return out[1] if len(out) > 1 else None
@@ -194,7 +194,7 @@ def collect():
     try:
         for tries in range(3):
             done = subprocess.run(['/bin/sh', NPU_RUN, '20', command], stdin=subprocess.DEVNULL,
-                                  capture_output=True, text=True, timeout=120)
+                                  capture_output=True, text=True, errors='replace', timeout=120)
             # 75: another plugin's command holds the XGS 3300's console; it is one at a time.
             if done.returncode != 75:
                 break

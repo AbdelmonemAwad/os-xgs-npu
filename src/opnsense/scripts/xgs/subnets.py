@@ -44,7 +44,7 @@ NOT_HOST = re.compile(r'^(oxp|npup|oxips|mvmgmt|oxmgmt|bridge|vlan|lagg|lo|enc|p
 
 def run(argv):
     try:
-        out = subprocess.run(argv, capture_output=True, text=True, timeout=10)
+        out = subprocess.run(argv, capture_output=True, text=True, errors='replace', timeout=10)
     except (OSError, subprocess.SubprocessError):
         return ''
     return out.stdout if out.returncode == 0 else ''

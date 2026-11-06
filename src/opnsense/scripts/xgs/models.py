@@ -163,7 +163,7 @@ def assembly_of(serial):
 
 def kenv(name):
     try:
-        out = subprocess.run(['/bin/kenv', '-q', name], capture_output=True, text=True, timeout=5)
+        out = subprocess.run(['/bin/kenv', '-q', name], capture_output=True, text=True, errors='replace', timeout=5)
     except (OSError, subprocess.SubprocessError):
         return ''
     return out.stdout.strip()
