@@ -1473,7 +1473,12 @@ def send(entry, mode, system, scrub, budget):
     budget[key] -= 1
     if answer.get('status') == 'ok':
         entry['status'] = 'sent'
-        entry['issue'] = {'number': answer.get('issue'), 'url': answer.get('url')}
+        # The issue's address is kept only as an https address, which is what the relay gives
+        # (relay/worker.js): XGS: Problem Reports makes it a link. Until 2026-11-06 any answer was
+        # kept as it came, javascript: as well (the review's G6).
+        url = answer.get('url')
+        entry['issue'] = {'number': answer.get('issue'),
+                          'url': url if isinstance(url, str) and url.startswith('https://') else None}
         entry['sent_at'] = int(time.time())
         entry['sent_count'] = entry['count']
         entry['error'] = ''

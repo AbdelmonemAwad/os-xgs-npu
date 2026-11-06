@@ -72,17 +72,24 @@
             options: {
                 selection: false,
                 formatters: {
+                    /* The issue and the reason a report was not sent are the relay's answer. Until
+                       2026-11-06 its address was made a link whatever it was - javascript: as well,
+                       run by a click - and its reason was put in the title by .text().html(), which
+                       leaves a quote that ends the attribute (the review's G6). Only an https address
+                       is a link now, and jQuery writes the title. */
                     status: function (column, row) {
                         if (row.status === 'sent') {
-                            const $a = $('<a target="_blank" rel="noopener"/>').attr('href', plain(row.url))
+                            const url = plain(row.url);
+                            const $a = (/^https:\/\//i.test(url) ?
+                                $('<a target="_blank" rel="noopener"/>').attr('href', url) : $('<span/>'))
                                 .text('#' + row.issue);
                             return '<i class="fa fa-check text-success"></i> ' + $a[0].outerHTML +
                                 (row.repeat ? ' <small class="text-muted">' + "{{ lang._('seen again') }}" + '</small>' : '');
                         }
                         if (row.status === 'failed') {
-                            return '<span class="text-warning" title="' + $('<div/>').text(plain(row.error)).html() +
-                                '" data-toggle="tooltip"><i class="fa fa-exclamation-triangle"></i> ' +
-                                "{{ lang._('not sent yet') }}" + '</span>';
+                            return $('<span class="text-warning" data-toggle="tooltip"/>').attr('title', plain(row.error))
+                                .html('<i class="fa fa-exclamation-triangle"></i> ' + "{{ lang._('not sent yet') }}")
+                                .prop('outerHTML');
                         }
                         if (row.status === 'dismissed') {
                             return '<span class="text-muted">' + "{{ lang._('dismissed') }}" + '</span>';

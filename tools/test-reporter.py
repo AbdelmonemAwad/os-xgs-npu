@@ -121,6 +121,7 @@ class Relay:
         self.issues = {}
         self.down = False
         self.refuse = set()		# the repositories it does not take
+        self.address = None		# the issue's address it answers, when a test gives it one
 
     def post(self, document):
         if self.down:
@@ -135,7 +136,7 @@ class Relay:
             self.issues[key] = len(self.issues) + 1
         number = self.issues[key]
         return {'status': 'ok', 'issue': number,
-                'url': 'https://github.com/%s/%s/issues/%d' % (document['owner'], document['repo'], number)}
+                'url': self.address or 'https://github.com/%s/%s/issues/%d' % (document['owner'], document['repo'], number)}
 
 
 class ReporterTest(unittest.TestCase):
@@ -503,6 +504,20 @@ class ReporterTest(unittest.TestCase):
             answer = fresh.post({'schema': 1})
         self.assertEqual(answer, {'status': 'failed', 'code': 400,
                                   'message': "the relay answered 400 not one of the project's repositories"})
+
+    def test_the_issue_s_address_is_kept_only_when_it_is_https(self):
+        # XGS: Problem Reports makes the kept address a link. Until 2026-11-06 whatever the relay
+        # answered was kept, javascript: as well (the review's G6); the issue's number stays either way.
+        self.collect()
+        self.relay.address = 'javascript:alert(document.domain)'
+        self.write(self.log, self.line(11, 'fanctl', 'restore failed'), 'a')
+        self.collect()
+        self.relay.address = 'https://github.com/AbdelmonemAwad/os-fanctl/issues/2'
+        self.write(self.log, self.line(11, 'fanctl', 'the chip did not answer', when='2026-10-17T08:45:00+00:00'), 'a')
+        self.collect()
+        rows = sorted(self.reporter.listing()['rows'], key=lambda r: r['issue'])
+        self.assertEqual([(r['status'], r['issue'], r['url']) for r in rows],
+                         [('sent', 1, ''), ('sent', 2, 'https://github.com/AbdelmonemAwad/os-fanctl/issues/2')])
 
     def test_the_relay_files_for_every_part_the_reporter_knows(self):
         # #794 gave the reporter five more parts, and the relay none of them: every report of theirs was

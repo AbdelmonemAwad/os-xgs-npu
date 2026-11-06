@@ -38,6 +38,11 @@ use OPNsense\XGS\XGS;
  * opens showing what the box does, and saving it unchanged changes nothing. Without this the page
  * would open at the defaults, and the first save would turn IPsec off in the engine at the next
  * boot of a box that relied on it.
+ *
+ * The flow maker is the one the settings page does not write as a tunable: it is set on the running
+ * driver and by the boot hooks, and a row of its own, set at each boot after them, fought the page.
+ * Its rows are read here as the others are, and the next apply removes them (scripts/xgs/apply.php,
+ * xgs_rows_removed; until 2026-11-06 nothing did, the review's G5).
  */
 class M1_1_0 extends BaseModelMigration
 {
