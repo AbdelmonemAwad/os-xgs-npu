@@ -536,7 +536,7 @@ class SilentLink(unittest.TestCase):
         self.run_until(link, [232, 234])
         self.assertEqual((self.asked, self.told), (3, 1))
         self.assertIn('for 34 s nor on its console', self.said[-1])
-        self.assertIn('held by another caller at 2 look(s) before', self.said[-1])
+        self.assertIn('no answer either way from its console at 2 look(s) before', self.said[-1])
 
     def test_a_short_silence_is_asked_early_and_the_looks_held(self):
         """Silent EARLY s, the console asked; silent too, nothing decided before SILENT."""
@@ -641,13 +641,19 @@ class SilentLink(unittest.TestCase):
         self.assertIn('for 30 s, but its console does - asked again after it showed no prompt at 10 s: left '
                       'as it is', self.said[-1])
 
-    def test_a_console_held_when_asked_again_leaves_the_first_answer(self):
-        """The mark keeps every other caller of npu-run.sh off the console: one that holds it then is one
-        the watch cannot move, and octep is told on the first ask's answer."""
-        self.console = [False, None]
-        self.run_until(self.silent_since(0), [10, 20, 30])
-        self.assertEqual((self.asked, self.told), (2, 1))
-        self.assertIn('found silent at 10 s, and held by another caller when asked again', self.said[-1])
+    def test_a_console_not_answered_when_asked_again_is_asked_at_the_next_poll(self):
+        """F2 of a review of the watch (2026-11-06): the ask at SILENT that gave no answer either way let
+        the first ask's answer stand, and octep was told on it alone. It is asked again at the next poll."""
+        self.console = [False, None, None, False]
+        self.run_until(self.silent_since(0), [10, 20, 30, 32, 34])
+        self.assertEqual((self.asked, self.told), (4, 1))
+        self.assertEqual(self.twice, [True, False, False, False])
+        self.assertIn('found silent at 10 s and again at 34 s', self.said[-1])
+
+    def test_a_console_that_answers_at_the_next_poll_is_left_as_it_is(self):
+        self.console = [False, None, True]
+        link = self.run_until(self.silent_since(0), [10, 30, 32])
+        self.assertEqual((self.asked, self.told, link['why']), (3, 0, 'alive'))
 
     def test_r4_a_link_back_during_a_long_ask_is_not_quiesced(self):
         """R4 of a review of the watch (2026-11-04): the first ask, waiting URGENT_WAIT for another
@@ -1139,8 +1145,22 @@ class ConsoleAsk(unittest.TestCase):
         self.assertIsNone(feeder.CONSOLE_CONTINUED['pid'])
 
     def test_a_silent_console(self):
-        self.answer(1, '')
+        self.answer(feeder.NO_PROMPT, '')
         self.assertIs(feeder.console_answers(), False)
+
+    def test_an_exit_other_than_no_prompt_is_no_answer_either_way(self):
+        """F2 of a review of the watch (2026-11-06): npu-run.sh's exit 1 - refused, the host's UART not
+        attached again, or its prompt shown and the answer lost to a dropped quote - was taken for a
+        silent console, and a live Linux could be quiesced."""
+        for rc, out in ((1, ''), (1, 'continued\n'), (0, ''), (0, 'alve\n')):
+            self.answer(rc, out)
+            self.assertIsNone(feeder.console_answers(), (rc, out))
+
+    def test_an_ask_that_did_not_end_is_no_answer_either_way(self):
+        def hangs(args, **kw):
+            raise feeder.subprocess.TimeoutExpired(args, kw['timeout'])
+        feeder.subprocess.run = hangs
+        self.assertIsNone(feeder.console_answers())
 
     def test_an_answer_cut_before_its_end_marker_still_answers(self):
         """npu-run.sh exits 1 without the end marker, after printing what came before it: the shell did
@@ -1172,7 +1192,7 @@ class ConsoleAsk(unittest.TestCase):
 
     def test_alive_is_the_shell_s_line_not_a_word(self):
         self.answer(1, 'kernel: something still alive here\n')
-        self.assertIs(feeder.console_answers(), False)
+        self.assertIsNone(feeder.console_answers())
 
     def test_the_ask_at_silent_reads_the_console_once(self):
         """The ask that confirms, at SILENT, a console found silent before: one carriage return - no
