@@ -151,8 +151,12 @@
                 html += '<div class="xgs-panel-group"><div class="xgs-panel-ports">';
                 g.ports.forEach(function (p) {
                     const up = String(p.status || '').indexOf('active') === 0;
-                    const title = [p.label, p.assigned, up ? p.media : "{{ lang._('no link') }}", p.mac]
-                        .filter(function (s) { return s; }).join(' - ');
+                    /* What OPNsense assigned the port as comes as its key, description and address
+                       (portmap.py, assignments()), and until 2026-11-06 it was joined as it came: the
+                       tooltip read "[object Object]" (the review's G7). The description, as XGS: Ports
+                       names it. The API escapes all but a quote, which would end the attribute. */
+                    const title = [p.label, p.assigned && p.assigned.descr, up ? p.media : "{{ lang._('no link') }}", p.mac]
+                        .filter(function (s) { return s; }).join(' - ').replace(/"/g, '&quot;');
                     html += '<a class="xgs-port' + (g.kind === 'copper' ? '' : ' cage') + (up ? ' up' : '') +
                         '" href="/ui/xgs/ports" title="' + title + '"><span class="jack"></span><span class="led"></span></a>';
                 });
@@ -266,7 +270,9 @@
                 return '<span class="text-muted">' + "{{ lang._('not read yet') }}" + '</span>';
             }
             if (h.uptime_s === undefined) {
-                return $('<span class="text-warning"/>').text(h.error).prop('outerHTML');
+                /* as the API escaped it, like every value here: escaped again by .text() until
+                   2026-11-06, a < in the reason read &lt; (the review's G9) */
+                return '<span class="text-warning">' + h.error + '</span>';
             }
             const d = Math.floor(h.uptime_s / 86400), hh = Math.floor(h.uptime_s % 86400 / 3600),
                 mm = Math.floor(h.uptime_s % 3600 / 60);
@@ -318,7 +324,9 @@
             if (!ids || ids.uninspected !== true) {
                 return '';
             }
-            const where = $('<span/>').text((ids.interfaces || []).join(', ')).html();
+            /* the interfaces' names as the API escaped them, not escaped again as they were until
+               2026-11-06 (the review's G9) */
+            const where = (ids.interfaces || []).join(', ');
             let text = '<p><b>' + "{{ lang._('The Intrusion Detection does not see what the coprocessor carries') }}" + '</b></p><p>' +
                 (ids.mode === 'ids' ?
                     "{{ lang._('It listens on %s in IDS mode. A connection the coprocessor carries no longer crosses this firewall, so Suricata sees how each one starts and nothing after it: an alert that would come later does not come.') }}" :
@@ -793,7 +801,27 @@
                 fp(d);
             };
             if (clear) {
-                ajaxCall('/api/xgs/offload/fpclear', {}, done);
+                /* Zeroing them is XGS: Settings' (api/xgs/offload, ACL.xml), reading them this page's.
+                   A request a privilege does not reach is answered with OPNsense's page, as HTML
+                   with status 200, which ajaxCall hands on as the request itself (status
+                   "parsererror") - measured on an XGS 3300 with a user holding this page and not
+                   XGS: Settings, 2026-11-06. Every reading of the counters carries `at`; an answer
+                   without it is that refusal. Until 2026-11-06 it was drawn as "All zero", read at an
+                   Invalid Date, as if they had been zeroed (the review's G8). Said as the Flows page
+                   says it, and the counters read again as they are. */
+                ajaxCall('/api/xgs/offload/fpclear', {}, function (d) {
+                    if (!d || typeof d.at === 'undefined') {
+                        BootstrapDialog.show({
+                            type: BootstrapDialog.TYPE_WARNING,
+                            title: "{{ lang._('Fast-path counters') }}",
+                            message: "{{ lang._('No answer: this account may lack the XGS: Settings privilege.') }}",
+                            buttons: [{label: "{{ lang._('Close') }}", action: function (dialog) { dialog.close(); }}]
+                        });
+                        fp_read(false);
+                        return;
+                    }
+                    done(d);
+                });
             } else {
                 ajaxGet('/api/xgs/status/fastpath', {}, done);
             }

@@ -93,10 +93,12 @@
 
         /* A change line as the release notes write it - Markdown, its pull request as
            [#486](https://github.com/...) - drawn as text with that link, rather than the brackets
-           and the address printed out. Only links into GitHub are made links; all of it is text. */
+           and the address printed out. Only links into GitHub are made links; all of it is text.
+           Read back to text first, as the messages are: until 2026-11-06 a line's & < and > read
+           &amp; &lt; and &gt;, and a link's address kept its &amp; (the review's G9). */
         function md_text(line) {
             const $span = $('<span/>');
-            const text = String(line || '');
+            const text = plain(line);
             const pattern = /\[([^\]]+)\]\((https:\/\/github\.com\/[^)\s]+)\)/g;
             let at = 0;
             let m;
@@ -409,9 +411,11 @@
                 if (running) {
                     $('#updateAct').prop('disabled', true);
                 }
+                /* the log read back to text, as the messages are: until 2026-11-06 an -> in it read
+                   -&gt; (the review's G9) */
                 ajaxGet('/api/xgs/updates/log', {}, function (lg) {
-                    $('#apply-log').text((lg && lg.log) ||
-                        "{{ lang._('No update has run on this firewall from this page.') }}");
+                    $('#apply-log').text(plain((lg && lg.log) ||
+                        "{{ lang._('No update has run on this firewall from this page.') }}"));
                 });
                 if (running && polling === null) {
                     polling = setInterval(refresh, 2000);

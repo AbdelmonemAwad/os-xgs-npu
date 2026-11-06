@@ -391,8 +391,10 @@ jobs:
         run: python3 tools/test-npu-clock.py
 
       # apply.php's ipsec_soft_crypto on and off, with PHP and no OPNsense: off gives back what a boot
-      # leaves (until 2026-11-06 it wrote nothing). tools/test-apply.py.
-      - name: IPsec's software sessions, on and off
+      # leaves (until 2026-11-06 it wrote nothing). And the rows of System: Settings: Tunables an apply
+      # removes: the flow maker's own among them, which OPNsense set over the page's setting at every
+      # boot until 2026-11-06 (the review's G5). tools/test-apply.py.
+      - name: IPsec's software sessions, and the tunables an apply removes
         run: |
           command -v php > /dev/null || sudo apt-get install -y --no-install-recommends php-cli > /dev/null
           python3 tools/test-apply.py

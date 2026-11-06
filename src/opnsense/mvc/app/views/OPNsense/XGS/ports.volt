@@ -81,6 +81,13 @@
                 '<div class="s">' + (sub || '&nbsp;') + '</div></div>';
         }
 
+        /* Where the page writes with .text() or .attr(), which take what they are given as it stands,
+           the API's text is read back to text first, and a translated string, which Volt escapes, the
+           same way: until 2026-11-06 an & in a description or a reason read &amp; there (the review's G9). */
+        function plain(value) {
+            return $('<textarea/>').html(value === null || value === undefined ? '' : String(value)).text();
+        }
+
         /*
          * Interfaces sharing a subnet (issue 911): the one applied last loses the subnet's route and
          * answers nothing from it, cable in or not. Each group as the backend found it, from the
@@ -105,7 +112,7 @@
                                 .replace('%s', l.network).replace('%s', l.route || '-');
                         }).join('; ');
                     }
-                    $list.append($('<li/>').append($('<b/>').text(name)).append(document.createTextNode(' - ' + state)));
+                    $list.append($('<li/>').append($('<b/>').text(plain(name))).append(document.createTextNode(' - ' + plain(state))));
                 });
                 $alert.append($list);
             });
@@ -133,8 +140,8 @@
                 const text = m.how === 'bridge' ?
                     "{{ lang._('%s is in a bridge with ports of the coprocessor: %s') }}" :
                     "{{ lang._('%s shares a subnet with ports of the coprocessor: %s') }}";
-                $list.append($('<li/>').text(text.replace('%s', label(m))
-                    .replace('%s', $.map(m.others || [], label).join(', '))));
+                $list.append($('<li/>').text(plain(text.replace('%s', label(m))
+                    .replace('%s', $.map(m.others || [], label).join(', ')))));
             });
             $box.append($alert.append($list));
         }
@@ -192,12 +199,12 @@
                     $('#xgs_poe thead tr').eq(1).hide();
                     $('#xgs_poe_note').hide();
                     $('#xgs_poe_error').attr('class', data && data.error ? 'text-warning' : 'text-muted')
-                        .text((data && data.error) || "{{ lang._('Not available on this appliance.') }}").show();
+                        .text(plain((data && data.error) || "{{ lang._('Not available on this appliance.') }}")).show();
                     return;
                 }
                 $('#xgs_poe thead tr').eq(1).show();
                 $('#xgs_poe_note').show();
-                $('#xgs_poe_error').attr('class', 'text-warning').text(data.error || '').toggle(!!data.error);
+                $('#xgs_poe_error').attr('class', 'text-warning').text(plain(data.error)).toggle(!!data.error);
                 $('#xgs_poe_module').text((data.modules || []).map(function (m) {
                     return "{{ lang._('module') }}" + ' ' + m.id + ': ' + m.status + ', ' +
                         "{{ lang._('budget') }}" + ' ' + m.budget_w + ' W';
@@ -320,7 +327,7 @@
             /* Nothing to show is said in words, the reason on hover: the script's own message is for
                the log, not for the page. */
             $('#xgs_counters_error').text(order.length ? '' : "{{ lang._('Not available on this appliance.') }}")
-                .attr('title', (data && data.error) || '').toggle(!order.length);
+                .attr('title', plain(data && data.error)).toggle(!order.length);
             $('#xgs_counters thead tr').eq(1).toggle(order.length > 0);
             $('#xgs_counters').show();
         }
@@ -359,12 +366,17 @@
             const run = function () {
                 $('.xgs-poe').prop('disabled', true);
                 ajaxCall('/api/xgs/poe/set', {label: label, do: act}, function (data) {
-                    if (!data || data.error || data.result === 'failed') {
+                    /* A request a privilege does not reach is answered with OPNsense's page, as HTML
+                       with status 200, which ajaxCall hands on as the request itself - measured on an
+                       XGS 3300, 2026-11-06, on XGS: Overview's Clear. Every answer of poe.py carries
+                       `at`; one without it is that refusal. Until 2026-11-06 a refusal drew no
+                       warning, as if the port had been switched (the review's G8). */
+                    if (!data || typeof data.at === 'undefined' || data.error || data.result === 'failed') {
                         BootstrapDialog.show({
                             type: BootstrapDialog.TYPE_WARNING,
                             title: "{{ lang._('Power over Ethernet') }}",
-                            message: $('<div/>').text((data && data.error) ||
-                                "{{ lang._('No answer: this account may lack the XGS: Settings privilege.') }}"),
+                            message: $('<div/>').text(plain((data && data.error) ||
+                                "{{ lang._('No answer: this account may lack the XGS: Settings privilege.') }}")),
                             buttons: [{label: "{{ lang._('Close') }}", action: function (dialog) { dialog.close(); }}]
                         });
                     }

@@ -37,7 +37,8 @@
  * The tunables go through OPNsense's own Tunables model, so they are visible and editable under
  * System: Settings: Tunables like any other, and loader.conf is written by the function the
  * Tunables page's apply runs (system_login_configure). A tunable already holding the wanted value
- * is not rewritten, so a save that changes nothing writes nothing.
+ * is not rewritten, so a save that changes nothing writes nothing. The flow maker has no tunable: a
+ * row of its own, set by hand before version 1.1.0, is removed (xgs_rows_removed, below).
  */
 
 /*
@@ -65,7 +66,30 @@ function xgs_soft_crypto(bool $on, ?string $now, ?string $row): ?string
     return $boot === $now ? null : $boot;
 }
 
-// The tests include this file for the function above alone.
+/*
+ * The rows of System: Settings: Tunables an apply removes, by uuid, each with its step: $rows is every
+ * row's tunable by its uuid, $unset the sized tunables set to 0 - the driver's own choice. And the flow
+ * maker's own two, dev.octep.0.dp.auto and dev.npuep.0.flow.auto, whatever they hold. They were set
+ * there by hand before version 1.1.0 put the flow maker on this page, and its migration read them into
+ * flow_auto and left them. OPNsense sets every row at each boot - rc.bootup, then the start hook
+ * 90-sysctl - after the early hooks (07-npuep, bringup.sh) have set flow_auto's value, so a row turned
+ * the flow maker back on, or off, whatever the page said. The setting is the flow maker's one place,
+ * applied here and at every boot. Until 2026-11-06 nothing took the rows away (the review's G5).
+ */
+function xgs_rows_removed(array $rows, array $unset): array
+{
+    $removed = [];
+    foreach ($rows as $uuid => $name) {
+        if ($name === 'dev.octep.0.dp.auto' || $name === 'dev.npuep.0.flow.auto') {
+            $removed[$uuid] = $name . ' removed from the tunables: this page sets the flow maker, now and at every boot';
+        } elseif (in_array($name, $unset, true)) {
+            $removed[$uuid] = $name . ' removed: the driver chooses';
+        }
+    }
+    return $removed;
+}
+
+// The tests include this file for the functions above alone.
 if (getenv('XGS_APPLY_FUNCTIONS_ONLY') === '1') {
     return;
 }
@@ -294,14 +318,15 @@ foreach ($sized as $name => $value) {
 }
 $model = new \OPNsense\Core\Tunables();
 $changed = false;
-foreach ($unset as $name) {
-    foreach ($model->item->iterateItems() as $uuid => $item) {
-        if ((string)$item->tunable === $name) {
-            $model->item->del($uuid);
-            $changed = true;
-            $steps[] = $name . ' removed: the driver chooses';
-        }
-    }
+/* those set to 0, and the flow maker's own (xgs_rows_removed, above) */
+$rows = [];
+foreach ($model->item->iterateItems() as $uuid => $item) {
+    $rows[(string)$uuid] = (string)$item->tunable;
+}
+foreach (xgs_rows_removed($rows, $unset) as $uuid => $step) {
+    $model->item->del((string)$uuid);
+    $changed = true;
+    $steps[] = $step;
 }
 foreach ($tunables as $name => $value) {
     $found = null;
