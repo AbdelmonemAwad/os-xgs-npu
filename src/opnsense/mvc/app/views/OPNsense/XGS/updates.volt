@@ -376,6 +376,10 @@
         });
 
         let polling = null;
+        /* An update checks again before it starts, which can take longer than the first poll: until
+           its record appears (a new start time) the page waits for it, a minute and a half at most,
+           rather than offering Update again - a second press ran a second update over the first. */
+        let shownStart = 0, pressedAt = null, startAtPress = 0;
         function refresh() {
             ajaxGet('/api/xgs/updates/status', {}, function (st) {
                 if (!st || st.status !== 'ok') {
@@ -385,7 +389,15 @@
                 show_channel(st.channel);
                 show_cards(st);
                 show_check(st.check);
-                const running = show_apply(st);
+                let running = show_apply(st);
+                shownStart = (st.apply && st.apply.started_at) || 0;
+                if (pressedAt !== null) {
+                    if (shownStart !== startAtPress || Date.now() - pressedAt > 90000) {
+                        pressedAt = null;
+                    } else {
+                        running = true;
+                    }
+                }
                 /* Nothing to press while an update runs: the check would offer the same version. */
                 $('#checkAct').prop('disabled', running);
                 if (running) {
@@ -423,6 +435,8 @@
                 callback: function (ok) {
                     if (ok) {
                         $('#updateAct').prop('disabled', true);
+                        startAtPress = shownStart;
+                        pressedAt = Date.now();
                         ajaxCall('/api/xgs/updates/apply', {}, function () {
                             setTimeout(refresh, 1500);
                             if (polling === null) {

@@ -187,8 +187,11 @@ case ${REV} in *[!0-9a-f]*) REV=; RSRC=unknown ;; esac
 # The release, where this tree is one: v0.1.0-alpha.1 and its like, nothing else.
 case ${REL} in v[0-9]*.[0-9]*.[0-9]*) case ${REL} in *[!0-9A-Za-z.-]*) REL= ;; esac ;; *) REL= ;; esac
 install -d -m 0755 "${PREFIX}/share/os-xgs-npu"
-printf '{"commit": "%s", "date": "%s", "source": "%s", "release": "%s", "installed_at": %s}\n' \
-    "${REV}" "${RDATE}" "${RSRC}" "${REL}" "$(date +%s)" > "${PREFIX}/share/os-xgs-npu/installed.json"
+# The record of what is installed is written at the end, after the driver and the manifest (#661):
+# written here, before them, an install stopped halfway - an XGS 126 restarted under its update -
+# named the new release while its driver, its later boot steps and its manifest were the old one's,
+# and the Updates page, finding the release installed, offered nothing to finish it with.
+BUILD_FAILED=0
 echo "   this install: ${REL:-${REV:-an unknown commit}} (${RSRC})"
 # Every release's changes, as CHANGELOG.md has them, for the Releases tab of XGS: About.
 install -m 0644 "${SRC}/CHANGELOG.md" "${PREFIX}/share/os-xgs-npu/CHANGELOG.md"
@@ -685,6 +688,7 @@ if [ "${OCTEONTX}" = 0 ]; then
         echo "   THE BUILD FAILED - the module in /boot/modules is untouched and still the last good one."
         tail -4 /var/db/os-xgs-npu/install-build.log | sed 's/^/     /'
         KO=kept
+        BUILD_FAILED=1
     else
         echo "   the follower built nothing, and no module for this kernel is installed. Why:"
         tail -4 /var/db/os-xgs-npu/install-build.log | sed 's/^/     /'
@@ -748,7 +752,7 @@ if [ "${OCTEONTX}" = 1 ]; then
     else
         echo "   no module built - the module in /boot/modules is untouched. Why:"
         tail -4 /var/db/os-xgs-npu/install-build.log | sed 's/^/     /'
-        build_fetching octep || true
+        build_fetching octep || BUILD_FAILED=1
     fi
 fi
 
@@ -845,6 +849,15 @@ fi
         [ -f "${f}" ] && echo "${f}"
     done
 } | sort -u | xargs sha256 -r > "${PREFIX}/share/os-xgs-npu/manifest.sha256" 2> /dev/null || true
+
+# The record of what is installed, last: with the driver in place and the manifest written. Not when
+# the driver's build failed - the release is not installed while its driver is the one from before,
+# and the Updates page offers it again (the exit at the end says so).
+if [ "${BUILD_FAILED}" != 1 ]; then
+    printf '{"commit": "%s", "date": "%s", "source": "%s", "release": "%s", "installed_at": %s}\n' \
+        "${REV}" "${RDATE}" "${RSRC}" "${REL}" "$(date +%s)" > "${PREFIX}/share/os-xgs-npu/installed.json.new" &&
+        mv -f "${PREFIX}/share/os-xgs-npu/installed.json.new" "${PREFIX}/share/os-xgs-npu/installed.json"
+fi
 
 # ---------------------------------------------------------------- one thing that is not ours
 #
@@ -962,4 +975,16 @@ if ! echo "${FOLLOWED}" | grep -q 'the module already matches the kernel to foll
     fi
     echo "   Everything else is installed."
     exit 2
+fi
+
+# A driver that did not build is a failed install, not a finished one: until 2026-11-06 the run went on
+# to exit 0 with the old module kept, and the Updates page said the update was done with nothing to
+# reboot, while the release's driver changes never ran. The status says it to update.py, and the
+# record of what is installed above was left as it was.
+if [ "${BUILD_FAILED}" = 1 ]; then
+    echo
+    echo "== THE DRIVER WAS NOT REBUILT: everything else is installed, the driver is the one from before =="
+    echo "   why: the end of /var/db/os-xgs-npu/install-build.log, above. The release is not recorded as"
+    echo "   installed, so the Updates page offers it again."
+    exit 3
 fi
