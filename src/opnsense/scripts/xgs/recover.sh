@@ -110,7 +110,9 @@ jumbo_reset() {
 say "taking the coprocessor up again in place (${FAMILY}, ${DRV}.ko)"
 
 if [ "${FAMILY}" = armada ]; then
-	SEL=$(pciconf -l 2>/dev/null | awk '/chip=0x708011ab|vendor=0x11ab/ {s = $1; sub(/^[^@]*@/, "", s); sub(/:$/, "", s); print s; exit}')
+	# The endpoint by the id its driver probes for, 11ab:7080, in either form pciconf has printed it;
+	# until 2026-11-06 the newer form matched on the vendor alone, the first Marvell device listed (A14).
+	SEL=$(pciconf -l 2>/dev/null | awk '/chip=0x708011ab|vendor=0x11ab[ \t]+device=0x7080/ {s = $1; sub(/^[^@]*@/, "", s); sub(/:$/, "", s); print s; exit}')
 	[ -n "${SEL}" ] || SEL=pci0:1:0:0
 	# The driver sees the coprocessor go first, when it is going to. Then the coprocessor is reset
 	# from the host and its config space waited for, and only then is the driver unloaded and loaded
@@ -136,7 +138,7 @@ if [ "${FAMILY}" = armada ]; then
 	i=0
 	while [ "${i}" -lt 90 ]; do
 		v=$(pciconf -r "${SEL}" 0:1 2>/dev/null || echo ffffffff)
-		case "${v}" in *11ab*) break ;; esac
+		case "${v}" in *708011ab*) break ;; esac
 		i=$((i + 1))
 		sleep 1
 	done

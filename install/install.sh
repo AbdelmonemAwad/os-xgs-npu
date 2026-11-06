@@ -624,8 +624,8 @@ install -m 0755 "${SRC}/src/opnsense/scripts/panel/panel.sh" "${PREFIX}/opnsense
 
 # ---------------------------------------------------------------- the ARMADA path-cost timer
 
-# devd fires this when a front port's link comes up, which is the only moment RSTP will accept a
-# path cost for it. See src/opnsense/scripts/npuctl/bridge-pathcost.sh for why that matters.
+# A front port's path cost is taken by RSTP only once its link is up, and this sets it then. See
+# src/opnsense/scripts/npuctl/bridge-pathcost.sh for why that matters.
 #
 # A timer, not a link-up hook, and the reason is in bridge-pathcost.sh: devd executes only the
 # single highest-priority statement that matches an event, and OPNsense already claims

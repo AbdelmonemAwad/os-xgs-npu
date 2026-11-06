@@ -39,7 +39,11 @@ D=$(dirname "$0")
 # fell back to the all-ones default, and the script waited the full ninety seconds and blamed
 # the hardware for a bug in this line. A dead device and an unparseable selector are not the
 # same thing and must not look the same, which is what the shape check below is for.
-SEL=$(pciconf -l 2>/dev/null | awk '/chip=0x708011ab|vendor=0x11ab/ {
+#
+# And by the id the driver probes for, 11ab:7080, in either form pciconf has printed it. Until
+# 2026-11-06 the newer form matched on the vendor alone, and the first Marvell device listed was taken,
+# whatever it was (the review's A14).
+SEL=$(pciconf -l 2>/dev/null | awk '/chip=0x708011ab|vendor=0x11ab[ \t]+device=0x7080/ {
     s = $1
     sub(/^[^@]*@/, "", s)   # drop the driver name and the @
     sub(/:$/, "", s)        # drop the trailing colon pciconf prints

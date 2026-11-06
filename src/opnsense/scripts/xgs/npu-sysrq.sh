@@ -46,9 +46,17 @@ if [ "$(/sbin/sysctl -n dev.octep.0.heartbeat.state 2>/dev/null)" = dead ]; then
 	    { echo "its fast path last answered ${since:-?} ms ago: its own watchdog may have reset it into its boot firmware" >&2; exit 1; }
 fi
 
+# The logger let back in here, after lockf, however that run ended - as npu-run.sh does it. Until
+# 2026-11-06 lockf replaced this shell, and a run that did not have the lock within its ten seconds
+# ended before the trap below was set: the pause stayed, and the logger stood aside for up to five
+# minutes - at the moment the coprocessor had stopped, when what it prints matters most (the review's
+# O13). lockf's own exit, 75 for a lock not had, is this script's.
 if [ -z "${NPU_SYSRQ_LOCKED:-}" ]; then
 	/usr/bin/touch /var/run/xgs-console-log.pause
-	NPU_SYSRQ_LOCKED=1 exec /usr/bin/lockf -k -t 10 "${LOCK}" /bin/sh "$0" "$@"
+	NPU_SYSRQ_LOCKED=1 /usr/bin/lockf -k -t 10 "${LOCK}" /bin/sh "$0" "$@"
+	rc=$?
+	rm -f /var/run/xgs-console-log.pause
+	exit ${rc}
 fi
 trap '[ -s "${TMP}" ] && /usr/local/bin/python3 ${LIB}/xgs/console_log.py keep "${TMP}" "npu-sysrq.sh ${KEYS}" > /dev/null 2>&1; rm -f "${TMP}" /var/run/xgs-console-log.pause' EXIT
 

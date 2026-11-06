@@ -226,6 +226,11 @@ jobs:
       - name: The handshake reader's endpoint
         run: python3 tools/test-npuhs.py
 
+      # reload.sh's and recover.sh's endpoint the same way: by its id in either form pciconf prints, not
+      # the first Marvell device listed. tools/test-endpoint-select.py.
+      - name: The endpoint reload and recovery take
+        run: python3 tools/test-endpoint-select.py
+
       # Interfaces whose subnets overlap, and which of them answers nothing from the shared part:
       # scripts/xgs/subnets.py against the cases issue 911 met.
       - name: Interfaces sharing a subnet

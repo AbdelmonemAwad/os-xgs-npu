@@ -1181,6 +1181,8 @@ class TheStop(unittest.TestCase):
         # the stop octep finds from the heartbeat: its state is dead before the gone latch is set
         self.beat = 'dead'
         feeder.sysctl = lambda name: self.beat if name == feeder.HEARTBEAT else None
+        # what npu-sysrq.sh returns: its exit and what it wrote to stderr
+        self.sysrq = (0, b'')
         test = self
 
         class Sub:
@@ -1190,6 +1192,7 @@ class TheStop(unittest.TestCase):
             @staticmethod
             def run(args, **kw):
                 test.ran.append(args)
+                return subprocess.CompletedProcess(args, test.sysrq[0], b'', test.sysrq[1])
 
             @staticmethod
             def Popen(args, **kw):
@@ -1213,6 +1216,28 @@ class TheStop(unittest.TestCase):
     def test_a_stop_found_by_the_heartbeat_asks_the_kernel_its_state(self):
         feeder.at_the_stop()
         self.assertEqual([a[1] for a in self.ran], [feeder.SYSRQ])
+        self.assertIn('kept in /var/log/xgs/npu-console.log', self.said[-1])
+        self.assertEqual(len(self.started), 1)
+
+    def test_a_sysrq_that_declined_is_said_with_its_reason_not_as_kept(self):
+        """#1072, F16 (2026-11-06): the first XGS 3300's stop at 09:25 - npu-sysrq.sh returned within
+        the second and the console's log held nothing from it, while the line said it was kept there."""
+        for rc, err in ((1, b'the coprocessor has not come up on this boot; its console is left alone\n'),
+                        (75, b'lockf: /var/run/xgs-npu-console.lock: already locked\n'),
+                        (1, b'')):
+            self.sysrq = (rc, err)
+            feeder.at_the_stop()
+            self.assertNotIn('kept in', self.said[-1], err)
+            self.assertIn('was not asked for its state', self.said[-1])
+            self.assertIn(err.decode().strip() or 'npu-sysrq.sh exited 1', self.said[-1])
+        self.assertEqual(len(self.started), 3)
+
+    def test_a_sysrq_that_did_not_end_is_said(self):
+        def late(args, **kw):
+            raise subprocess.TimeoutExpired(args, 60)
+        feeder.subprocess.run = staticmethod(late)
+        feeder.at_the_stop()
+        self.assertIn('did not run to its end (TimeoutExpired)', self.said[-1])
         self.assertEqual(len(self.started), 1)
 
     def test_its_own_quiesce_sends_no_keys_to_the_console(self):
