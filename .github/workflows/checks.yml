@@ -63,22 +63,25 @@ jobs:
           # hook is the one that, broken, leaves an appliance with no network interfaces and no
           # obvious reason why. The drivers' own *.sh drive a kernel build and a module reload on the
           # appliance over ssh, where a parse error costs a serial-console round trip to find.
-          for f in install/*.sh pkg/*.sh contrib/npuep/*.sh contrib/octep/*.sh src/etc/rc.syshook.d/early/*; do
+          #
+          # Every hook - early, start, stop, upgrade - and every script under src/opnsense/scripts:
+          # recover.sh, bringup.sh, npu-run.sh, mgmt-link.sh and their like run as root on an
+          # appliance too. And each file's result counts: `sh -n "$f" && echo` under bash -e failed
+          # the step only when the last file failed, so any other broken file passed (until
+          # 2026-11-06, with 37 of these files never read at all).
+          rc=0
+          for f in install/*.sh pkg/*.sh contrib/npuep/*.sh contrib/octep/*.sh src/etc/rc.syshook.d/*/* \
+                   src/opnsense/scripts/**/*.sh; do
             [ -f "$f" ] || continue
             head -n1 "$f" | grep -q '^#!' || continue
-            sh -n "$f" && echo "ok $f"
+            if sh -n "$f"; then echo "ok $f"; else echo "FAILED $f"; rc=1; fi
           done
+          exit $rc
 
-      # Not a compile - see the note at the top of this file - but a C file that will not even
-      # parse should not reach an appliance, and the structure offsets in these files are a wire
-      # format where a stray brace is expensive to debug in a kernel.
-      - name: C parses
-        run: |
-          sudo apt-get install -y --no-install-recommends gcc >/dev/null
-          for f in contrib/npuep/*.c contrib/octep/*.c; do
-            gcc -fsyntax-only -I. "$f" 2>&1 | head -5 || true
-            echo "read $f"
-          done
+      # A step named "C parses" ran gcc -fsyntax-only over the drivers here until 2026-11-06. It could
+      # not fail (`| head -5 || true`), and without FreeBSD's headers every file stopped at its first
+      # #include <sys/...>, so it parsed nothing. The drivers are built on an appliance, every warning
+      # fatal (RELEASING.md), and CodeQL reads their C (codeql.yml).
 
       # snprintf answers with what it would have written, not what it wrote, so its return added to an
       # offset unchecked can carry the offset past the buffer and make the next call's length wrap: a
