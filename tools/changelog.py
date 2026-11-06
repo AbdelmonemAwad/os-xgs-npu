@@ -109,10 +109,13 @@ def heading(subject, number, files):
             return 'Fixes'
         if 'docs' in names or 'documentation' in names:
             return 'Documentation'
-    if FIXWORDS.search(subject):
-        return 'Fixes'
+    # Pages alone are Documentation whatever their title says: until 2026-11-06 the title was read
+    # first, and #1038 - pages alone, on "a panic's record" - was counted a fix and made a release due
+    # (#1046). A person's `fix` label above still counts.
     if files and all(DOCS.match(f) for f in files):
         return 'Documentation'
+    if FIXWORDS.search(subject):
+        return 'Fixes'
     return 'Improvements and additions'
 
 

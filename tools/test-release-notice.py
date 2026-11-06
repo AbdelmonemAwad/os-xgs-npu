@@ -70,6 +70,7 @@ check('Fix for several', rn.fixed('Some text.\n\nFix for #890, #748 and #736\n')
 check("GitHub's own word", rn.fixed('This fixes #12 and closes: #13.'), [12, 13])
 check('a mention in passing is not a fix', rn.fixed('For the XGS 107w of #890. See #748.'), [])
 check('a fix for further down a line is not one', rn.fixed('This is a fix for #890 in passing'), [])
+check('two on one line, as #1008 wrote them', rn.fixed('Fix for #1001. Fix for #1003.\n\nmore'), [1001, 1003])
 
 gh = GitHub({946: 'For the 107w.\n\nFix for #890', 943: 'Fix for #890, #816', 947: 'See #900'}, {})
 go(gh)
@@ -82,6 +83,21 @@ check('the notice says how an appliance takes it', 'XGS: Updates' in body, True)
 check('the notice carries its mark', rn.mark('0.1.0-alpha.11') in body, True)
 check('the notice says it is automated',
       body.endswith('\n\n' + rn.AUTOMATED + '\n\n' + rn.mark('0.1.0-alpha.11')), True)
+check('an issue two pull requests fix is told of both', 'Change 943 (#943)' in body, True)
+
+
+class Gone(GitHub):
+    """An issue that answers 404, as a deleted or transferred one does."""
+    def __call__(self, method, path, body=None):
+        if method == 'GET' and path.endswith('/issues/900'):
+            raise rn.urllib.error.HTTPError(path, 404, 'Not Found', {}, None)
+        return GitHub.__call__(self, method, path, body)
+
+
+gh = Gone({946: 'Fix for #900', 943: 'Fix for #890'}, {})
+said = go(gh)
+check('one issue that cannot be read stops no other', [w[0].split('/')[-2] for w in gh.written], ['890'])
+check('and it is said', any(s.startswith('#900 could not be told') for s in said), True)
 
 gh = GitHub({946: 'Fix for #890'}, {}, told={890})
 go(gh)

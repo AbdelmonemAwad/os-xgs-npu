@@ -73,6 +73,25 @@ jobs:
           VERSION: ${{ steps.version.outputs.version }}
         run: python3 tools/release-notice.py "${VERSION}"
 
+      # "A release is due" (release-due.yml) is answered by the release itself, so it is closed here.
+      # Until 2026-11-06 it stayed open until release-due.yml's next look - its own, scheduled for
+      # 06:41, started by GitHub hours later - or until someone started that workflow by hand.
+      - name: Close "A release is due"
+        if: steps.version.outputs.version != ''
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -eu
+          title="A release is due"
+          existing=$(TITLE="${title}" gh issue list --state open --author app/github-actions --search "in:title \"${title}\"" --json number,title --jq 'map(select(.title == env.TITLE)) | .[0].number // empty')
+          if [ -n "${existing}" ]; then
+            gh issue close "${existing}" --comment "Released as [${VERSION}](../releases/tag/v${VERSION})."
+          else
+            echo "no open \"${title}\" issue"
+          fi
+
       # A main release has its ready-made images built at once, by xgs-image-builder's own workflow;
       # a small release - its number has a fourth part, 0.1.0-alpha.5.6 - gets none (the owner's
       # word, 2026-10-24). That workflow is another repository's, which this run's own token cannot
