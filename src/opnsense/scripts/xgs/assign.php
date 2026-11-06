@@ -33,10 +33,12 @@
  * ARMADA family the unit is the number: npupN is PortN, and the cages follow the highest port -
  * npup13 and npup14, F1 and F2, on the XGS 136.
  *
- * ONLY ON A BOX NOBODY HAS SET UP. If a single front port is assigned already, the box was set up
- * by hand and nothing here touches it - so installing or updating this project on an appliance in
- * service changes nothing. A WAN or LAN entry whose device exists is kept; one that names a device
- * this machine does not have - the factory's mismatch placeholders - is the one that is filled.
+ * ONLY ON A BOX NOBODY HAS SET UP. If a single front port is assigned already, or named anywhere else
+ * in the configuration - a VLAN's parent, a LAGG's member, a PPP link's port - the box was set up by
+ * hand and nothing here touches it, so installing or updating this project on an appliance in
+ * service changes nothing. A WAN entry whose device exists, or is one the configuration makes, is
+ * kept; one that names a device this machine does not have - the factory's mismatch placeholders - is
+ * the one that is filled.
  */
 
 /*
@@ -60,7 +62,42 @@ function xgs_mgmt_device(string $prefix, string $lan_dev, array $ports, array $a
     return null;
 }
 
-// The tests include this file for the function above alone.
+/*
+ * Where the configuration names each of $devs, outside the subtrees in $skip: every leaf of config.xml,
+ * its words split at commas and spaces, and a word that is the device or a device made from it -
+ * npup1_vlan10, oxp2.20. A front port is in service without being assigned itself when it is a VLAN's
+ * or a QinQ's parent, a LAGG's member, a PPP link's port. None of those devices exists yet at this
+ * point of the boot, so a box set up that way looked like one nobody had set up, and the boot after
+ * "Assign the ports again" wrote WAN and LAN over its own. Descriptions only describe, and this
+ * project's own settings (/OPNsense/XGS) name the ports to describe them; both are left out.
+ */
+function xgs_where_named(SimpleXMLElement $root, array $devs, array $skip = []): array
+{
+    $named = [];
+    $walk = function (SimpleXMLElement $node, string $path) use (&$walk, &$named, $devs, $skip) {
+        foreach ($node->children() as $tag => $child) {
+            $at = $path . '/' . $tag;
+            if ($tag === 'descr' || $tag === 'description' || in_array($at, $skip, true)) {
+                continue;
+            }
+            if ($child->count() > 0) {
+                $walk($child, $at);
+                continue;
+            }
+            foreach (preg_split('/[\s,]+/', trim((string)$child)) as $word) {
+                foreach ($devs as $dev) {
+                    if ($word === $dev || strpos($word, $dev . '_') === 0 || strpos($word, $dev . '.') === 0) {
+                        $named[$dev][$at] = true;
+                    }
+                }
+            }
+        }
+    };
+    $walk($root, '');
+    return array_map('array_keys', $named);
+}
+
+// The tests include this file for the functions above alone.
 if (getenv('XGS_ASSIGN_FUNCTIONS_ONLY') === '1') {
     return;
 }
@@ -148,9 +185,16 @@ foreach ($c->interfaces->children() as $key => $node) {
 $taken = array_values(array_filter(array_keys($ports), function ($dev) use ($assigned) {
     return isset($assigned[$dev]);
 }));
+// The front ports in service through something else - xgs_where_named above.
+$named = xgs_where_named($c, array_values(array_diff(array_keys($ports), $taken)), ['/OPNsense/XGS']);
 $wan_dev = array_search($wan_label, $ports, true);
 
-$wan_ok = isset($c->interfaces->wan) && does_interface_exist((string)$c->interfaces->wan->if);
+// A WAN on a device the configuration makes - a PPPoE link, a VLAN, a LAGG - is not there yet at this
+// point of the boot, and is kept as one that is; until 2026-11-06 its front port took it over, with the
+// PPPoE or static address it had.
+$wan_if = isset($c->interfaces->wan) ? (string)$c->interfaces->wan->if : '';
+$wan_ok = $wan_if !== '' && (does_interface_exist($wan_if) ||
+    xgs_where_named($c, [$wan_if], ['/interfaces', '/OPNsense/XGS']));
 $lan_dev = isset($c->interfaces->lan) ? (string)$c->interfaces->lan->if : '';
 // The host's own NIC, if any: xgs_mgmt_device above.
 $mgmt_dev = xgs_mgmt_device($prefix, $lan_dev, $ports, $assigned, 'does_interface_exist');
@@ -159,11 +203,13 @@ $mgmt_dev = xgs_mgmt_device($prefix, $lan_dev, $ports, $assigned, 'does_interfac
 if (!$ports) {
     $verdict = 3;
     $why = "no {$prefix} front ports yet";
-} elseif ($taken) {
+} elseif ($taken || $named) {
     $verdict = 2;
-    $why = 'set up already: ' . implode(' ', array_map(function ($dev) use ($assigned, $ports) {
+    $why = 'set up already: ' . implode(' ', array_merge(array_map(function ($dev) use ($assigned, $ports) {
         return "{$ports[$dev]}={$assigned[$dev]}";
-    }, $taken)) . ' - nothing is changed';
+    }, $taken), array_map(function ($dev) use ($named, $ports) {
+        return "{$ports[$dev]} in " . implode(',', $named[$dev]);
+    }, array_keys($named)))) . ' - nothing is changed';
 } else {
     $verdict = 0;
     $why = 'none of the ' . count($ports) . ' front ports is assigned';
