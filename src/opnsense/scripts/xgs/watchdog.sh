@@ -17,9 +17,11 @@
 # default since 2026-10-17.
 #
 # HOW. watchdogd(8) pats the timer every second and asks for TIMEOUT seconds each time. It is
-# started from the boot's start hook and stopped first thing at shutdown, because watchdogd
-# disarms the timer only when it is asked to stop: a timer left armed through a halt would reset
-# the appliance a couple of minutes after somebody asked it to power off.
+# started from the boot's start hook and stopped at shutdown, because watchdogd disarms the timer
+# only when it is asked to stop: a timer left armed through a halt would reset the appliance a
+# couple of minutes after somebody asked it to power off. The stop hook (23-xgs-watchdog) comes once
+# the kernel follower's rebuild is over, before the services and the network go; until 2026-11-06 it
+# came first, and the rebuild, ten minutes at most, ran with the timer off.
 #
 # Never fails the caller: a board without the timer, or the setting off, is reported and exits 0.
 

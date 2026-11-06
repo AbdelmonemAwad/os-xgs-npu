@@ -127,10 +127,13 @@ install -m 0755 "${SRC}/src/opnsense/scripts/xgs/switch-jumbo.sh" "${PREFIX}/opn
 install -d -m 0755 "${PREFIX}/etc/rc.syshook.d/start" "${PREFIX}/share/os-xgs-npu"
 install -m 0755 "${SRC}/src/etc/rc.syshook.d/start/09-xgs-switch-jumbo" "${PREFIX}/etc/rc.syshook.d/start/09-xgs-switch-jumbo"
 # The host's hardware watchdog: armed at the end of every boot when the setting says so, and
-# disarmed first thing at shutdown (scripts/xgs/watchdog.sh).
+# disarmed at shutdown once the kernel follower's rebuild is over (scripts/xgs/watchdog.sh). The hook
+# was 05-xgs-watchdog until 2026-11-06, first of the stop hooks; that one goes, or it would still
+# disarm the timer before the rebuild.
 install -d -m 0755 "${PREFIX}/etc/rc.syshook.d/stop"
 install -m 0755 "${SRC}/src/etc/rc.syshook.d/start/08-xgs-watchdog" "${PREFIX}/etc/rc.syshook.d/start/08-xgs-watchdog"
-install -m 0755 "${SRC}/src/etc/rc.syshook.d/stop/05-xgs-watchdog" "${PREFIX}/etc/rc.syshook.d/stop/05-xgs-watchdog"
+install -m 0755 "${SRC}/src/etc/rc.syshook.d/stop/23-xgs-watchdog" "${PREFIX}/etc/rc.syshook.d/stop/23-xgs-watchdog"
+rm -f "${PREFIX}/etc/rc.syshook.d/stop/05-xgs-watchdog"
 install -m 0644 "${SRC}/contrib/mvsw/mvsw" "${PREFIX}/share/os-xgs-npu/mvsw"
 # Block lists whose additions cut the connections already open (scripts/xgs/lists_cut.py): once a
 # minute, on both families, from /usr/local/etc/cron.d like the kernel follower - OPNsense
@@ -380,9 +383,11 @@ sleep 1
 /usr/local/bin/python3 "${PREFIX}/opnsense/scripts/xgs/console_log.py" start > /dev/null 2>&1 || true
 # The coprocessor's own watchdog feeder looked after from the host every 20 s, and put right when it
 # has stopped, before the coprocessor's watchdog resets it (scripts/xgs/feeder.py, #768). Started
-# again now, as the logger is, so the script just installed is the one running.
+# again now, as the logger is, so the script just installed is the one running. Its stop hook was
+# 07-xgs-feeder until 2026-11-06, before the kernel follower's rebuild; that one goes.
 install -m 0755 "${SRC}/src/etc/rc.syshook.d/start/69-xgs-feeder" "${PREFIX}/etc/rc.syshook.d/start/69-xgs-feeder"
-install -m 0755 "${SRC}/src/etc/rc.syshook.d/stop/07-xgs-feeder" "${PREFIX}/etc/rc.syshook.d/stop/07-xgs-feeder"
+install -m 0755 "${SRC}/src/etc/rc.syshook.d/stop/22-xgs-feeder" "${PREFIX}/etc/rc.syshook.d/stop/22-xgs-feeder"
+rm -f "${PREFIX}/etc/rc.syshook.d/stop/07-xgs-feeder"
 /usr/local/bin/python3 "${PREFIX}/opnsense/scripts/xgs/feeder.py" stop > /dev/null 2>&1 || true
 sleep 1
 /usr/local/bin/python3 "${PREFIX}/opnsense/scripts/xgs/feeder.py" start > /dev/null 2>&1 || true
@@ -422,9 +427,12 @@ echo "   sending: ${MODE:-manual} - XGS: Problem Reports shows what is sent, and
 # today the CPU's temperature sensor (System: Settings: Miscellaneous, Thermal Sensors). Earlier
 # versions of this file loaded amdtemp from loader.conf.local on the XGS 3300 only, which the page
 # did not show; that line is taken out once OPNsense's own setting carries the module - on the XGS
-# 3300 only, where this file wrote it. A loader.conf.local made by hand is the owner's.
+# 3300 only, where this file wrote it. A loader.conf.local made by hand is the owner's. And the start
+# hook that sets them again at the first boot after a factory reset, which takes their record with
+# /conf (74-xgs-defaults).
 echo "== appliance settings =="
 /usr/local/bin/php "${PREFIX}/opnsense/scripts/xgs/defaults.php" | sed 's/^/   /' || true
+install -m 0755 "${SRC}/src/etc/rc.syshook.d/start/74-xgs-defaults" "${PREFIX}/etc/rc.syshook.d/start/74-xgs-defaults"
 if [ "${OCTEONTX}" = 1 ] && [ "$(/usr/local/bin/php -r 'require_once("config.inc"); echo $config["system"]["thermal_hardware"] ?? "";' 2> /dev/null)" = amdtemp ] &&
     grep -qx 'amdtemp_load="YES"' /boot/loader.conf.local 2> /dev/null; then
     sed -i '' '/^amdtemp_load="YES"$/d' /boot/loader.conf.local

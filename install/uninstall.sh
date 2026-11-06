@@ -86,7 +86,8 @@ rm -f "${PREFIX}/opnsense/scripts/xgs/cp_users.py" "${PREFIX}/opnsense/scripts/x
 rm -rf /var/db/os-xgs-npu/cp
 rm -f "${PREFIX}/opnsense/scripts/xgs/apply.php" "${PREFIX}/opnsense/scripts/xgs/portmap.py" \
     "${PREFIX}/opnsense/scripts/xgs/ipsec.py" "${PREFIX}/opnsense/scripts/xgs/reassign.sh" \
-    "${PREFIX}/opnsense/scripts/xgs/defaults.php" "${PREFIX}/opnsense/scripts/xgs/npu-run.sh" \
+    "${PREFIX}/opnsense/scripts/xgs/defaults.php" "${PREFIX}/etc/rc.syshook.d/start/74-xgs-defaults" \
+    "${PREFIX}/opnsense/scripts/xgs/npu-run.sh" \
     "${PREFIX}/opnsense/scripts/xgs/tunables-kenv.sh" \
     "${PREFIX}/opnsense/scripts/xgs/temperatures.sh" "${PREFIX}/opnsense/scripts/xgs/transceivers.py" \
     "${PREFIX}/opnsense/scripts/xgs/bundle.py" "${PREFIX}/opnsense/scripts/xgs/flows.py" \
@@ -109,7 +110,9 @@ rm -f /var/db/os-xgs-npu/transceivers.json /var/db/os-xgs-npu/fastpath.json /var
 rm -rf /var/db/os-xgs-npu/lists /var/db/os-xgs-npu/ja4 /var/db/os-xgs-npu/anomaly /var/db/os-xgs-npu/appliance-id
 # The hardware watchdog: disarmed before its script goes, or nothing would ever stop watchdogd.
 [ -f "${PREFIX}/opnsense/scripts/xgs/watchdog.sh" ] && /bin/sh "${PREFIX}/opnsense/scripts/xgs/watchdog.sh" stop > /dev/null 2>&1
-rm -f "${PREFIX}/opnsense/scripts/xgs/watchdog.sh" "${PREFIX}/etc/rc.syshook.d/start/08-xgs-watchdog"     "${PREFIX}/etc/rc.syshook.d/stop/05-xgs-watchdog"
+# Its stop hook by both names: 23-xgs-watchdog, and 05-xgs-watchdog on an install from before 2026-11-06.
+rm -f "${PREFIX}/opnsense/scripts/xgs/watchdog.sh" "${PREFIX}/etc/rc.syshook.d/start/08-xgs-watchdog" \
+    "${PREFIX}/etc/rc.syshook.d/stop/23-xgs-watchdog" "${PREFIX}/etc/rc.syshook.d/stop/05-xgs-watchdog"
 rm -f "${PREFIX}/opnsense/scripts/xgs/switch-jumbo.sh" "${PREFIX}/etc/rc.syshook.d/start/09-xgs-switch-jumbo"
 # The dashboard widgets. A dashboard that still lists one shows an empty panel until it is removed.
 rm -f "${PREFIX}/opnsense/www/js/widgets/XGSCoprocessor.js" "${PREFIX}/opnsense/www/js/widgets/XGSPorts.js" \
@@ -127,11 +130,13 @@ rm -f "${PREFIX}/etc/rc.syshook.d/start/64-xgs-transceivers" "${PREFIX}/etc/rc.s
 rm -f "${PREFIX}/opnsense/scripts/xgs/console_log.py" "${PREFIX}/etc/rc.syshook.d/start/68-xgs-console-log" \
     "${PREFIX}/etc/rc.syshook.d/stop/06-xgs-console-log" "${PREFIX}/etc/rc.syshook.d/start/07-npuep-gate"
 # The coprocessor's watchdog feeder no longer looked after (#768): the watcher stopped, then its
-# script, its two hooks and what it kept.
+# script, its two hooks (the stop hook by both names: 22-xgs-feeder, and 07-xgs-feeder on an install
+# from before 2026-11-06) and what it kept.
 [ -f "${PREFIX}/opnsense/scripts/xgs/feeder.py" ] && \
     /usr/local/bin/python3 "${PREFIX}/opnsense/scripts/xgs/feeder.py" stop > /dev/null 2>&1
 rm -f "${PREFIX}/opnsense/scripts/xgs/feeder.py" "${PREFIX}/etc/rc.syshook.d/start/69-xgs-feeder" \
-    "${PREFIX}/etc/rc.syshook.d/stop/07-xgs-feeder" /var/db/os-xgs-npu/feeder.json \
+    "${PREFIX}/etc/rc.syshook.d/stop/22-xgs-feeder" "${PREFIX}/etc/rc.syshook.d/stop/07-xgs-feeder" \
+    /var/db/os-xgs-npu/feeder.json \
     "${PREFIX}/opnsense/scripts/xgs/npu-sysrq.sh"
 # The check of interfaces sharing a subnet (issue 911).
 rm -f "${PREFIX}/opnsense/scripts/xgs/subnets.py"

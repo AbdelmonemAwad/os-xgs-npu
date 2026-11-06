@@ -146,12 +146,37 @@ def bridges(text=None):
     return out
 
 
-def mgmt_mixed(groups=None, members=None, names=None):
+def under(text=None):
+    """{device: [the devices it is made over]} from `ifconfig -a`: a bridge's members, a LAGG's ports
+    and a VLAN's parent."""
+    text = run(['/sbin/ifconfig', '-a']) if text is None else text
+    out, dev = {}, None
+    for line in text.splitlines():
+        head = re.match(r'^([a-z][a-z0-9_.]*): flags=', line)
+        if head:
+            dev = head.group(1)
+            continue
+        m = (re.match(r'^\s+(?:member|laggport): (\S+)', line) or
+             re.match(r'^\s+vlan: \d+.*\sparent interface: (\S+)', line))
+        if m and dev:
+            out.setdefault(dev, []).append(m.group(1))
+    return out
+
+
+def mgmt_mixed(groups=None, members=None, names=None, lower=None):
     """The host's own ports - MGMT on an XGS 3300 - in a bridge with the coprocessor's ports, or in a subnet
-    one of them uses (the coprocessor's port itself, or a bridge it is in). MGMT reaches the host's CPU on
-    its own; the coprocessor's ports reach it only through the coprocessor. Mixed, the host has two ways
-    into one network and keeps one route for it, so one of them answers nothing (issue 911)."""
-    members = bridges() if members is None else members
+    one of them uses (the coprocessor's port itself, or a bridge, a VLAN or a LAGG over one). MGMT reaches
+    the host's CPU on its own; the coprocessor's ports reach it only through the coprocessor. Mixed, the
+    host has two ways into one network and keeps one route for it, so one of them answers nothing (issue
+    911). `lower` is under()'s answer, read from the same `ifconfig -a` as the bridges when this reads
+    them; a caller that gives the bridges alone gets the bridges alone. Until 2026-11-06 a VLAN or a LAGG
+    over the coprocessor's ports was taken for a device of its own, and MGMT in a subnet with one, or in
+    a bridge with one, was not said."""
+    if members is None:
+        text = run(['/sbin/ifconfig', '-a'])
+        members = bridges(text)
+        lower = under(text) if lower is None else lower
+    lower = members if lower is None else lower
     groups = overlaps() if groups is None else groups
     if names is None:
         names = portmap.assignments() if portmap is not None else {}
@@ -160,13 +185,16 @@ def mgmt_mixed(groups=None, members=None, names=None):
         n = names.get(dev, {})
         return {'device': dev, 'key': n.get('key', ''), 'descr': n.get('descr', '')}
 
-    def coprocessor_side(dev):
-        return bool(COPROCESSOR.match(dev)) or any(COPROCESSOR.match(m) for m in members.get(dev, []))
+    def coprocessor_side(dev, seen=()):
+        # the coprocessor's port, or a device made over one, as far down as they go: a bridge of a VLAN
+        # over a LAGG of front ports is on the coprocessor's side as much as the ports are
+        return bool(COPROCESSOR.match(dev)) or (dev not in seen and any(
+            coprocessor_side(m, seen + (dev,)) for m in lower.get(dev, [])))
 
     out = []
     for bridge in sorted(members):
         ports = members[bridge]
-        if any(COPROCESSOR.match(m) for m in ports):
+        if any(coprocessor_side(m) for m in ports):
             for dev in ports:
                 if not NOT_HOST.match(dev):
                     out.append(dict(name(dev), how='bridge', others=[name(bridge)]))

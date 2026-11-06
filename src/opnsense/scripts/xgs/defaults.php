@@ -22,7 +22,8 @@
  * ONCE EACH, AND NEVER OVER THE OWNER. A setting is written only when nothing is chosen for it, and
  * its name is then recorded in /conf/os-xgs-npu-defaults, so an owner who sets it back to None on
  * the page afterwards is not overridden by the next install or update. One that the owner had
- * already chosen is recorded without being written.
+ * already chosen is recorded without being written. A factory reset empties /conf, the record with
+ * it, and the start hook 74-xgs-defaults runs this again at the boot after one (since 2026-11-06).
  */
 
 require_once 'config.inc';

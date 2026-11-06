@@ -40,6 +40,36 @@
  * is not rewritten, so a save that changes nothing writes nothing.
  */
 
+/*
+ * What net.inet.ipsec.crypto_support is written to now for ipsec_soft_crypto, or null for nothing to
+ * write: $now is the sysctl as it reads (null without IPsec's module, which 07-npuep loads at boot),
+ * $row the value a row of System: Settings: Tunables gives it, or null. On holds the sessions to
+ * software providers (CRYPTOCAP_F_SOFTWARE, 33554432). Off gives back what a boot leaves where the
+ * setting holds them - the row's number, or the kernel's own hardware or software
+ * (CRYPTOCAP_F_HARDWARE | CRYPTOCAP_F_SOFTWARE, 50331648) - and leaves any other value as it is, which
+ * this setting did not write. Until 2026-11-06 off wrote nothing: the sessions stayed held to software
+ * until the next boot, and the page said it was applied.
+ */
+function xgs_soft_crypto(bool $on, ?string $now, ?string $row): ?string
+{
+    if ($now === null) {
+        return null;
+    }
+    if ($on) {
+        return $now === '33554432' ? null : '33554432';
+    }
+    if ($now !== '33554432') {
+        return null;
+    }
+    $boot = ($row !== null && preg_match('/^[0-9]+$/', $row)) ? $row : '50331648';
+    return $boot === $now ? null : $boot;
+}
+
+// The tests include this file for the function above alone.
+if (getenv('XGS_APPLY_FUNCTIONS_ONLY') === '1') {
+    return;
+}
+
 require_once 'config.inc';
 require_once 'auth.inc';
 require_once 'util.inc';
@@ -348,11 +378,23 @@ if ($family === 'armada') {
             }
         }
     }
-    /* IPsec's software sessions: now for the sessions made from here on, and at every boot. */
-    if ($get('ipsec_soft_crypto', '1') === '1' && sysctl_get('net.inet.ipsec.crypto_support') !== null &&
-        sysctl_get('net.inet.ipsec.crypto_support') !== '33554432') {
-        if (sysctl_set('net.inet.ipsec.crypto_support', '33554432')) {
-            $steps[] = "IPsec's software sessions held to the CPU's AES instructions";
+    /* IPsec's software sessions: now for the sessions made from here on, and at every boot - on and
+       off (xgs_soft_crypto, above). */
+    $row = null;
+    foreach ($model->item->iterateItems() as $item) {
+        if ((string)$item->tunable === 'net.inet.ipsec.crypto_support') {
+            $row = trim((string)$item->value);
+        }
+    }
+    $crypto = xgs_soft_crypto($get('ipsec_soft_crypto', '1') === '1',
+        sysctl_get('net.inet.ipsec.crypto_support'), $row);
+    if ($crypto !== null) {
+        if (sysctl_set('net.inet.ipsec.crypto_support', $crypto)) {
+            $steps[] = $crypto === '33554432' ? "IPsec's software sessions held to the CPU's AES instructions" :
+                "IPsec's software sessions no longer held to the CPU's AES instructions";
+        } else {
+            $ok = false;
+            $steps[] = 'the kernel refused net.inet.ipsec.crypto_support=' . $crypto;
         }
     }
 }

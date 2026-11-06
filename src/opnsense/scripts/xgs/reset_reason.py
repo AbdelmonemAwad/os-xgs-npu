@@ -7,6 +7,8 @@
 Why the host last reset, as its own chipset recorded it.
 
     reset_reason.py boot     at boot: read the record, log it, keep it, and clear it for the next boot
+    reset_reason.py follow   what was kept at this boot moved to kern.boottime as it reads now, after
+                             a clock step; nothing is read (65-xgs-report, before the reporter)
     reset_reason.py show     what was kept at this boot, as JSON
 
 WHY. A host that resets without a shutdown leaves no dump and no log line that says why. The XGS 3300
@@ -32,6 +34,17 @@ shutdown. Then the value is written back: the bits are write-one-to-clear and so
 cleared by the hardware, so without it a bit could outlive the reset that set it - Linux's follow-up
 fix does the same ("Prevent reset reasons from being retained across reboot").
 
+WHICH BOOT A RECORD IS. The record's boot is kern.boottime, which the problem reporter and the
+Overview page compare with their own, within five seconds. kern.boottime moves with the clock,
+though: ntpd's first step comes once it has heard its servers, which can be after this hook and before
+the reporter's (65-xgs-report), and until 2026-11-06 a step of more than five seconds between the two
+lost the reset's cause from its report - and a second `boot` after one read the cleared register and
+kept "no cause" over the cause. So this boot's record is also marked in the kernel's environment
+(MARK, its read_at), which every boot starts anew from the loader and no clock step moves: `boot`
+does not read again where it finds the mark, and `follow`, run by 65-xgs-report just before the
+reporter, moves the record's boot to kern.boottime as it then reads. Where kenv refuses the mark,
+both go by kern.boottime as before, and `follow` changes nothing.
+
 Only on an AMD processor of family 17h or later (Family= in dmesg.boot), where the register exists.
 Never fails the caller.
 """
@@ -49,6 +62,8 @@ OFFSET = int(os.environ.get('XGS_RESET_OFFSET', str(ADDRESS)))	# another place i
 DMESG = os.environ.get('XGS_RESET_DMESG', '/var/run/dmesg.boot')
 KEPT = os.environ.get('XGS_RESET_STATE', '/var/db/os-xgs-npu/reset-reason.json')
 TAG = 'xgs-reset-reason'
+KENV = '/bin/kenv'
+MARK = 'xgs.reset_reason.read_at'	# in the kernel's environment: this boot's record (WHICH BOOT A RECORD IS)
 
 # The bits with a published meaning (the AMD list Linux carries); every other bit is printed by its
 # number. Bit 19 is what an ordinary reboot leaves here (the XGS 3300, 2026-10-18).
@@ -124,7 +139,8 @@ def keep(record):
             json.dump(record, handle, indent=1)
         os.replace(KEPT + '.new', KEPT)
     except OSError:
-        pass
+        return False
+    return True
 
 
 def kept_now():
@@ -135,15 +151,36 @@ def kept_now():
         return {}
 
 
+def kenv_get(name):
+    """A variable of the kernel's environment, or None where it is not set or kenv cannot be run."""
+    try:
+        out = subprocess.run([KENV, '-q', name], capture_output=True, text=True, errors='replace',
+                             timeout=10)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    value = out.stdout.strip()
+    return value if out.returncode == 0 and value else None
+
+
+def kenv_set(name, value):
+    try:
+        subprocess.run([KENV, '%s=%s' % (name, value)], capture_output=True, timeout=10)
+    except (OSError, subprocess.SubprocessError):
+        pass
+
+
 def at_boot():
     if not has_register():
         print('no AMD family 17h or later processor here; nothing to read')
         return 0
     # Once a boot: a second read finds the record already cleared, and would keep "nothing" over
-    # the cause this boot started with.
+    # the cause this boot started with. The mark says this boot read it, whatever the clock did since;
+    # without one, kern.boottime within five seconds does (WHICH BOOT A RECORD IS).
     boot = boot_time()
     earlier = kept_now()
-    if boot and isinstance(earlier, dict) and abs(int(earlier.get('boot') or 0) - boot) <= 5:
+    if not isinstance(earlier, dict):
+        earlier = {}
+    if kenv_get(MARK) is not None or (boot and abs(int(earlier.get('boot') or 0) - boot) <= 5):
         print('read already at this boot: ' + describe(int(earlier.get('value', '0'), 16)))
         return 0
     try:
@@ -174,7 +211,8 @@ def at_boot():
         'bits': decode(value), 'cleared': cleared,
         'after': None if after is None else '0x%08x' % after,
     }
-    keep(record)
+    if keep(record):
+        kenv_set(MARK, record['read_at'])
     message = 'last reset: ' + describe(value)
     if value and not cleared:
         message += ' (could not be cleared)'
@@ -182,6 +220,24 @@ def at_boot():
         message += ' (0x%08x left after clearing)' % after
     log(message)
     print(message)
+    return 0
+
+
+def follow():
+    """This boot's record - the mark names it - moved to kern.boottime as it reads now, so that the
+    reporter, run next, finds it after a clock step. Nothing is read from the chipset."""
+    record = kept_now()
+    boot = boot_time()
+    if not isinstance(record, dict) or not boot or kenv_get(MARK) != str(record.get('read_at')):
+        return 0
+    moved = boot - int(record.get('boot') or 0)
+    if moved:
+        record['boot'] = boot
+        keep(record)
+        # A step the five seconds would have taken in is not worth a line; one that would not is.
+        if abs(moved) > 5:
+            log('the clock moved %+d s since the reset record was read; kept with the boot\'s time as it reads now'
+                % moved)
     return 0
 
 
@@ -198,9 +254,11 @@ def main(argv):
     command = argv[1] if len(argv) > 1 else 'show'
     if command == 'boot':
         return at_boot()
+    if command == 'follow':
+        return follow()
     if command == 'show':
         return show()
-    print('usage: reset_reason.py boot|show', file=sys.stderr)
+    print('usage: reset_reason.py boot|follow|show', file=sys.stderr)
     return 0
 
 

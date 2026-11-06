@@ -30,6 +30,13 @@ Its name is then recorded in `/conf/os-xgs-npu-defaults`, so an owner who sets t
 None afterwards is not overridden by the next install or update. Run on both appliances on
 2026-10-17: `--check` said what it would set, the run set it, a second run left it.
 
+A factory reset empties `/conf`, and the record goes with it. Since 2026-11-06 the start hook
+`74-xgs-defaults` runs the script again at the first boot without the record, as the installer does;
+until then nothing did before the plugin's next install or update. At a boot of the XGS 136 on
+2026-11-06 with the record moved aside, it found amdtemp already chosen, left it as it was
+("thermal_hardware: the owner chose amdtemp - left as it is", tag `xgs-defaults`), and wrote the
+record again; at every other boot it reads the record's name and stops.
+
 Before this, the installer loaded amdtemp from a line it wrote in `loader.conf.local`, on the XGS
 3300 only, and the Miscellaneous page said None while the module was loaded. The installer now takes
 that line out once OPNsense's setting carries the module - on the XGS 3300 only, because the XGS
@@ -105,10 +112,15 @@ that stopped scheduling stayed stopped until somebody pulled the power.
 
 The coprocessor's Settings page now has **Hardware watchdog**, on by default since 2026-10-17. `scripts/xgs/watchdog.sh` loads the driver and starts `watchdogd -t 128 -s 1`: the
 timer is patted every second and fires after 128 seconds without a pat. The start hook
-`08-xgs-watchdog` arms it at the end of every boot, and the stop hook `05-xgs-watchdog` disarms it
-first thing at every shutdown - watchdogd disarms the timer only when it is asked to stop, and a
-timer left armed through a halt would reset the appliance two minutes after it was told to power
-off. Apply on the page arms or disarms it at once.
+`08-xgs-watchdog` arms it at the end of every boot, and the stop hook `23-xgs-watchdog` disarms it at
+every shutdown once the kernel follower's rebuild is over - `20-octep`, and os-kernelfollow's
+`21-kernelfollow`, each up to ten minutes on the reboot that brings a new kernel - watchdogd disarms
+the timer only when it is asked to stop, and a timer left armed through a halt would reset the
+appliance two minutes after it was told to power off. Until 2026-11-06 the hook was `05-xgs-watchdog`,
+first of all, and a host that stopped in the rebuild was not reset; the coprocessor's watch
+(`22-xgs-feeder`, until then `07-xgs-feeder`) now stops after the rebuild too. The order at a restart
+of the XGS 136 on 2026-11-06, as its console printed it: octep, kernelfollow, xgs-feeder, xgs-watchdog.
+Apply on the page arms or disarms it at once.
 
 Measured 2026-10-17: armed, disarmed and armed again by hand on both appliances; then through a
 reboot of the XGS 3300 with nothing done by hand - the stop hook ran at 14:24:53, the start hook at

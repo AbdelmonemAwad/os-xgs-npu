@@ -1,0 +1,16 @@
+#!/bin/sh
+#-
+# SPDX-License-Identifier: BSD-2-Clause
+# Copyright (c) 2026 Abdelmonem Awad <eg2@live.com>
+#
+# The appliance's own settings in OPNsense's own pages - scripts/xgs/defaults.php - set again at the
+# first boot after a factory reset. The installer sets them once, and their record is in /conf; a
+# factory reset empties /conf (issue 957), the record with it, and gives back a configuration with none
+# of them. Until 2026-11-06 nothing set them again until the plugin was next installed or updated, so
+# a reset appliance went without its CPU temperature until then. With the record there - every other
+# boot - this reads one file name and stops; the record keeps it to once, never over the owner's choice.
+D=/usr/local/opnsense/scripts/xgs/defaults.php
+[ -f "${D}" ] && [ -x /usr/local/bin/php ] || exit 0
+[ -f /conf/os-xgs-npu-defaults ] && exit 0
+/usr/local/bin/php "${D}" 2>&1 | /usr/bin/logger -t xgs-defaults
+exit 0
