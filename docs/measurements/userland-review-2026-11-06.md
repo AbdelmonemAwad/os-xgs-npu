@@ -4,8 +4,8 @@
 On 2026-11-06 everything this project runs on an appliance outside its two drivers - the boot and
 stop hooks, the scripts, the pages and their API, the installer and the updater, the problem reporter,
 the workflows and two plugins of the family - was read through for faults:
-[1072](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/1072) holds the register, 138 findings - one of them found and fixed that evening -
-with their severity, evidence and state. **134 of them were fixed by the end of that day, in 52 pull
+[1072](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/1072) holds the register, 140 findings - three of them found that evening, one fixed then -
+with their severity, evidence and state. **135 of them were fixed by the end of that day, in 53 pull
 requests, each run before it was merged - on the lab appliances, as an owner meets it, wherever an
 appliance can show it - and every one of them with its tests.** The rest are open or confirmed there.
 This page was first published that evening with 121 in 45; those merged after it are added below.
@@ -167,6 +167,27 @@ XGS 136 that was seven - the five, and two of `main`'s run, stopped but still in
 
 ![XGS 136, the change: every connection of the address read by the pages and dropped, no download moves after](../images/measurements/userland-review-2026-11-06/19-a-cut-reaches-every-page-136.png)
 
+## An update that waits for a plugin a while, not for ever
+
+[1113](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1113), U8: the project's update ends by bringing
+the family's plugins along, and it waited for each as long as it took - a plugin whose self-update never
+ended kept the update at 96%, "running", and no other update could start. A self-update is never
+stopped, since pkg cut in the middle of an install can leave a plugin half installed: it is the wait
+that ends. The update starts the runner the Plugins tab starts, and waits 15 minutes at most for any one
+plugin; then it says which is still at it, and ends, while the runner goes on. Both XGS 3300s were
+updated at once, as XGS: Updates' Update starts it, with os-netreport's update made to wait 1000 s
+before it began: with `main`, on the second XGS 3300, the update stood at 96% for 17 minutes, until the
+plugin had ended; with the change, on the first, it ended 15 minutes after the plugin began, its log
+saying the plugin goes on, and the Plugins tab showed the plugin updated two minutes later. Seen in that
+run, and registered as findings of their own: the page offers Reboot now while the plugin is still
+being updated (U18), and says only Finishing at 96%, not which plugin it waits for (U19).
+
+![First XGS 3300, the change: the update ended 15 minutes after the plugin's update began, the new driver waiting for a reboot](../images/measurements/userland-review-2026-11-06/20-an-update-ends-after-15-minutes-of-a-plugin-first-3300.png)
+
+![Its log: os-netreport still being updated, not stopped, going on after the update](../images/measurements/userland-review-2026-11-06/21-its-log-the-plugin-goes-on-first-3300.png)
+
+![The Plugins tab two minutes later: os-netreport updated to v1.0.5 by the runner that went on](../images/measurements/userland-review-2026-11-06/22-the-plugin-updated-after-it-first-3300.png)
+
 ## Every pull request, and what it was run on
 
 | pull request | findings | what changed | what it was run on |
@@ -222,6 +243,7 @@ XGS 136 that was seven - the five, and two of `main`'s run, stopped but still in
 | [1108](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1108) | none of its own: #1090's put back | octep, npuep, hwdrop.py, flows.py, flows.volt: #1090 put back, which the merge of #1106 had taken out | Puts #1090 back as it was merged, file for file, after #1106's merge had taken it out; every file the same as 331756b2, which was run in hardware on both families (see #1090), checks.yml differing by #1106's lines alone. test-flows.py, test-hwdrop.py, test-ja4-cut.py OK. |
 | [1109](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1109) | O3 | octep, bringup.sh, ports.py, portmap.py, portstats.py: every front port named by its place, so one that does not come up renames no other | Under Linux: test-bringup.py, test-models.py OK. The second XGS 3300 (12 ports and a module of 4), on main first: every port up, oxp0 to oxp15. With A4 given no address (a lab copy of ports.py): on main A3 took oxp12 and A4's assignment, A2 A3's, A1 A2's, no oxp15, both lab links silent; with the branch oxp12 left empty, each other port its own name and assignment, A2's link answering; every port up with the branch, the names as on main. Main's files and module put back after. |
 | [1110](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1110) | D13 | octep, npuep, hwdrop.py: the flow table read past its first page, so a cut reaches every connection | Under Linux: test-hwdrop.py, test-flows.py, test-ja4-cut.py OK; both modules built on the first XGS 3300 with -Werror, no warning. A lab build of each driver whose pages hold two connections, five downloads from the second XGS 3300 through the appliance: on the first XGS 3300 main's hwdrop.py dropped the first page's 2 and 3 downloads went on, the branch's dropped all 5 and none moved; on the XGS 136 main's dropped 2 and 3 went on, the branch's dropped 7 - the five and two of main's run not yet out of the table - and none moved. Each appliance's own module put back after. |
+| [1113](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1113) | U8 | plugins.py: the project's update waits for a plugin 15 minutes at most, and never stops one | Under Linux: test-plugins.py (three runs), test-update.py OK; pyflakes clean. On both XGS 3300s at once, an update started as the page's Update starts it, with os-netreport's update made to wait 1000 s before it began: on the second XGS 3300 (main) the update stayed 'running' at 96% until the plugin had ended, 17 minutes; on the first (the branch) the update ended 15 minutes after the plugin began, its log saying the plugin was still being updated and not stopped, and the runner went on with it - the Plugins tab showing it updated to v1.0.5. The real self-update.py and each channel put back on both. |
 | [os-kernelfollow 10](https://github.com/AbdelmonemAwad/os-kernelfollow/pull/10) | P16 |  | Under Linux: test-follow.py (17, new) OK; on main 16 fail. First XGS 3300, follow.sh's lock held 40 s by a stand-in, nothing registered: the installed follow.sh with PINONLY=1 waited for the lock until an outside limit cut it at 15 s, the branch's ended at once (2); the installed stop hook with LIMIT=5 said the next boot takes kernel.old with nothing armed (no nextboot.conf), the branch's said what it found. No fall-back actually armed on an appliance (nothing registered needs one). |
 | [os-watchdog 10](https://github.com/AbdelmonemAwad/os-watchdog/pull/10) | B15 |  | The XGS 136: the branch's 24-watchdog in place of 04-watchdog for one restart, the installed one put back after. The stop order as the console printed it: before, watchdog first of all; with it, after octep and kernelfollow. install.sh and uninstall.sh as they now are not run on an appliance (sh -n passes). |
 
