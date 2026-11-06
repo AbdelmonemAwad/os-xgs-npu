@@ -111,6 +111,19 @@ jumbo_reset() {
 	echo "$(date -u '+%Y-%m-%d %H:%M UTC') not set yet: the coprocessor was taken up again in place, and its own boot set the ports back" > "${JUMBO_STATE}"
 }
 
+# AND THE OFFLOAD GATE GOES WITH IT, on the ARMADA. Its coprocessor forgets the gate's word at each
+# of its boots, and the status page shows the word offload.sh last had it accept while that word's
+# stamp is the token in GATE_TOKEN, which until 2026-11-06 the start hook 07-npuep-gate alone made,
+# once a host boot: after a recovery in place the page said the gate was on, from the word accepted
+# before the reset, while the coprocessor had it off until a write after it - and none came when the
+# rpc channel was late (the review's A6). So the token is made again as soon as the reset has been
+# asked for: the word kept from before is nothing to the page, and the gate 07-npuep's settings write
+# once the ports are back is stamped with the new one.
+GATE_TOKEN=/var/run/xgs-npuep-boot
+gate_forgotten() {
+	{ od -An -N8 -tx8 /dev/urandom | tr -d ' \n'; echo; } 2>/dev/null > "${GATE_TOKEN}"
+}
+
 say "taking the coprocessor up again in place (${FAMILY}, ${DRV}.ko)"
 
 if [ "${FAMILY}" = armada ]; then
@@ -139,6 +152,8 @@ if [ "${FAMILY}" = armada ]; then
 		say "not reset: $(echo "${out}" | head -n 1)"
 		exit 1
 	fi
+	# a pulse that did not settle may still have reset it: the gate is taken as forgotten either way
+	gate_forgotten
 	i=0
 	while [ "${i}" -lt 90 ]; do
 		v=$(pciconf -r "${SEL}" 0:1 2>/dev/null || echo ffffffff)

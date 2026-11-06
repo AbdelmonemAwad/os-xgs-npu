@@ -164,7 +164,7 @@ if [ "$armada" = 1 ]; then
     # that has stopped, and it is worth naming rather than letting every other check fail obscurely.
     db=$(sysctl -n dev.npuep.0.doorbells 2>/dev/null | sed -n '3p')
     case "$db" in
-        *ffffffff*) bad "the endpoint reads all ones - the coprocessor has stopped. Run contrib/npuep/reload.sh; if that does not recover it, power cycle" ;;
+        *ffffffff*) bad "the endpoint reads all ones - the coprocessor has stopped. Run sh /usr/local/share/os-xgs-npu/source/contrib/npuep/reload.sh; if that does not recover it, power cycle" ;;
         '')         note "could not read the doorbell block" ;;
         *)          ok "the endpoint is answering" ;;
     esac
@@ -215,7 +215,7 @@ if [ "$armada" = 1 ]; then
     if [ "$n" -eq 0 ]; then
         # The most common cause, and the one nobody guesses.
         if saw "answers HOST_MGMT_READY once per coprocessor boot"; then
-            bad "the datapath refused a second bring-up - the coprocessor has to restart. sh contrib/npuep/reload.sh pulses its reset line and waits for it, which is verified to bring every front port back"
+            bad "the datapath refused a second bring-up - the coprocessor has to restart. sh /usr/local/share/os-xgs-npu/source/contrib/npuep/reload.sh pulses its reset line and waits for it, which is verified to bring every front port back"
         fi
     fi
 

@@ -274,18 +274,22 @@ def octep_report(out):
 # ---- the ARMADA driver (npuep): GIU rings, giu/flow/ipsec counters, npup ports ---------------------
 
 NPUEP = "dev.npuep.0"
-# The gate word offload.sh last had this coprocessor accept, kept there with the boot it belongs
-# to, because the ARMADA cannot be asked for it. Not /var/run: the boot hook writes the gate before
-# cleanvar empties that directory, so a file there was gone by the time the page asked.
+# The gate word offload.sh last had this coprocessor accept, kept there with the coprocessor's boot
+# it belongs to, because the ARMADA cannot be asked for it. Not /var/run: the boot hook writes the
+# gate before cleanvar empties that directory, so a file there was gone by the time the page asked.
 NPUEP_FW_CFG_STATE = "/var/db/os-xgs-npu/offload-fw_cfg"
 NPUEP_BOOT_TOKEN = "/var/run/xgs-npuep-boot"
 
 
 def npuep_fw_cfg_written():
-    """The fw_cfg word the coprocessor accepted since this boot, or None if none was written."""
-    # The stamp is the token the start hook leaves in /var/run for this boot (emptied at boot, so
-    # it is the boot's). Not kern.boottime, which moves by a second when the clock is stepped, and
-    # not kern.boot_id, which this kernel does not have.
+    """The fw_cfg word the coprocessor accepted since it last started, or None if none was."""
+    # The stamp is the token for the coprocessor's boot: the start hook leaves it in /var/run at
+    # the host's boot (emptied at boot, so it is the boot's), and recover.sh and reload.sh make it
+    # again as they reset the coprocessor under the running host. Until 2026-11-06 only the start
+    # hook made it, and after a recovery in place or a reload the word accepted before the reset
+    # read as this boot's: the page said the gate was on while the coprocessor, which forgets it at
+    # each of its boots, had it off (the review's A6). Not kern.boottime, which moves by a second
+    # when the clock is stepped, and not kern.boot_id, which this kernel does not have.
     try:
         with open(NPUEP_BOOT_TOKEN) as f:
             boot = f.read().strip()
@@ -362,16 +366,18 @@ def npuep_report(out):
         "timeouts": sysctl_int("%s.nwa.timeouts" % NPUEP),
     }
     # The gate has no read-back on this family, so what is shown is the word offload.sh last had the
-    # coprocessor accept since boot - the same meaning as the OCTEON TX's write-only fw_cfg - and
-    # None when nothing has been written since boot. The flow table and the IPsec offers are on
-    # their own pages; the revision barrier is here.
+    # coprocessor accept since it last started - the same meaning as the OCTEON TX's write-only
+    # fw_cfg, which a new attach of that driver starts again - and None when nothing has been
+    # written since. The flow table and the IPsec offers are on their own pages; the revision
+    # barrier is here.
     fw_cfg = npuep_fw_cfg_written()
     out["offload"] = {
         "fw_cfg_requested": fw_cfg,
         "offload_bit_requested": None if fw_cfg is None else bool(fw_cfg & 0x1),
         "note": (
             "the ARMADA cannot be asked for the gate word: this is the one the coprocessor last "
-            "accepted from offload.sh since boot, or nothing if it has not been written since boot. "
+            "accepted from offload.sh since it last started (a host boot, or a reset while the host "
+            "runs), or nothing if it has not been written since. "
             "The flow table is on the Flow page and the IPsec offers on the IPsec page; the "
             "firewall revision is posted and held by the far side"
         ),

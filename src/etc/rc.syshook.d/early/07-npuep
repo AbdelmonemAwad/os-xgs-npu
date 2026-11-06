@@ -51,7 +51,10 @@ log() { /usr/bin/logger -t npuep -p daemon.notice "$1"; }
 # starts with no exclusion and the flow maker off, and it runs "07-npuep settings" once the ports
 # are back (measured 2026-10-20: after a reload without it the flow maker stayed off, whatever the
 # settings page said, and an IPsec soak started on it would have measured another machine).
+# scripts/xgs/recover.sh runs it too, after taking the coprocessor up again in place. Its one
+# argument is how many seconds the gate waits for the rpc channel (below).
 after_ports() {
+    GATE_WAIT=${1:-20}
     #
     # The management link over PCIe establishes only when this end is up: the driver
     # publishes its rings on `up` and the coprocessor answers LINK_ESTABLISHED (issue
@@ -67,12 +70,13 @@ after_ports() {
     #
     # The acceleration gate, as the settings page left it. This coprocessor forgets the
     # word at every boot, and scripts/xgs/offload.sh is the one thing that writes it - on
-    # this family by hand on the rpc channel, which opens a few seconds after the ports, so
-    # it is waited for briefly. Never fatal: the ports do not depend on it, and the script's
-    # own report says what happened.
+    # this family by hand on the rpc channel, which opens some seconds after the ports, so
+    # it is waited for, GATE_WAIT seconds: briefly at boot, longer after a reset under the
+    # running host (both below). Never fatal: the ports do not depend on it, and the
+    # script's own report says what happened.
     #
     j=0
-    while [ ${j} -lt 20 ]; do
+    while [ ${j} -lt "${GATE_WAIT}" ]; do
         case "$(/sbin/sysctl -n dev.npuep.0.rpc_channel.state 2>/dev/null | head -1)" in
         open*) break ;;
         esac
@@ -139,12 +143,21 @@ after_ports() {
     done
 }
 
+# After a reset under the running host - a reload, a recovery in place - the gate waits for the rpc
+# channel as long as the driver does: 120 seconds from its attach (NPURPC_CLAIM_WAIT in
+# contrib/npuep/npurpc.c), after which it leaves the channel closed for that load. The attach is
+# over before the ports are seen, so 120 seconds from here end after the driver's, and no start
+# hook comes after to write the gate again, as 07-npuep-gate does at boot. Until 2026-11-06 this
+# was the boot's twenty seconds, and a channel later than that left the coprocessor with offloading
+# off, the setting on, until the next boot or an Apply on the settings page. The channel has come
+# eight seconds after the ports at boot, with the inspection function brought up
+# (docs/measurements/channel-claim-wait-2026-10-24.md), and later than twenty once (issue 406).
 if [ "${1:-}" = settings ]; then
     if ! /sbin/ifconfig "${FIRST_IF}" >/dev/null 2>&1; then
         log "settings: ${FIRST_IF} is not there, nothing applied"
         exit 0
     fi
-    after_ports
+    after_ports 120
     exit 0
 fi
 
@@ -267,7 +280,9 @@ i=0
 while [ ${i} -lt "${WAIT}" ]; do
     if /sbin/ifconfig "${FIRST_IF}" >/dev/null 2>&1; then
         log "front ports present after ${i}s - OPNsense can configure them"
-        after_ports
+        # Twenty seconds for the gate's channel: this hook holds up the interfaces' configuration,
+        # and the start hook 07-npuep-gate writes the gate again once syslogd runs, waiting longer.
+        after_ports 20
         exit 0
     fi
     i=$((i + 1))
