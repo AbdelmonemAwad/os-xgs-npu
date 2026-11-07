@@ -19,10 +19,10 @@ to a new image, and the checks fail on one without them.
 |---|---|---|
 | [screens/](screens/) | The web interface, page by page, in English and in Arabic | 81 |
 | [hardware/](hardware/) | Photographs and drawings of the appliances, one folder each | 41 |
-| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 737 |
+| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 739 |
 | [readme/](readme/) | The README's banner and status board, drawn by tools/readme-art.py | 6 |
 
-904 images in all.
+906 images in all.
 
 ## The web interface
 
@@ -1216,7 +1216,7 @@ The page: [shaper-3300-2026-10-20.md](../measurements/shaper-3300-2026-10-20.md)
 | [01-before.png](measurements/shaper-3300-2026-10-20/01-before.png) | Before: a 100 Mbit/s shaper, the stream in hardware at 8,816 Mbit/s | [shaper-3300-2026-10-20.md](../measurements/shaper-3300-2026-10-20.md) |
 | [02-after.png](measurements/shaper-3300-2026-10-20/02-after.png) | After: the same shaper, the stream with the host at 99.5 Mbit/s | [shaper-3300-2026-10-20.md](../measurements/shaper-3300-2026-10-20.md) |
 
-### measurements/signed-plugin-releases-2026-11-07/ (5)
+### measurements/signed-plugin-releases-2026-11-07/ (7)
 
 The page: [signed-plugin-releases-2026-11-07.md](../measurements/signed-plugin-releases-2026-11-07.md).
 
@@ -1227,6 +1227,8 @@ The page: [signed-plugin-releases-2026-11-07.md](../measurements/signed-plugin-r
 | [03-eight-archives-one-byte-changed-refused-first-3300.png](measurements/signed-plugin-releases-2026-11-07/03-eight-archives-one-byte-changed-refused-first-3300.png) | An archive one byte from the signed one: each update stopped, nothing installed | [signed-plugin-releases-2026-11-07.md](../measurements/signed-plugin-releases-2026-11-07.md) |
 | [04-the-last-of-the-eight-refused-first-3300.png](measurements/signed-plugin-releases-2026-11-07/04-the-last-of-the-eight-refused-first-3300.png) | The last of the eight, and Update all offering them again | [signed-plugin-releases-2026-11-07.md](../measurements/signed-plugin-releases-2026-11-07.md) |
 | [05-eight-signed-releases-installed-first-3300.png](measurements/signed-plugin-releases-2026-11-07/05-eight-signed-releases-installed-first-3300.png) | The eight installed as signed | [signed-plugin-releases-2026-11-07.md](../measurements/signed-plugin-releases-2026-11-07.md) |
+| [06-arabic-and-rtl-archives-refused-first-3300.png](measurements/signed-plugin-releases-2026-11-07/06-arabic-and-rtl-archives-refused-first-3300.png) | opnsense-arabic and opnsense-rtl: an archive one byte from the signed one, both updates stopped | [signed-plugin-releases-2026-11-07.md](../measurements/signed-plugin-releases-2026-11-07.md) |
+| [07-all-eleven-installed-as-signed-first-3300.png](measurements/signed-plugin-releases-2026-11-07/07-all-eleven-installed-as-signed-first-3300.png) | All eleven plugins installed as signed | [signed-plugin-releases-2026-11-07.md](../measurements/signed-plugin-releases-2026-11-07.md) |
 
 ### measurements/signed-releases-2026-11-07/ (5)
 

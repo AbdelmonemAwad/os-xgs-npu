@@ -124,6 +124,19 @@ checks started on it ([.github/workflows/plugin-release-pr.yml](.github/workflow
 called by each plugin's release-pr.yml). Its text is a first draft: putting it right, merging, and the
 tag stay with a person. A change to a plugin's README or pages alone makes no release.
 
+A plugin's release is signed as this repository's is, since 2026-11-07 (os-netreport's pull request
+43, then the other ten). Its `self-update.py` installs a release only as signed, with the public keys
+installed beside it from the plugin's own `release-keys/`, the same key as here. Pushing the annotated
+tag starts the plugin's release.yml, which builds the package, makes the release a **draft** with it,
+and starts the signing repository, given `SIGNING_DISPATCH_TOKEN` in the plugin's repository too. That
+repository adds `<plugin>-<tag>.tar.gz`, `release.json` and `release.json.sig`, and publishes the
+release. The two plugins with no package - opnsense-arabic and opnsense-rtl - have a release.yml that
+makes the draft from the tag and starts the signing, and nothing else. A plugin's release is never made
+by hand with `gh release create`: published unsigned, it can take no file more, and no appliance takes
+it. The signing repository's `RELEASE_TOKEN` reaches every plugin's repository; a run for one it does
+not reach fails, by name, since GitHub would not show it that repository's drafts. Measured on the
+first XGS 3300: [the plugins' signed releases](docs/measurements/signed-plugin-releases-2026-11-07.md).
+
 ## What a release is not
 
 - A push to `main` never makes one: only a new version heading in `CHANGELOG.md` does.
