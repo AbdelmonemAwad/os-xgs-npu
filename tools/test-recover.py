@@ -31,6 +31,10 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 RECOVER = os.path.join(HERE, '..', 'src', 'opnsense', 'scripts', 'xgs', 'recover.sh')
 POSIX = os.path.exists('/bin/sh') and sys.platform != 'win32'
 WAITING = 'Waiting for USFP application to connect'
+# the running kernel as uname -v says it, and two others a module may be stamped for
+KERNEL_NOW = 'FreeBSD 15.1-RELEASE-p6 stable/26.7-n275000-c962f76493b6 SMP'
+KERNEL_BEFORE = 'FreeBSD 15.1-RELEASE-p5 stable/26.7-n274800-0a1b2c3d4e5f SMP'
+KERNEL_NEXT = 'FreeBSD 15.1-RELEASE-p7 stable/26.7-n275200-5f4e3d2c1b0a SMP'
 FATAL = ("PHP Fatal error:  Uncaught Error: Call to undefined function made_up() in "
          "/usr/local/etc/inc/plugins.inc.d/made-up.inc:12")
 
@@ -93,6 +97,9 @@ class Appliance(unittest.TestCase):
             self.stub(os.path.join('..', '07-npuep'))
         for name in ('kldload', 'configctl', 'daemon'):
             self.stub(name)
+        # the running kernel, as uname -v says it, and /boot/modules with no stamp beside the module
+        os.makedirs(os.path.join(d, 'modules'))
+        self.script(os.path.join(self.bin, 'uname'), 'echo "%s"' % KERNEL_NOW)
         self.stub(os.path.join('..', 'rc.reload_all'),
                   'cat "%s/reload-said"\nexit $(cat "%s/reload-exit")' % (d, d))
         self.env = dict(os.environ, PATH=self.bin + os.pathsep + '/usr/bin:/bin', XGS_RECOVER_LOCKED='1',
@@ -138,7 +145,9 @@ class Appliance(unittest.TestCase):
                 ('/var/db/os-xgs-npu/switch-jumbo.state', os.path.join(d, 'switch-jumbo.state')),
                 ('/var/run/xgs-npuep-boot', os.path.join(d, 'xgs-npuep-boot')),
                 ('/usr/local/etc/rc.syshook.d/early/07-npuep', os.path.join(d, '07-npuep')),
-                ('/usr/local/etc/rc.reload_all', os.path.join(d, 'rc.reload_all'))):
+                ('/usr/local/etc/rc.reload_all', os.path.join(d, 'rc.reload_all')),
+                ('/usr/bin/uname', os.path.join(self.bin, 'uname')),
+                ('/boot/modules/', os.path.join(d, 'modules') + '/')):
             self.assertIn(real, text, 'nothing in recover.sh to stand in for: %s' % real)
             text = text.replace(real, fake)
         path = self.script(os.path.join(d, 'recover.sh'), text.split('\n', 1)[1])
@@ -211,11 +220,59 @@ class Armada(Reload, Appliance):
 
     FAMILY = 'armada'
 
+    def module(self, name, kernel):
+        """A module in /boot/modules, with the stamp of the kernel it was built for (None: no stamp)."""
+        self.write(os.path.join('modules', name), 'a module')
+        if kernel is not None:
+            self.write(os.path.join('modules', name + '.kernel'), kernel)
+
+    def loaded(self):
+        return [c.replace(os.path.join(self.dir, 'modules') + '/', '/boot/modules/') for c in self.calls('kldload')]
+
     def test_the_driver_is_loaded_again_once(self):
         done = self.recover()
         self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
         self.assertEqual(self.calls('kldunload'), ['kldunload npuep.ko'])
-        self.assertEqual(self.calls('kldload'), ['kldload /boot/modules/npuep.ko'])
+        self.assertEqual(self.loaded(), ['kldload /boot/modules/npuep.ko'])
+
+    # The module loaded again is the one built for the running kernel, chosen as 07-npuep chooses it,
+    # and chosen before the coprocessor is reset (the release check's review of 2026-11-07).
+    def test_npuep_ko_built_for_this_kernel_is_loaded(self):
+        self.module('npuep.ko', KERNEL_NOW)
+        self.module('npuep.ko.prev', KERNEL_BEFORE)
+        done = self.recover()
+        self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+        self.assertEqual(self.loaded(), ['kldload /boot/modules/npuep.ko'])
+
+    def test_npuep_ko_for_the_next_kernel_takes_prev_built_for_this_one(self):
+        self.module('npuep.ko', KERNEL_NEXT)
+        self.module('npuep.ko.prev', KERNEL_NOW)
+        done = self.recover()
+        self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+        self.assertEqual(self.calls('kldunload'), ['kldunload npuep.ko'])
+        self.assertEqual(self.loaded(), ['kldload /boot/modules/npuep.ko.prev'])
+
+    def test_a_driver_from_prev_is_unloaded_by_that_name(self):
+        self.stub('kldstat', 'exit 0')		# the driver came from npuep.ko.prev
+        self.module('npuep.ko', KERNEL_NEXT)
+        self.module('npuep.ko.prev', KERNEL_NOW)
+        done = self.recover()
+        self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+        self.assertEqual(self.calls('kldunload'), ['kldunload npuep.ko.prev'])
+        self.assertEqual(self.loaded(), ['kldload /boot/modules/npuep.ko.prev'])
+
+    def test_no_module_for_this_kernel_resets_nothing(self):
+        self.module('npuep.ko', KERNEL_NEXT)
+        self.module('npuep.ko.prev', KERNEL_BEFORE)
+        done = self.recover()
+        self.assertEqual(done.returncode, 1, done.stdout + done.stderr)
+        self.assertIn('npuep.ko is built for another kernel and no npuep.ko.prev is for this one; not '
+                      'taken up in place - nothing reset', done.stdout)
+        # nothing done: the coprocessor not reset (mcp2210.py's pulse), the driver not unloaded or loaded
+        self.assertEqual(self.calls('python3'), [])
+        self.assertEqual(self.calls('kldunload'), [])
+        self.assertEqual(self.calls('kldload'), [])
+        self.assertNotIn('resetting the coprocessor', done.stdout)
 
 
 if __name__ == '__main__':

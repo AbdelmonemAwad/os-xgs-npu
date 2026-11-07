@@ -56,6 +56,17 @@ if [ ! -f "${MODULE}" ]; then
     echo "   no ${MODULE}: nothing to load again, so nothing is unloaded and the coprocessor is not reset"
     exit 1
 fi
+# A module stamped for another kernel is refused before anything is unloaded, as 07-npuep refuses it
+# at boot: one built against other structures reads them at the wrong offsets. A module with no stamp
+# is loaded, as there. FORCE=1 loads a mismatched one anyway. Until 2026-11-07 only the choice of
+# .prev followed the hook, and npuep.ko built for the next kernel was loaded into this one (the
+# release check's review).
+STAMP=$(cat "${MODULE}.kernel" 2>/dev/null || true)
+if [ -n "${STAMP}" ] && [ "${STAMP}" != "$(/usr/bin/uname -v)" ] && [ "${FORCE:-0}" != "1" ]; then
+    echo "   ${MODULE} is built for another kernel (${STAMP}): nothing is unloaded and the coprocessor is not reset."
+    echo "   Rebuild it with install/kernel-follow.sh, or set FORCE=1 if you know the layouts did not change."
+    exit 1
+fi
 echo "== the module to load again: ${MODULE} =="
 : ${BOOT_TOKEN:=/var/run/xgs-npuep-boot}
 
@@ -95,6 +106,12 @@ if kldstat -q -m pci/npuep; then
     echo "== unloading =="
     # by the file it came from: 07-npuep loads npuep.ko.prev when npuep.ko is for another kernel
     if kldstat -q -n npuep.ko.prev; then kldunload npuep.ko.prev || true; else kldunload npuep || true; fi
+    # A driver that is still loaded - from a file of another name, or under a securelevel that keeps
+    # it - must not see its coprocessor reset under it: that is what stopped the host (issue 780).
+    if kldstat -q -m pci/npuep; then
+        echo "   the driver is still loaded (kldstat -m pci/npuep): the coprocessor is not reset, nothing more is done" >&2
+        exit 1
+    fi
 fi
 
 echo "== resetting the NPU =="
