@@ -388,6 +388,12 @@ elif grep -q '^amdtemp_load=' /boot/loader.conf.local 2>/dev/null; then
     ok "amdtemp survives a reboot: loader.conf.local loads it"
 else
     note "amdtemp is loaded by neither OPNsense's Thermal Sensors setting nor loader.conf.local - the reading will be gone after a reboot"
+    # The lasting way, and what the appliance's settings know of it - the save that took the setting
+    # out, which the next install or update sets again unless it was its own page's (defaults.php).
+    # Until 2026-11-07 this said only that nothing loaded it (issue 890).
+    printf '        %s\n' "set it on System: Settings: Miscellaneous, Thermal Sensors, Hardware: AMD K8, K10 and K11 CPU on-die thermal sensor, then Save"
+    said=$(/usr/local/bin/php /usr/local/opnsense/scripts/xgs/defaults.php --check 2>/dev/null | grep '^thermal_hardware:')
+    [ -n "$said" ] && printf '        %s\n' "$said"
 fi
 
 echo
