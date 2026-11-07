@@ -31,11 +31,13 @@ leaves only an update.json in its share directory, and is tried again at the nex
 A file AUTO holding "off" stops all of it; the Plugins tab is as it was.
 
 EACH PLUGIN UPDATES ITSELF. Every one of them carries its own self-update.py - it reads the
-plugin's latest release on GitHub, takes it only when it is ahead of what is installed, and runs the
-installer the release carries - and this only calls it: `self-update.py check` to ask, and
-`self-update.py` to install. Nothing of a plugin is in this repository. Until 2026-10-20 each of them
-ran itself once a day from cron and installed a new release on its own; since then an update is
-taken here, where the owner sees it (each plugin's own release drops its cron entry).
+plugin's latest release on GitHub, takes it only when it is ahead of what is installed and, since
+2026-11-07, only as its owner signed it (each one's SIGNED RELEASES), and runs the installer the
+release carries - and this only calls it: `self-update.py check` to ask, and `self-update.py` to
+install. Nothing of a plugin is in this repository. Until 2026-10-20 each of them ran itself once a
+day from cron and installed a new release on its own; since then an update is taken here, where the
+owner sees it (each plugin's own release drops its cron entry). A plugin that is not here is installed
+from its latest release only as signed too (SIGNED RELEASES below).
 
 What a plugin has installed is its /usr/local/share/<name>/installed.json, what its last update did
 its update.json, and the output of that update its update.log - all written by its own scripts.
@@ -52,7 +54,10 @@ keeps asking while the web GUI is away.
 THE CHECK ASKS NPUFORGE.ORG FIRST, for the reason update.py gives: three requests of GitHub's API a
 plugin, eleven plugins since 2026-10-25 (six before), sixty requests an hour from one address. Every plugin's self-update.py takes the
 API's address from SELF_UPDATE_API, so the check hands it npuforge.org's copy of the API and nothing
-of a plugin changes; when the copy cannot answer, the check is asked again of GitHub itself.
+of a plugin changes; when the copy cannot answer, the check is asked again of GitHub itself. A
+self-update.py that checks signatures (each plugin's releases after 2026-11-07) asks neither: it reads
+its release's signed manifest from GitHub's download of it, not the API, and is handed the copy's
+address for nothing.
 
 AN UPDATE ASKS THE COPY TOO, ONCE GITHUB HAS CONFIRMED IT (since 0.1.0-alpha.8.4). Until then every
 update and install asked GitHub's API itself - two or three requests a plugin - and once the
@@ -85,10 +90,16 @@ done.
 
 import fcntl
 import glob
+import hashlib
 import json
 import os
+import posixpath
+import re
+import shutil
 import subprocess
 import sys
+import tarfile
+import tempfile
 import time
 import urllib.error
 import urllib.parse
@@ -131,15 +142,37 @@ PLUGINS = [
 ]
 OWNER = 'AbdelmonemAwad'
 GITHUB = 'https://api.github.com'
-RAW = 'https://raw.githubusercontent.com'
 # INSTALLING ONE THAT IS NOT HERE (2026-10-25). A plugin of the family that is not installed is listed
 # too, with its latest release, and Install installs it the way an update does: its own self-update.py,
-# taken from that release's tag on GitHub into a work directory, run by the same runner - which finds
-# nothing installed and installs the release with the installer it carries. Only the family's os-*
-# plugins, whose script sits under /usr/local/opnsense/scripts as in their repositories' src/; the
-# Arabic catalogue and the right-to-left layout come with the image. Until then a plugin added to the
-# family after an appliance was installed could only be installed from a shell.
+# taken out of that release's signed archive into a work directory (SIGNED RELEASES below), run by the
+# same runner - which finds nothing installed and installs the release with the installer it carries.
+# Only the family's os-* plugins, whose script sits under /usr/local/opnsense/scripts as in their
+# repositories' src/; the Arabic catalogue and the right-to-left layout come with the image. Until then
+# a plugin added to the family after an appliance was installed could only be installed from a shell.
 INSTALLER_DIR = os.path.join(WORK, '%s-installer')
+# SIGNED RELEASES (since 2026-11-07, the review's G3). A plugin that is not here is installed from its
+# latest release only as signed, as an installed one has updated itself since then: the release's
+# manifest and its signature are read from the release's own downloads - not GitHub's API, nor
+# npuforge.org's copy of it - and the signature verified with this project's own release keys
+# (RELEASE_KEYS: one key signs the whole family); the archive the manifest names is downloaded and its
+# SHA-256 and size checked against the signed ones; and the plugin's self-update.py and its release keys
+# are taken out of that archive into its installer directory, where the runner starts it and it checks
+# the release again with those keys. Until then the self-update.py was fetched from
+# raw.githubusercontent.com at the release's tag, as it came, and run as root. A test appliance may read
+# the plugins' releases from another place, named in the one-line file RELEASES_FROM (a URL, file://
+# too; each plugin's under its name): what is installed must still be signed with a key in RELEASE_KEYS.
+RELEASE_KEYS = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'release-keys')
+RELEASES_FROM = '/var/db/os-xgs-npu/plugins-releases-from'
+OPENSSL = '/usr/bin/openssl'
+MANIFEST = 'release.json'
+MANIFEST_MAX = 64 << 10
+ARCHIVE_MAX = 256 << 20
+FIELDS = {
+    'tag': re.compile(r'v[0-9][0-9A-Za-z.+-]{0,62}\Z'),
+    'commit': re.compile(r'[0-9a-f]{40}\Z'),
+    'archive': re.compile(r'[A-Za-z0-9][A-Za-z0-9._+-]{0,126}\.tar\.gz\Z'),
+    'sha256': re.compile(r'[0-9a-f]{64}\Z'),
+}
 # Where each step starts on the bar, in percent; a step moves on toward the next one's start.
 STEPS = [('queued', 0), ('check', 3), ('download', 12), ('unpack', 45), ('install', 52), ('done', 100)]
 STEP_AT = dict(STEPS)
@@ -190,42 +223,192 @@ def source_path(script):
     return 'src/opnsense/scripts/' + script[len(prefix):] if script.startswith(prefix) else None
 
 
+class Unsigned(ValueError):
+    """A plugin's release not taken as signed (SIGNED RELEASES above) - the reason, said as it is."""
+
+
+def releases_of(name):
+    """Where a plugin's release files are read: its releases on GitHub, or the place a test appliance
+    names in RELEASES_FROM, the plugin's under its name."""
+    try:
+        with open(RELEASES_FROM, encoding='utf-8') as handle:
+            place = handle.read().strip()
+        if place:
+            return '%s/%s' % (place.rstrip('/'), name)
+    except OSError:
+        pass
+    return 'https://github.com/%s/%s/releases' % (OWNER, name)
+
+
+def release_url(name, tag, file):
+    """A file published with a plugin's release tag, or with its latest release when tag is ''."""
+    if not tag:
+        return '%s/latest/download/%s' % (releases_of(name), file)
+    return '%s/download/%s/%s' % (releases_of(name), urllib.parse.quote(tag, safe=''), file)
+
+
+def release_file(name, file, limit):
+    """A file of a plugin's latest release, read whole; one larger than limit is not a file of a
+    release. One missing from a test appliance's place (file://) is GitHub's 404 for a file a release
+    does not have."""
+    url = release_url(name, '', file)
+    try:
+        answer = urllib.request.urlopen(urllib.request.Request(url, headers={'User-Agent': 'os-xgs-npu'}),
+                                        timeout=60)
+    except urllib.error.URLError as error:
+        if isinstance(getattr(error, 'reason', None), FileNotFoundError):
+            raise urllib.error.HTTPError(url, 404, 'Not Found', {}, None) from error
+        raise
+    with answer:
+        data = answer.read(limit + 1)
+    if len(data) > limit:
+        raise Unsigned('%s of its latest release is larger than a release file of its kind can be' % file)
+    return data
+
+
+def signature_key(data, signature):
+    """The name of the public key in RELEASE_KEYS whose Ed25519 signature over data signature is -
+    OpenSSL's own check - or '' when none is."""
+    keys = sorted(glob.glob(os.path.join(RELEASE_KEYS, '*.pub')))
+    if not keys or len(signature) != 64:
+        return ''
+    paths = []
+    try:
+        for content, suffix in ((data, '.manifest'), (signature, '.sig')):
+            fd, path = tempfile.mkstemp(dir=WORK, prefix='xgs-plugin-', suffix=suffix)
+            paths.append(path)
+            with os.fdopen(fd, 'wb') as handle:
+                handle.write(content)
+        for key in keys:
+            done = subprocess.run([OPENSSL, 'pkeyutl', '-verify', '-pubin', '-inkey', key, '-rawin', '-in',
+                                   paths[0], '-sigfile', paths[1]], stdout=subprocess.DEVNULL,
+                                  stderr=subprocess.DEVNULL, timeout=30, check=False)
+            if done.returncode == 0:
+                return os.path.basename(key)
+    finally:
+        for path in paths:
+            try:
+                os.unlink(path)
+            except OSError:
+                pass
+    return ''
+
+
+def plugin_manifest(name):
+    """The manifest of a plugin's latest release: read, its signature verified with a key in
+    RELEASE_KEYS, and every field it must have checked. Its fields, and 'key', the key's name; Unsigned
+    when it is not to be taken. A network failure is the caller's to say."""
+    missing = MANIFEST
+    try:
+        data = release_file(name, MANIFEST, MANIFEST_MAX)
+        missing = MANIFEST + '.sig'
+        signature = release_file(name, missing, 64)
+    except urllib.error.HTTPError as error:
+        if error.code == 404:
+            raise Unsigned('its latest release is not signed yet: it has no %s' % missing) from error
+        raise
+    key = signature_key(data, signature)
+    if not key:
+        raise Unsigned('the signature of its latest release does not verify with %s' % (
+            'any release key of this appliance' if glob.glob(os.path.join(RELEASE_KEYS, '*.pub'))
+            else "this appliance's release keys - it has none"))
+    try:
+        found = json.loads(data.decode('utf-8'))
+    except ValueError as error:
+        raise Unsigned('the manifest of its latest release, signed, is not JSON') from error
+    if not isinstance(found, dict) or found.get('format') != 1:
+        raise Unsigned('the manifest of its latest release is of a format this plugins.py does not read')
+    if found.get('repository') != '%s/%s' % (OWNER, name):
+        raise Unsigned('the manifest of its latest release is of another repository')
+    for field, pattern in FIELDS.items():
+        if not isinstance(found.get(field), str) or not pattern.match(found[field]):
+            raise Unsigned('the manifest of its latest release has no %s, or not one of the form it must have'
+                           % field)
+    size = found.get('size')
+    if not isinstance(size, int) or isinstance(size, bool) or not 0 < size <= ARCHIVE_MAX:
+        raise Unsigned('the manifest of its latest release has no size, or one no archive of it can have')
+    found['key'] = key
+    return found
+
+
 def latest_release(name):
-    """A plugin's latest release, asked of the site's copy of GitHub's API and then of GitHub's own,
-    for one that is not installed and so has no self-update.py to ask."""
-    for api in ([MIRROR] if MIRROR else []) + [GITHUB]:
-        url = '%s/repos/%s/%s/releases/latest' % (api, OWNER, name)
-        request = urllib.request.Request(url, headers={'Accept': 'application/vnd.github+json',
-                                                       'User-Agent': 'os-xgs-npu'})
-        try:
-            with urllib.request.urlopen(request, timeout=20) as answer:
-                found = json.loads(answer.read().decode('utf-8'))
-        except urllib.error.HTTPError as error:
-            if error.code == 404:
-                return {'status': 'none', 'message': 'no release is published yet'}
-            continue
-        except (urllib.error.URLError, OSError, ValueError):
-            continue
-        if found.get('tag_name'):
-            return {'status': 'found', 'tag': found['tag_name'], 'installed': '', 'take': False}
-    return {'status': 'failed', 'message': 'could not reach GitHub'}
+    """A plugin's latest release, for one that is not installed and so has no self-update.py to ask: as
+    its signed manifest names it (SIGNED RELEASES above). A release that is not signed is not offered,
+    and the reason is the row's."""
+    try:
+        found = plugin_manifest(name)
+    except Unsigned as reason:
+        return {'status': 'failed', 'message': str(reason)}
+    except urllib.error.HTTPError as error:
+        return {'status': 'failed', 'message': "GitHub refused its latest release's manifest (%s)" % error.code}
+    except (urllib.error.URLError, OSError, ValueError) as error:
+        return {'status': 'failed', 'message': 'could not reach GitHub: %s' % error}
+    return {'status': 'found', 'tag': found['tag'], 'sha': found['commit'], 'installed': '', 'take': False,
+            'signed_with': found['key']}
 
 
-def fetch_installer(name, script, tag):
-    """The plugin's own self-update.py of release tag, into its installer directory; its path."""
+def fetch_installer(name, script):
+    """The plugin's own self-update.py and the release keys beside it, out of its latest release's
+    signed archive (SIGNED RELEASES above), into its installer directory; the self-update.py's path.
+    Unsigned when the release is not to be taken - nothing is left then - and a network failure the
+    caller's to say."""
     source = source_path(script)
+    if source is None:
+        raise ValueError('%s is not one this page can install' % name)
+    keys = posixpath.dirname(source) + '/release-keys/'
+    found = plugin_manifest(name)
     work = INSTALLER_DIR % name
-    os.makedirs(work, exist_ok=True)
+    shutil.rmtree(work, ignore_errors=True)
+    os.makedirs(os.path.join(work, 'release-keys'))
+    archive = os.path.join(work, 'release.tar.gz')
     target = os.path.join(work, 'self-update.py')
-    url = '%s/%s/%s/%s/%s' % (RAW, OWNER, name, urllib.parse.quote(tag), source)
-    with urllib.request.urlopen(urllib.request.Request(url, headers={'User-Agent': 'os-xgs-npu'}),
-                                timeout=30) as answer:
-        body = answer.read()
-    if b'REPO = ' not in body:
-        raise ValueError('%s does not look like a self-update script' % url)
-    with open(target + '.tmp', 'wb') as handle:
-        handle.write(body)
-    os.replace(target + '.tmp', target)
+    try:
+        # the archive the manifest names, read as far as its signed size and hashed on the way
+        request = urllib.request.Request(release_url(name, found['tag'], found['archive']),
+                                         headers={'User-Agent': 'os-xgs-npu'})
+        digest, size = hashlib.sha256(), 0
+        with urllib.request.urlopen(request, timeout=120) as answer, open(archive, 'wb') as handle:
+            while True:
+                chunk = answer.read(1 << 16)
+                if not chunk:
+                    break
+                size += len(chunk)
+                if size > found['size']:
+                    break
+                digest.update(chunk)
+                handle.write(chunk)
+        if size != found['size'] or digest.hexdigest() != found['sha256']:
+            raise Unsigned('the archive of its latest release, %s, is not the one signed; nothing was taken '
+                           'from it' % found['tag'])
+        # self-update.py where the repository has it, and the public keys of the directory beside it -
+        # each by its own name, so nothing of the archive is written anywhere but here
+        keys_taken = 0
+        try:
+            tar = tarfile.open(archive)
+        except tarfile.TarError as error:
+            raise ValueError('the signed archive of %s cannot be read: %s' % (found['tag'], error)) from error
+        with tar:
+            for member in tar.getmembers():
+                inner = member.name.split('/', 1)[1] if '/' in member.name else ''
+                if not member.isfile() or not inner:
+                    continue
+                if inner == source:
+                    dest = target
+                elif (inner.startswith(keys) and inner.endswith('.pub') and '/' not in inner[len(keys):]
+                      and not inner[len(keys):].startswith('.')):
+                    dest = os.path.join(work, 'release-keys', inner[len(keys):])
+                    keys_taken += 1
+                else:
+                    continue
+                with tar.extractfile(member) as part, open(dest + '.tmp', 'wb') as handle:
+                    shutil.copyfileobj(part, handle)
+                os.replace(dest + '.tmp', dest)
+        os.unlink(archive)
+        if not os.path.isfile(target) or not keys_taken:
+            raise Unsigned('the signed archive of %s has no %s, or no release key beside it' % (found['tag'], source))
+    except BaseException:
+        shutil.rmtree(work, ignore_errors=True)
+        raise
     return target
 
 
@@ -565,11 +748,15 @@ def start(names, install=False):
                 return {'status': 'failed', 'message': '%s is not one this page can install' % name}
             if not suits(name):
                 return {'status': 'failed', 'message': '%s does not belong on this appliance' % name}
-            found = latest_release(name)
-            if found.get('status') != 'found':
-                return {'status': 'failed', 'message': '%s: %s' % (name, found.get('message'))}
+            # its latest release read again now, its signature verified (SIGNED RELEASES above): the
+            # check's stored answer chooses nothing
             try:
-                scripts[name] = fetch_installer(name, script, found['tag'])
+                scripts[name] = fetch_installer(name, script)
+            except Unsigned as reason:
+                return {'status': 'failed', 'message': '%s: %s; nothing was installed' % (name, reason)}
+            except urllib.error.HTTPError as error:
+                return {'status': 'failed', 'message': "%s: GitHub refused its latest release's files (%s); "
+                        'nothing was installed' % (name, error.code)}
             except (urllib.error.URLError, OSError, ValueError) as error:
                 return {'status': 'failed', 'message': '%s: its installer could not be fetched: %s' % (name, error)}
             continue
@@ -639,7 +826,6 @@ def sync():
         return ['the Plugins tab is updating them already; it is left to finish']
     seen = remember_installed()
     rows = check().get('plugins') or []
-    found = read_json(STATE).get('plugins') or {}
     updates = [row['name'] for row in rows if row.get('take')]
     installs, scripts, lines = [], {}, []
     for row in rows:
@@ -648,8 +834,10 @@ def sync():
             continue
         script = next(s for n, s, _ in PLUGINS if n == name)
         try:
-            scripts[name] = fetch_installer(name, script, (found.get(name) or {}).get('tag') or '')
+            scripts[name] = fetch_installer(name, script)
             installs.append(name)
+        except Unsigned as reason:
+            lines.append('%s: not installed - %s' % (name, reason))
         except (urllib.error.URLError, OSError, ValueError) as error:
             lines.append('%s: not installed - its installer could not be fetched: %s' % (name, error))
     names = updates + installs
