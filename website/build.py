@@ -1005,7 +1005,8 @@ def sitemap(site_dir):
     sites += [(site_dir / lang, [u for u in pages if u.startswith(p)]) for lang, p in prefixes.items()]
     for where, urls in sites:
         lines = ['<?xml version="1.0" encoding="UTF-8"?>',
-                 '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:xhtml="http://www.w3.org/1999/xhtml">']
+                 '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:xhtml="http://www.w3.org/1999/xhtml"'
+                 ' xmlns:image="http://www.google.com/schemas/sitemap-image/1.1">']
         for url in sorted(urls, key=lambda u: (u.count('/'), u)):
             p = pages[url]
             lines.append('  <url>')
@@ -1015,6 +1016,10 @@ def sitemap(site_dir):
             if len(p.get('alternates') or []) > 2:
                 for lang, href in p['alternates']:
                     lines.append('    <xhtml:link rel="alternate" hreflang=%s href=%s/>' % (quoteattr(lang), quoteattr(href)))
+            # the site's own pictures the page shows (hooks.py, on_page_content): how image search finds
+            # the measurements' photographs and the appliances'
+            for src in p.get('images') or []:
+                lines.append('    <image:image><image:loc>%s</image:loc></image:image>' % escape(src))
             lines.append('  </url>')
         lines.append('</urlset>')
         xml = '\n'.join(lines) + '\n'
@@ -1028,8 +1033,9 @@ def sitemap(site_dir):
     today = datetime.date.today().isoformat()
     fresh = [u for u, p in sorted(pages.items()) if (p.get('lastmod') or '')[:10] == today]
     (BUILD / 'indexnow.txt').write_text(''.join(u + '\n' for u in fresh), encoding='utf-8', newline='\n')
-    print('sitemaps: %d pages, %d in more than one language, %d changed today'
-          % (len(pages), sum(1 for p in pages.values() if len(p.get('alternates') or []) > 2), len(fresh)))
+    print('sitemaps: %d pages, %d in more than one language, %d changed today, %d pictures'
+          % (len(pages), sum(1 for p in pages.values() if len(p.get('alternates') or []) > 2), len(fresh),
+             sum(len(p.get('images') or []) for p in pages.values())))
 
 
 def repository_facts(release):

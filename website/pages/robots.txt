@@ -1,6 +1,7 @@
 # npuforge.org: every page may be read and indexed, in every language. The Worker's answers (/api/)
 # are data for the pages, not pages, and the search index is the site's own search. The build adds
-# the sitemap of each language's site after the English one.
+# the sitemap of each language's site after the English one; each sitemap gives every page the day
+# it last changed, its translations and the site's own pictures it shows.
 User-agent: *
 Allow: /
 Disallow: /api/
