@@ -19,9 +19,11 @@ The update runs end to end there: codeload stood in for, a tarball made here, an
 it a stand-in.
 """
 import datetime
+import hashlib
 import http.client
 import importlib.util
 import io
+import json
 import os
 import re
 import shutil
@@ -47,6 +49,7 @@ up.LOG = os.path.join(STATE, 'apply.log')
 up.BRANCH = ''
 up.out = lambda obj: obj          # apply() and check() hand back what they would print
 RUN_CHECK = up.run_check          # stood in for below, and taken back for the releases' pages
+URLOPEN = urllib.request.urlopen  # likewise, and taken back to read a release's files through file://
 
 failures = 0
 
@@ -60,10 +63,81 @@ def check(what, got, want):
         print(f'ok   {what}')
 
 
+# Signed releases (since 2026-11-07): a key made here for these tests alone - its public half the one
+# release key the update trusts - and the release's files stood in for: what publish() puts out is
+# what release_bytes() reads, a 404 for anything not put out.
+KEYS = tempfile.mkdtemp(prefix='test-update-keys-')
+TRUSTED = os.path.join(KEYS, 'trusted')
+os.makedirs(TRUSTED)
+up.RELEASE_KEYS = TRUSTED
+up.OPENSSL = shutil.which('openssl') or '/usr/bin/openssl'
+
+
+def new_key(name, where):
+    """An Ed25519 key: its private half in KEYS, its public half in where (as name.pub); its path."""
+    private = os.path.join(KEYS, name + '.key')
+    subprocess.run([up.OPENSSL, 'genpkey', '-algorithm', 'ed25519', '-out', private], check=True,
+                   capture_output=True)
+    subprocess.run([up.OPENSSL, 'pkey', '-in', private, '-pubout', '-out', os.path.join(where, name + '.pub')],
+                   check=True, capture_output=True)
+    return private
+
+
+OWNER_KEY = new_key('test-release-key', TRUSTED)
+OTHER_KEY = new_key('other-key', KEYS)        # a key the appliance does not hold
+
+
+def sign(data, key=OWNER_KEY):
+    with tempfile.NamedTemporaryFile(dir=KEYS, delete=False) as f:
+        f.write(data)
+    try:
+        return subprocess.run([up.OPENSSL, 'pkeyutl', '-sign', '-inkey', key, '-rawin', '-in', f.name],
+                              check=True, capture_output=True).stdout
+    finally:
+        os.unlink(f.name)
+
+
+PUBLISHED = {}
+
+
+def manifest(tag, commit, date, archive=b'an archive'):
+    return {'format': 1, 'repository': up.REPO, 'tag': tag, 'commit': commit, 'date': date,
+            'archive': 'os-xgs-npu-%s.tar.gz' % tag, 'sha256': hashlib.sha256(archive).hexdigest(),
+            'size': len(archive)}
+
+
+def publish(fields, key=OWNER_KEY, newest=True, archive=None, change=None):
+    """A release put out: its manifest, signed with key; change, when given, applied to the manifest's
+    bytes after they were signed. Read as the newest release too, unless said otherwise."""
+    data = (json.dumps(fields, sort_keys=True, indent=1) + '\n').encode()
+    signature = sign(data, key)
+    if change:
+        data = change(data)
+    files = {up.MANIFEST: data, up.MANIFEST + '.sig': signature}
+    if archive is not None:
+        files[fields['archive']] = archive
+    PUBLISHED[fields['tag']] = files
+    if newest:
+        PUBLISHED[''] = files
+
+
+def release_bytes(tag, name, limit):
+    files = PUBLISHED.get(tag) or {}
+    if name not in files:
+        raise urllib.error.HTTPError(up.release_url(tag, name), 404, 'Not Found', {}, None)
+    if len(files[name]) > limit:
+        raise up.Unsigned('%s is larger than a release file of its kind can be' % name)
+    return files[name]
+
+
+REAL_RELEASE_BYTES = up.release_bytes
+up.release_bytes = release_bytes
+
 RELEASE = {'tag_name': 'v0.1.0-alpha.5.3', 'name': 'v0.1.0-alpha.5.3', 'draft': False,
            'published_at': '2026-10-21T18:00:00Z', 'body': '- a change', 'html_url': ''}
 REL_SHA = 'a' * 40
 BUILD_SHA = 'b' * 40
+publish(manifest('v0.1.0-alpha.5.3', REL_SHA, '2026-10-21T18:00:00+00:00'))
 
 
 def github(compare_status):
@@ -79,7 +153,8 @@ def github(compare_status):
     return get
 
 
-def unreachable(url, direct=False):
+def unreachable(*args, **kwargs):
+    """GitHub's API, or a release's files, out of reach."""
     raise urllib.error.URLError('Name could not be resolved')
 
 
@@ -107,11 +182,19 @@ r = up.run_check()
 check('diverged, built before the release: offered', r.get('update_available'), True)
 check('diverged, built before the release: not said to be newer', r.get('newer_than_target'), None)
 
-# Ahead and behind as they were.
+# Ahead as it was; behind - what is installed is after the release - judged by the dates signed. The
+# API's word decides nothing since 2026-11-07: a copy that calls an older build ahead of the release
+# cannot keep the release from it.
 up.get = github('ahead')
 check('a release ahead: offered', up.run_check().get('update_available'), True)
 up.get = github('behind')
-check('a release behind: not offered', up.run_check().get('update_available'), False)
+up.installed = build('2026-10-22T01:00:00+00:00')
+r = up.run_check()
+check('a release behind, built after it: not offered, said to be newer',
+      (r.get('update_available'), r.get('newer_than_target')), (False, True))
+up.installed = build('2026-10-19T10:00:00+00:00')
+check('the API says behind of a build dated before the release: offered all the same',
+      up.run_check().get('update_available'), True)
 
 # apply() after a check that failed: an earlier answer offered an update, the check made now fails,
 # and nothing is downloaded.
@@ -119,6 +202,7 @@ up.get = github('ahead')
 up.installed = build('2026-10-19T10:00:00+00:00')
 check('the earlier check offered it', up.run_check().get('update_available'), True)
 up.get = unreachable
+up.release_bytes = unreachable
 
 
 def no_download(*args, **kwargs):
@@ -135,6 +219,8 @@ check('apply() after a failed check: no update started', os.path.exists(up.APPLY
 
 # apply() when the check made now finds nothing newer.
 up.get = github('behind')
+up.release_bytes = release_bytes
+up.installed = build('2026-10-22T01:00:00+00:00')
 r = up.apply()
 check('apply() with nothing newer: an error', r.get('status'), 'error')
 check('apply() with nothing newer: no update started', os.path.exists(up.APPLY), False)
@@ -534,6 +620,7 @@ def releases(total, refused_from=0):
     listed = [{'tag_name': 'v0.1.0-alpha.%d' % n, 'name': 'v0.1.0-alpha.%d' % n, 'draft': False,
                'published_at': published(n), 'body': '- change %d' % n, 'html_url': ''}
               for n in range(total, 0, -1)]
+    publish(manifest('v0.1.0-alpha.%d' % total, REL_SHA, published(total)))
     asked = []
 
     def get(url, direct=False):
@@ -600,7 +687,174 @@ check('U15: a page past the first hundred refused: the check answers with what i
       (r.get('status'), r.get('releases_since'), r.get('target', {}).get('tag')),
       ('ok', 1, 'v0.1.0-alpha.150'))
 
-for path in (STATE, WORK):
+# ---------------------------------------------------------------- signed releases (2026-11-07)
+# What is installed is what the release's owner signed: the check reads the newest release's manifest
+# and offers it only when its signature verifies with a key the appliance holds; the update reads the
+# manifest again, and installs the archive it names only when its SHA-256 and size are the signed ones.
+# GitHub's API - through npuforge.org's copy - is asked for what the page shows beside it, and decides
+# nothing (the review's G3 and U5).
+
+TAG, SIGNED_SHA, SIGNED_DATE = 'v0.1.0-alpha.200', 'e' * 40, '2026-11-07T08:00:00+00:00'
+up.get = github('ahead')
+up.installed = build('2026-11-01T00:00:00+00:00')
+
+
+def checked(fields, **kwargs):
+    PUBLISHED.clear()
+    publish(fields, **kwargs)
+    return up.run_check()
+
+
+r = checked(manifest(TAG, SIGNED_SHA, SIGNED_DATE))
+check('signed: the newest release offered, by the commit and the date it was signed with',
+      (r.get('update_available'), r['target']['sha'], r['target']['date'], r.get('signed_with')),
+      (True, SIGNED_SHA, SIGNED_DATE, 'test-release-key.pub'))
+
+PUBLISHED.clear()
+r = up.run_check()
+check('the newest release not signed yet: not offered, and said so',
+      (r.get('status'), r.get('message')), ('error', 'the newest release is not signed yet: it has no release.json'))
+
+r = checked(manifest(TAG, SIGNED_SHA, SIGNED_DATE), key=OTHER_KEY)
+check('signed with a key the appliance does not hold: not offered',
+      (r.get('status'), r.get('message')),
+      ('error', 'the signature of the newest release does not verify with any release key of this appliance'))
+
+r = checked(manifest(TAG, SIGNED_SHA, SIGNED_DATE), change=lambda d: d.replace(b'e' * 40, b'f' * 40))
+check('the manifest changed after it was signed - another commit named: not offered',
+      (r.get('status'), 'does not verify' in r.get('message', '')), ('error', True))
+
+r = checked(manifest(TAG, SIGNED_SHA, SIGNED_DATE), change=lambda d: d + b' ')
+check('... one byte added to it: not offered', (r.get('status'), 'does not verify' in r.get('message', '')),
+      ('error', True))
+
+up.RELEASE_KEYS = KEYS + '/none'
+r = checked(manifest(TAG, SIGNED_SHA, SIGNED_DATE))
+check('an appliance with no release key: nothing offered, and said why',
+      (r.get('status'), r.get('message', '').endswith("this appliance's release keys - it has none")), ('error', True))
+up.RELEASE_KEYS = TRUSTED
+
+for name, fields in (
+        ('another repository', dict(manifest(TAG, SIGNED_SHA, SIGNED_DATE), repository='someone/os-xgs-npu')),
+        ('a commit of another form', manifest(TAG, 'e' * 39, SIGNED_DATE)),
+        ('an archive with a path in its name', dict(manifest(TAG, SIGNED_SHA, SIGNED_DATE), archive='../x.tar.gz')),
+        ('no date', manifest(TAG, SIGNED_SHA, '')),
+        ('a size of none', dict(manifest(TAG, SIGNED_SHA, SIGNED_DATE), size=0)),
+        ('another format', dict(manifest(TAG, SIGNED_SHA, SIGNED_DATE), format=2))):
+    r = checked(fields)
+    check('signed, but %s: not offered' % name, r.get('status'), 'error')
+
+publish(manifest(TAG, SIGNED_SHA, SIGNED_DATE), newest=False)
+PUBLISHED['v0.1.0-alpha.199'] = PUBLISHED[TAG]
+try:
+    up.signed_manifest('v0.1.0-alpha.199')
+    taken = 'taken'
+except up.Unsigned as reason:
+    taken = str(reason)
+check('a release whose files are another release\'s: refused',
+      taken, 'the manifest published with v0.1.0-alpha.199 is the one of v0.1.0-alpha.200')
+
+up.get = unreachable
+r = checked(manifest(TAG, SIGNED_SHA, SIGNED_DATE))
+check('GitHub\'s API and its copy out of reach: the signed release offered all the same, with less to show',
+      (r.get('status'), r.get('update_available'), r.get('changes'), r.get('compare')), ('ok', True, [], 'unknown'))
+
+up.get = github('behind')
+up.installed = build('2026-11-08T00:00:00+00:00')
+r = checked(manifest(TAG, SIGNED_SHA, SIGNED_DATE))
+check('a build dated after the signed release: not offered - nothing is taken back',
+      (r.get('update_available'), r.get('newer_than_target')), (False, True))
+up.installed = lambda: {'commit': SIGNED_SHA, 'date': SIGNED_DATE, 'source': 'update', 'release': TAG}
+r = checked(manifest(TAG, SIGNED_SHA, SIGNED_DATE))
+check('the signed release installed: nothing offered', (r.get('update_available'), r.get('compare')),
+      (False, 'identical'))
+
+# The real reading of a release's files, from a place a test appliance names (file://), and its limit.
+up.release_bytes = REAL_RELEASE_BYTES
+up.urllib.request.urlopen = URLOPEN
+FILES = tempfile.mkdtemp(prefix='test-update-releases-')
+data = (json.dumps(manifest(TAG, SIGNED_SHA, SIGNED_DATE), sort_keys=True) + '\n').encode()
+for where in ('latest/download', 'download/' + TAG):
+    os.makedirs(os.path.join(FILES, where))
+    with open(os.path.join(FILES, where, up.MANIFEST), 'wb') as f:
+        f.write(data)
+    with open(os.path.join(FILES, where, up.MANIFEST + '.sig'), 'wb') as f:
+        f.write(sign(data))
+with open(os.path.join(STATE, 'releases-from'), 'w') as f:
+    f.write('file://' + FILES + '\n')
+up.installed = build('2026-11-01T00:00:00+00:00')
+up.get = github('ahead')
+r = up.run_check()
+check('the files read from the place a test appliance names: the newest release signed and offered',
+      (r.get('status'), r.get('message'), r.get('update_available'), r.get('target', {}).get('tag')),
+      ('ok', None, True, TAG))
+check('... the release by its tag too', up.signed_manifest(TAG)['commit'], SIGNED_SHA)
+os.rename(os.path.join(FILES, 'latest/download', up.MANIFEST), os.path.join(FILES, 'kept.json'))
+r = up.run_check()
+check('a manifest missing from that place: said not signed yet, as GitHub\'s 404 is',
+      (r.get('status'), r.get('message')), ('error', 'the newest release is not signed yet: it has no release.json'))
+os.rename(os.path.join(FILES, 'kept.json'), os.path.join(FILES, 'latest/download', up.MANIFEST))
+with open(os.path.join(FILES, 'latest/download', up.MANIFEST), 'wb') as f:
+    f.write(b' ' * (up.MANIFEST_MAX + 1))
+r = up.run_check()
+check('a manifest larger than one can be: not read whole, not offered',
+      (r.get('status'), 'larger than a release file' in r.get('message', '')), ('error', True))
+os.unlink(os.path.join(STATE, 'releases-from'))
+shutil.rmtree(FILES, ignore_errors=True)
+up.release_bytes = release_bytes
+
+# The update, end to end, of a signed release: the archive its manifest names, published with it.
+SIGNED_ARCHIVE = os.path.join(STATE, SIGNED_SHA[:12] + '.tar.gz')
+SIGNED_TREE = os.path.join(STATE, 'src-' + SIGNED_SHA[:12])
+up.run_check = lambda: {'status': 'ok', 'update_available': True,
+                        'target': {'sha': SIGNED_SHA, 'date': SIGNED_DATE, 'tag': TAG}}
+up.tag_commit = lambda tag: SIGNED_SHA
+real_sleep, up.time.sleep = up.time.sleep, lambda seconds: slept.append(seconds)
+GOOD_SIGNED = tarball('exit 0')
+PUBLISHED.clear()
+publish(manifest(TAG, SIGNED_SHA, SIGNED_DATE, GOOD_SIGNED), archive=GOOD_SIGNED)
+r, record, asked, log = update(GOOD_SIGNED)
+check('a signed release updated: done', record.get('status'), 'done')
+check('... downloaded as the file published with it, by the name its manifest gives',
+      asked, [up.release_url(TAG, 'os-xgs-npu-%s.tar.gz' % TAG)])
+check('... its log says the key and that the archive was the one signed',
+      ('signed with test-release-key.pub' in log, 'the archive is the one signed: %d bytes' % len(GOOD_SIGNED) in log),
+      (True, True))
+
+r, record, asked, log = update(GOOD_SIGNED[:-1] + bytes([GOOD_SIGNED[-1] ^ 1]))
+check('an archive one bit from the signed one: failed, nothing installed',
+      (record.get('status'), 'is not the one signed' in record.get('message', ''), os.path.exists(SIGNED_TREE)),
+      ('failed', True, False))
+r, record, asked, log = update(GOOD_SIGNED + b'more')
+check('an archive longer than the signed one: failed, read no further than its signed size',
+      (record.get('status'), 'more than %d' % len(GOOD_SIGNED) in record.get('message', '')), ('failed', True))
+check('... and no archive left behind', os.path.exists(SIGNED_ARCHIVE), False)
+
+PUBLISHED.clear()
+r, record, asked, log = update(GOOD_SIGNED)
+check('the release not signed when the update reads it again: failed, nothing downloaded',
+      (record.get('status'), asked), ('failed', []))
+
+publish(dict(manifest(TAG, 'f' * 40, SIGNED_DATE, GOOD_SIGNED)), archive=GOOD_SIGNED)
+r, record, asked, log = update(GOOD_SIGNED)
+check('signed as another commit than the check found: failed, nothing downloaded',
+      (record.get('status'), asked, 'names commit ffffffffffff' in record.get('message', '')), ('failed', [], True))
+
+publish(manifest(TAG, SIGNED_SHA, SIGNED_DATE, GOOD_SIGNED), archive=GOOD_SIGNED)
+up.installed = build('2026-11-08T00:00:00+00:00')
+r, record, asked, log = update(GOOD_SIGNED)
+check('an update to a release dated before what is installed: refused, nothing downloaded',
+      (record.get('status'), asked, 'dated before what is installed' in record.get('message', '')),
+      ('failed', [], True))
+up.installed = build('2026-11-01T00:00:00+00:00')
+
+up.tag_commit = lambda tag: 'f' * 40
+r, record, asked, log = update(GOOD_SIGNED)
+check('GitHub saying the tag is another commit than the one signed: failed, nothing downloaded',
+      (record.get('status'), asked), ('failed', []))
+up.time.sleep = real_sleep
+
+for path in (STATE, WORK, KEYS):
     shutil.rmtree(path, ignore_errors=True)
 print('all passed' if not failures else f'{failures} failed')
 sys.exit(1 if failures else 0)

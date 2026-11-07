@@ -95,6 +95,7 @@ rm -f "${PREFIX}/opnsense/scripts/xgs/board.sh"
 rm -f "${PREFIX}/opnsense/scripts/xgs/status.py"
 rm -f "${PREFIX}/opnsense/scripts/xgs/offload.sh"
 rm -f "${PREFIX}/opnsense/scripts/xgs/update.py"
+rm -rf "${PREFIX}/opnsense/scripts/xgs/release-keys"
 rm -f "${PREFIX}/opnsense/scripts/xgs/assign.php"
 rm -f "${PREFIX}/opnsense/scripts/xgs/countdown.py"
 rm -f /var/db/os-xgs-npu/labels /var/db/os-xgs-npu/switch-jumbo.state

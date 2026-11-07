@@ -112,6 +112,11 @@ install -m 0755 "${SRC}/src/opnsense/scripts/xgs/board.sh" "${PREFIX}/opnsense/s
 install -m 0755 "${SRC}/src/opnsense/scripts/xgs/status.py" "${PREFIX}/opnsense/scripts/xgs/status.py"
 install -m 0755 "${SRC}/src/opnsense/scripts/xgs/offload.sh" "${PREFIX}/opnsense/scripts/xgs/offload.sh"
 install -m 0755 "${SRC}/src/opnsense/scripts/xgs/update.py" "${PREFIX}/opnsense/scripts/xgs/update.py"
+# The public keys a release's manifest must be signed with for update.py to install it (its SIGNED
+# RELEASES): the set the tree holds, and no other - a key the tree dropped goes with this install.
+rm -rf "${PREFIX}/opnsense/scripts/xgs/release-keys"
+install -d -m 0755 "${PREFIX}/opnsense/scripts/xgs/release-keys"
+install -m 0644 "${SRC}"/src/opnsense/scripts/xgs/release-keys/*.pub "${PREFIX}/opnsense/scripts/xgs/release-keys/"
 install -m 0755 "${SRC}/src/opnsense/scripts/xgs/assign.php" "${PREFIX}/opnsense/scripts/xgs/assign.php"
 install -m 0755 "${SRC}/src/opnsense/scripts/xgs/countdown.py" "${PREFIX}/opnsense/scripts/xgs/countdown.py"
 # The settings page's apply, the readers of the Ports and IPsec pages, the appliance's settings in

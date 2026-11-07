@@ -54,8 +54,26 @@ done, and the number stays alpha until the owner says otherwise.
 4. Merge it once its checks pass. On that push the release workflow (`.github/workflows/release.yml`)
    finds a version in `CHANGELOG.md` that has no tag yet, tags the merge commit `v0.1.0-alpha.1.1` and
    publishes the release with that version's section as its notes.
+5. Sign it, on the owner's machine - never in CI, and never with a key that is anywhere on GitHub. Three
+   files go up with the release:
+   - `os-xgs-npu-<tag>.tar.gz`: `git archive --format=tar.gz --prefix=os-xgs-npu-<tag>/ <tag>`, made from
+     a clone whose tag is the commit GitHub's own tag names (`git ls-remote origin refs/tags/<tag>`);
+   - `release.json`: the manifest - `format` 1, `repository`, `tag`, `commit` (40 hex digits), `date`
+     (the commit's, `git log -1 --format=%cI <tag>`), `archive` (that file's name), `sha256` and `size`
+     (its bytes);
+   - `release.json.sig`: the manifest's Ed25519 signature,
+     `openssl pkeyutl -sign -inkey <key> -rawin -in release.json -out release.json.sig`.
 
-The Updates page on every appliance offers it from then on.
+   `gh release upload <tag> <the three files>` puts them up. The public keys an appliance accepts are
+   in `src/opnsense/scripts/xgs/release-keys/`, each named by the start of its fingerprint (the SHA-256
+   of the key's DER form): `13ed7f86a4a7669bdaee666d01894443e151da4051c1f500cb6406d7888fd33b` since
+   2026-11-07.
+
+The Updates page on every appliance offers it from then on - once it is signed: an appliance whose
+`update.py` checks the signature (from the release after 0.1.0-alpha.14 on) does not offer a release
+until its three files are up, and installs only the archive its signed manifest names
+([update.py](src/opnsense/scripts/xgs/update.py), SIGNED RELEASES). A new key is added the same way a
+fix is: in a release signed with a key the appliances already hold.
 
 Each issue a pull request in the release says it fixes is told so, once, with a link to the release
 ([tools/release-notice.py](tools/release-notice.py), run by the same workflow). A pull request says it
