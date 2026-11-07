@@ -89,6 +89,7 @@ Only the parts that are installed, each one's reports going to its own repositor
 | fan incident | `/var/db/fanctl/incident.json` | fan control recorded an incident |
 | kernel panic | `/var/crash/info.N`, `textdump.tar.N` | a crash dump was saved; the panic string, the backtrace and ~~the end of the message buffer~~ from the message buffer the trap - its fault address, instruction pointer and process - with the ten lines the kernel logged before it go into the report, up to 60 lines (2026-10-25: #755 carried only the backtrace's end twice over, and could not say what faulted). Two crashes are the same problem when the panic and the first frames **after** the debugger's, the panic's, the trap's and the lock code's are the same - ~~the first three frames~~, which are the same for every page fault and filed two different crashes as one issue (#467, corrected 2026-10-18). `info.last`, savecore's link to the newest dump, is not a dump of its own. Nothing in `/var/crash` is removed: it is OPNsense's crash reporter's |
 | restart without shutdown | at boot | the boot before this one ended without an orderly shutdown, and since 2026-11-06 each boot since the last look that went before it, and a shutdown that began in order and ended in a kernel panic - see below |
+| untested model | `board.sh` (its "rnd"), `scripts/xgs/portcheck.py` | a model this project has not been run on: once a boot, ten minutes in, its driver's port table held against what its coprocessor reports. One that disagrees or cannot be read is sent as any problem; one that agrees confirms the model's table, and since 2026-11-07 is sent once from an appliance and per table: again only when what agrees is not what the last agreement sent from that appliance confirmed - another table after an update, or the agent's front tags beyond it (OCTEON TX) - never for the same table again, whatever was found between. The appliance is told by its own name, not by its disk, so a disk copied into another unit says it there too; and what marks it as sent is kept only once the report is in the queue. Until then it went from every boot, and two owners' XGS 126s had #812 noted seventeen times and reopened, all "they agree" |
 
 The logs are read from where the last look stopped; the first look after installing reads none of what
 was there before.
@@ -176,8 +177,11 @@ two disagree), the BIOS, the processor and memory, the host's network controller
 as PCI names them (device, ids, revision), the coprocessor's device and switch chip and the driver's
 description, the coprocessor's software - its vendor build and the build its fast path carries, as
 XGS: Overview last read them (since 2026-10-29; two appliances on one vendor version can run different
-fast paths), and a system copy built from another SDK than the U-Boot that boots it, when there is
-one - the expansion module in each bay with its revision and vendor, OPNsense's version, the
+fast paths), how the driver reads that software - the vendor version it takes it for, or none and what
+it then sends of the commands from 36 on, or that it has not placed its command numbering yet
+(since 2026-11-07: an owner's XGS 126 reported vendor build 20.0.0.222 on #812, a version the driver
+has no row for) - and a system copy built from another SDK
+than the U-Boot that boots it, when there is one - the expansion module in each bay with its revision and vendor, OPNsense's version, the
 kernel and its build, whether the driver module was built for that kernel, the installed commit of this
 plugin and of each appliance plugin, the plugin's files changed by hand since it was installed (by name,
 against the digests `install.sh` writes to `share/os-xgs-npu/manifest.sha256`), and the uptime. The

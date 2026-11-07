@@ -20,6 +20,13 @@ From three of the vendor software's own x86 host modules, `usfp_firewall.ko`, on
 | Vendor version 22 | kernel 6.6.116, 22.0.2 MR-2 build 546 | the XGS 3300's capture of 2026-09-29 |
 | Vendor version 23 EAP 1 | kernel 6.6.116, 23.0.0 EAP 1 build 329 | the first XGS 3300, running it, 2026-10-24 |
 
+A fourth version has been seen and not read: vendor build 20.0.0.222, on the coprocessor of an owner's
+XGS 126 (board revision 08), in its problem report of 2026-11-07 on #812. Its ports were bound where the
+board says, two of them up in a LAGG, so the commands that bind them - 0 to 35, the same in the three
+versions above - behave there as they do here. Its numbering from 36 on and its platform block have not
+been read; until its own modules are, it is no row in `sfosnum.h`, and how the driver took it - as one of
+the three, or as none it knows - is in its reports from #1143 on, in the Coprocessor software row.
+
 The module wraps nearly every command in a small function - `lif_delete`, `platform_read`,
 `sa_if_mtu_set` - that loads the command's number into the first argument register and calls
 `rpc_communicate` or `rpc_communicate_low_prio`, so the disassembly names each number. The table

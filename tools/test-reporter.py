@@ -906,6 +906,111 @@ class ReporterTest(unittest.TestCase):
         finally:
             sys.modules.pop('portcheck', None)
 
+    @staticmethod
+    def look(verdict='agrees', bound='oxp1', link='active', extra=()):
+        """A port check's answer, as portcheck.check() gives it, for one front port; `extra`, the agent's
+        front tags the table does not have."""
+        rows = [{'tag': 0x101, 'label': 'Port1', 'interface': bound, 'agent': verdict == 'agrees', 'link': link}]
+        return {'verdict': verdict, 'model': 'XGS 2300', 'assembly': 'AMDA0202-0002',
+                'lines': ['XGS 2300 (AMDA0202-0002), OCTEON TX', 'one port'], 'ports': rows, 'why': 'no_answer',
+                'agent_front_tags_not_in_table': list(extra)}
+
+    def untested(self, *looks):
+        """The board taken as an untested model, and portcheck.check() giving these answers in turn."""
+        real = self.machine.run
+        self.reporter.run = lambda argv, timeout=10: (
+            '202 octeontx rnd\n' if argv[-1].endswith('board.sh') else real(argv, timeout))
+        answers = list(looks)
+        fake = types.ModuleType('portcheck')
+        fake.check = lambda: dict(answers.pop(0) if len(answers) > 1 else answers[0])
+        sys.modules['portcheck'] = fake
+        self.addCleanup(sys.modules.pop, 'portcheck', None)
+
+    def port_checks(self, *looks):
+        """from_untested_model in one boot after another, a port check's answer each, its state kept as
+        collect() keeps it once the queue is saved; what each made."""
+        made = []
+        for look in looks:
+            self.machine.boot += 60
+            self.untested(look)
+            made.append(len(self.reporter.from_untested_model()))
+            self.reporter.queue_saved()
+            # and a second look in the same boot makes nothing, as before
+            self.assertEqual(self.reporter.from_untested_model(), [])
+        return made
+
+    def test_a_table_that_agrees_is_said_once_from_an_appliance(self):
+        # #812: two owners' XGS 126s sent "they agree" from every boot, forty times between them.
+        self.assertEqual(self.port_checks(
+            self.look(),                            # the first agreement: the table confirmed
+            self.look(link='no carrier'),           # the same table, a cable out: nothing new
+            self.look(verdict='unread'),            # could not be read: a problem, said
+            self.look(),                            # and what agreed before is still what agrees
+            self.look(bound='oxp2'),                # another table agrees - after an update, say
+            self.look(verdict='disagrees'),         # it disagrees: said
+            self.look(bound='oxp2'),                # the same table agreeing again is not news
+            self.look(bound='oxp2', extra=[0x105]), # the agent has a front tag the table has not: news
+        ), [1, 0, 1, 0, 1, 1, 0, 1])
+
+    def test_a_disk_copied_into_another_appliance_says_its_agreement_there(self):
+        # The state is the disk's: a second unit of the model booted from a copy has confirmed nothing.
+        self.assertEqual(self.port_checks(self.look()), [1])
+        copied = self.reporter.load('untested.json', {})
+        self.assertTrue(copied.get('agreed'))
+        own = self.reporter.appliance_id
+        self.reporter.appliance_id = lambda: 'another-appliance'
+        try:
+            self.assertEqual(self.port_checks(self.look()), [1])
+        finally:
+            self.reporter.appliance_id = own
+        self.assertEqual(self.port_checks(self.look()), [1])
+
+    def test_an_agreement_is_not_lost_to_a_look_that_failed_after_it(self):
+        self.untested(self.look())
+        real = self.reporter.from_module
+        failed = []
+
+        def once():
+            if not failed:
+                failed.append(1)
+                raise OSError('a later step of the look failed')
+            return real()
+        self.reporter.from_module = once
+        with self.assertRaises(OSError):
+            self.collect()
+        self.assertNotIn('untested-model', self.kinds())
+        self.assertEqual(self.reporter.load('untested.json', {}), {})
+        self.collect()
+        self.assertIn('untested-model', self.kinds())
+        self.assertTrue(self.reporter.load('untested.json', {}).get('agreed'))
+        entry = next(e for e in self.reporter.entries().values() if e['kind'] == 'untested-model')
+        self.assertIn('they agree', entry['summary'])
+
+    def test_the_driver_s_reading_of_the_coprocessor_s_software(self):
+        read = self.reporter.driver_reading
+        none = 'read by the driver as no vendor version it knows'
+        unplaced = 'the driver has not placed its command numbering'
+        self.assertEqual(read(None, None), '')
+        self.assertEqual(read('', '0'), '')
+        self.assertEqual(read('21', '0'), 'read by the driver as vendor version 21')
+        self.assertEqual(read('23', '1'), 'read by the driver as vendor version 23')
+        self.assertEqual(read('0', '1'), none + '; commands 36 to 45 sent 1 higher, none from 46 on')
+        self.assertEqual(read('0', '0'), none + '; commands 36 to 45 sent as numbered, none from 46 on')
+        # generation 0 and shift -1 is also every driver's state before it has read the platform block
+        self.assertEqual(read('0', '-1'), unplaced + '; no command from 36 on is sent')
+        self.assertEqual(read('0', None), unplaced)
+
+    def test_a_report_says_how_the_driver_reads_the_coprocessor_s_software(self):
+        # #812, 2026-11-07: an owner's XGS 126 reported vendor build 20.0.0.222, a version the driver
+        # has no row for; the report did not say how the driver had taken it.
+        self.write('/var/db/os-xgs-npu/coprocessor.json', json.dumps({'at': 1, 'software': {
+            'sfversion': '20.0.0.222', 'fastpath': {'build': '43e1f0dc', 'kind': 'PROD'},
+            'generation': '21', 'cmd_shift': '0'}}))
+        table = self.reporter.system_table({'coprocessor': {'software': self.reporter.coprocessor_software()}})
+        row = next(line for line in table.splitlines() if 'Coprocessor software' in line)
+        self.assertIn('vendor build 20.0.0.222, fast path 43e1f0dc (PROD), read by the driver as vendor version 21',
+                      row)
+
     def test_failed_update(self):
         self.write('/var/db/os-xgs-npu/update/apply.json',
                    json.dumps({'status': 'failed', 'message': 'the build <b>failed</b>', 'target': 'abcdef1234567890'}))
