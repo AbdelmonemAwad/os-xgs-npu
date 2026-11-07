@@ -15,7 +15,8 @@
  *     spends none of them on a report one of the others refuses;
  *   - opens an issue for a fingerprint it has not seen, and comments on the issue it opened before
  *     for one it has - at most once a day per appliance, and ten times a day on one issue in all -
- *     reopening it, at most once a day, if it had been closed as done;
+ *     reopening it, at most once a day, if it had been closed as done; a port check that agrees is
+ *     noted once from each appliance and never reopens its issue (confirms());
  *   - keeps a contact address, when one is given, in its own store and never in the issue.
  * It changes nothing in the report: the appliance built the text and cleaned it, and the page there
  * shows the owner exactly what was sent.
@@ -78,6 +79,16 @@ export function lastSeen(body) {
     const m = /Seen \d+ time\(s\) between \d{4}-\d\d-\d\d \d\d:\d\d:\d\d UTC and (\d{4}-\d\d-\d\d) (\d\d:\d\d:\d\d) UTC\./
         .exec(body || '');
     return m ? Date.parse(`${m[1]}T${m[2]}Z`) : null;
+}
+
+// A port check that agrees - the reporter's "untested-model" whose verdict is "they agree" - confirms a
+// model's table: news once from each appliance, and never a reason to reopen its issue, which was
+// closed as confirmed and not as a fix that may not hold. Until 2026-11-07 every day's agreement from
+// each appliance was noted and reopened the issue: #812, two owners' XGS 126s, seventeen notes and a
+// reopening, every one of them "they agree". A verdict that cannot judge or that disagrees is a problem,
+// and is noted and reopens as any other.
+export function confirms(doc) {
+    return doc.kind === 'untested-model' && /port by port: they agree\./.test(doc.body || '');
 }
 
 function labelsFor(doc) {
@@ -173,13 +184,15 @@ export async function file(doc, env, address) {
     const token = await installationToken(env);
     const repo = `/repos/${env.GITHUB_OWNER}/${doc.repo}`;
     const known = await kv.get(`fp:${doc.repo}:${doc.fingerprint}`, 'json');
+    const confirmation = confirms(doc);
+    const confirmed = `confirmed:${doc.repo}:${doc.fingerprint}:${doc.appliance}`;
 
     if (known && known.issue) {
         // A repeat: a comment on the issue it belongs to, at most once a day for one appliance.
         const once = `seen:${doc.repo}:${doc.fingerprint}:${doc.appliance}:${day}`;
         const number = known.issue;
         const url = `https://github.com/${env.GITHUB_OWNER}/${doc.repo}/issues/${number}`;
-        if (await kv.get(once)) {
+        if (await kv.get(once) || (confirmation && await kv.get(confirmed))) {
             return answer(200, {status: 'ok', issue: number, url, created: false, noted: false});
         }
         // The appliance's name and the fingerprint are the sender's word, and a fingerprint can be
@@ -197,7 +210,7 @@ export async function file(doc, env, address) {
             && seen <= Date.parse(issue.data.closed_at)) {
             return answer(200, {status: 'ok', issue: number, url, created: false, noted: false});
         }
-        if (issue.ok && issue.data.state === 'closed' && issue.data.state_reason === 'completed'
+        if (!confirmation && issue.ok && issue.data.state === 'closed' && issue.data.state_reason === 'completed'
             && await allow(kv, [[`reopened:${doc.repo}:${number}:${day}`, 1]])) {
             await github(env, token, 'PATCH', `${repo}/issues/${number}`, {state: 'open'});
             await github(env, token, 'POST', `${repo}/issues/${number}/labels`, {labels: ['seen again after a fix']});
@@ -210,6 +223,7 @@ export async function file(doc, env, address) {
         const comment = await github(env, token, 'POST', `${repo}/issues/${number}/comments`, {body: note});
         if (!comment.ok) return refuse(502, 'GitHub did not take the comment: ' + comment.status);
         await kv.put(once, '1', {expirationTtl: 2 * DAY});
+        if (confirmation) await kv.put(confirmed, '1');	// for good: the same appliance confirms nothing new
         await keepContact(kv, doc, number);
         return answer(200, {status: 'ok', issue: number, url, created: false, noted: true});
     }
@@ -228,6 +242,7 @@ export async function file(doc, env, address) {
     const number = created.data.number;
     await kv.put(`fp:${doc.repo}:${doc.fingerprint}`, JSON.stringify({issue: number, at: Date.now()}));
     await kv.put(`seen:${doc.repo}:${doc.fingerprint}:${doc.appliance}:${day}`, '1', {expirationTtl: 2 * DAY});
+    if (confirmation) await kv.put(confirmed, '1');
     await keepContact(kv, doc, number);
     return answer(200, {status: 'ok', issue: number, url: created.data.html_url, created: true});
 }

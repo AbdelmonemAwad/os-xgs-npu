@@ -30,6 +30,10 @@ the project's ten repositories. The owner of an appliance needs no GitHub accoun
   day on one issue in all - and reopens it, labelled `seen again after a fix`, if it had been closed
   as completed, at most once a day. The appliance's name and the fingerprint are the sender's word,
   so the limits per issue hold whoever sends them.
+- Takes a port check that agrees - an `untested-model` report whose verdict is "they agree" - as what
+  it is, a model's table confirmed: noted once from each appliance, never again from it, and never
+  reopening its issue. Until 2026-11-07 two owners' XGS 126s had it noted every day and #812 reopened
+  as if a fix had failed. A port check that cannot judge or disagrees is a problem like any other.
 - Keeps a contact address, when the owner gave one, in its own store under the issue's number, never
   in the issue. The sending address is kept for two days for the allowance and for nothing else.
 - Changes nothing in the report's text: the appliance built it and cleaned it, and its page shows the

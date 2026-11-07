@@ -159,6 +159,56 @@ await test('sightings from before an issue was closed leave it closed', async ()
     assert.equal(github.comments.length, comments + 1);
 });
 
+await test('a port check that agrees is noted once from each appliance and never reopens (#812)', async () => {
+    const env = environment();
+    const check = (appliance, verdict) => report({
+        fingerprint: verdict === 'they agree' ? '0000000000000812' : '0000000000000657', kind: 'untested-model',
+        appliance, model: 'Sophos XGS 126r1',
+        title: '[untested-model] XGS 126 (AMDA0201-0001): added untested - its ports as its coprocessor reports them',
+        body: '### What happened\n\nThis model was added from the vendor\'s board files without being tested: '
+            + 'there is no such appliance here. This holds its driver\'s port table against what its '
+            + `coprocessor reports, port by port: ${verdict}.\n`,
+    });
+    const nextDay = () => {	// the once-a-day keys gone, as the next day finds them
+        for (const key of [...env.REPORTS.map.keys()]) {
+            if (key.startsWith('seen:') || key.startsWith('reopened:') || key.startsWith('rate:')) env.REPORTS.map.delete(key);
+        }
+    };
+    const {data} = await post(env, check('f9de0af37e10', 'they agree'));
+    const issue = github.issues.get(data.issue);
+    const notes = () => github.comments.filter(c => c.issue === data.issue).length;
+    Object.assign(issue, {state: 'closed', state_reason: 'completed'});
+
+    // another owner's appliance agrees: noted, and the issue stays closed
+    const other = await post(env, check('2d1696cff16e', 'they agree'));
+    assert.equal(other.data.noted, true);
+    assert.equal(issue.state, 'closed');
+    assert.equal(notes(), 1);
+
+    // both again, the next day and the one after: nothing more, and still closed
+    for (let i = 0; i < 2; i++) {
+        nextDay();
+        assert.equal((await post(env, check('f9de0af37e10', 'they agree'))).data.noted, false);
+        assert.equal((await post(env, check('2d1696cff16e', 'they agree'))).data.noted, false);
+    }
+    assert.equal(issue.state, 'closed');
+    assert.equal(notes(), 1);
+
+    // a third appliance's agreement is news once
+    assert.equal((await post(env, check('333333333333', 'they agree'))).data.noted, true);
+    assert.equal(issue.state, 'closed');
+    assert.equal(notes(), 2);
+
+    // a port check that could not read the coprocessor is a problem: noted, and it reopens, as before
+    const unread = await post(env, check('f9de0af37e10', 'the coprocessor did not answer'));
+    const problem = github.issues.get(unread.data.issue);
+    Object.assign(problem, {state: 'closed', state_reason: 'completed'});
+    nextDay();
+    const again = await post(env, check('2d1696cff16e', 'the coprocessor did not answer'));
+    assert.equal(again.data.noted, true);
+    assert.equal(problem.state, 'open');
+});
+
 await test('the last sighting is read from the line every report ends with', async () => {
     const {lastSeen} = await import('./worker.js');
     assert.equal(lastSeen('Seen 1 time(s) between 2026-10-27 08:30:02 UTC and 2026-10-27 08:30:02 UTC. Sent'),
