@@ -906,6 +906,66 @@ class ReporterTest(unittest.TestCase):
         finally:
             sys.modules.pop('portcheck', None)
 
+    @staticmethod
+    def look(verdict='agrees', bound='oxp1', link='active'):
+        """A port check's answer, as portcheck.check() gives it, for one front port."""
+        rows = [{'tag': 0x101, 'label': 'Port1', 'interface': bound, 'agent': verdict == 'agrees', 'link': link}]
+        return {'verdict': verdict, 'model': 'XGS 2300', 'assembly': 'AMDA0202-0002',
+                'lines': ['XGS 2300 (AMDA0202-0002), OCTEON TX', 'one port'], 'ports': rows, 'why': 'no_answer'}
+
+    def port_checks(self, *looks):
+        """from_untested_model in one boot after another, a port check's answer each; what each made."""
+        real = self.machine.run
+        self.reporter.run = lambda argv, timeout=10: (
+            '202 octeontx rnd\n' if argv[-1].endswith('board.sh') else real(argv, timeout))
+        made = []
+        try:
+            for i, look in enumerate(looks):
+                self.machine.boot = BOOT + 60 * i
+                fake = types.ModuleType('portcheck')
+                fake.check = lambda look=look: dict(look)
+                sys.modules['portcheck'] = fake
+                made.append(len(self.reporter.from_untested_model()))
+                # and a second look in the same boot makes nothing, as before
+                self.assertEqual(self.reporter.from_untested_model(), [])
+        finally:
+            sys.modules.pop('portcheck', None)
+        return made
+
+    def test_a_table_that_agrees_is_said_once_from_an_appliance(self):
+        # #812: two owners' XGS 126s sent "they agree" from every boot, forty times between them.
+        self.assertEqual(self.port_checks(
+            self.look(),                            # the first agreement: the table confirmed
+            self.look(link='no carrier'),           # the same table, a cable out: nothing new
+            self.look(verdict='unread'),            # could not be read: a problem, said
+            self.look(),                            # and what agreed before is still what agrees
+            self.look(bound='oxp2'),                # another table agrees - after an update, say
+            self.look(verdict='disagrees'),         # it disagrees: said
+            self.look(bound='oxp2'),                # and agreeing again after that is news again
+        ), [1, 0, 1, 0, 1, 1, 1])
+
+    def test_the_driver_s_reading_of_the_coprocessor_s_software(self):
+        read = self.reporter.driver_reading
+        none = 'read by the driver as no vendor version it knows'
+        self.assertEqual(read(None, None), '')
+        self.assertEqual(read('21', '0'), 'read by the driver as vendor version 21')
+        self.assertEqual(read('23', '1'), 'read by the driver as vendor version 23')
+        self.assertEqual(read('0', '1'), none + '; commands 36 to 45 sent 1 higher, none from 46 on')
+        self.assertEqual(read('0', '0'), none + '; commands 36 to 45 sent as numbered, none from 46 on')
+        self.assertEqual(read('0', '-1'), none + '; commands from 36 on not sent')
+        self.assertEqual(read('0', None), none)
+
+    def test_a_report_says_how_the_driver_reads_the_coprocessor_s_software(self):
+        # #812, 2026-11-07: an owner's XGS 126 reported vendor build 20.0.0.222, a version the driver
+        # has no row for; the report did not say how the driver had taken it.
+        self.write('/var/db/os-xgs-npu/coprocessor.json', json.dumps({'at': 1, 'software': {
+            'sfversion': '20.0.0.222', 'fastpath': {'build': '43e1f0dc', 'kind': 'PROD'},
+            'generation': '21', 'cmd_shift': '0'}}))
+        table = self.reporter.system_table({'coprocessor': {'software': self.reporter.coprocessor_software()}})
+        row = next(line for line in table.splitlines() if 'Coprocessor software' in line)
+        self.assertIn('vendor build 20.0.0.222, fast path 43e1f0dc (PROD), read by the driver as vendor version 21',
+                      row)
+
     def test_failed_update(self):
         self.write('/var/db/os-xgs-npu/update/apply.json',
                    json.dumps({'status': 'failed', 'message': 'the build <b>failed</b>', 'target': 'abcdef1234567890'}))

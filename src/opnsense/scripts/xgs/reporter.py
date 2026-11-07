@@ -522,6 +522,28 @@ def pci_devices():
     return out
 
 
+def driver_reading(generation, shift):
+    """How the driver reads the coprocessor's software from its command numbering - the generation and
+    the command shift coprocessor.py keeps beside the vendor build: a vendor version it knows, or none,
+    and then what it sends of the commands from 36 on (the drivers' numbering header: 36 to 45 moved as
+    the platform block was found, none from 46 on). '' when the driver has not said. A build of a
+    version the driver has no row for shows here how it was taken: an owner's XGS 126 reported vendor
+    build 20.0.0.222 on #812 (2026-11-07), and the driver knows 21, 22 and 23."""
+    if generation in (None, ''):
+        return ''
+    if str(generation) != '0':
+        return 'read by the driver as vendor version %s' % generation
+    known = 'read by the driver as no vendor version it knows'
+    try:
+        step = int(shift)
+    except (TypeError, ValueError):
+        return known
+    if step < 0:
+        return known + '; commands from 36 on not sent'
+    return known + '; commands 36 to 45 sent %s, none from 46 on' % (
+        'as numbered' if step == 0 else '%d higher' % step)
+
+
 def coprocessor_software():
     """The coprocessor's vendor build and its fast path's build, as scripts/xgs/coprocessor.py last
     read them, or {} before it has. A last look that could not read the coprocessor has none: the
@@ -540,6 +562,7 @@ def coprocessor_software():
     differ = ', '.join('%s %s' % (p, (sdk.get('systems') or {}).get(p, '')) for p in sdk.get('differ') or [])
     return {'vendor_build': software.get('sfversion') or '',
             'fastpath': ('%s (%s)' % (fastpath['build'], fastpath.get('kind', ''))) if fastpath.get('build') else '',
+            'driver_reads': driver_reading(software.get('generation'), software.get('cmd_shift')),
             'sdk_differ': ('U-Boot of SDK %s, system copies of another: %s' % (sdk.get('uboot'), differ)) if differ else ''}
 
 
@@ -671,6 +694,7 @@ def system_table(system):
         ('Coprocessor software', ', '.join(filter(None, [
             ('vendor build ' + soft['vendor_build']) if soft.get('vendor_build') else '',
             ('fast path ' + soft['fastpath']) if soft.get('fastpath') else '',
+            soft.get('driver_reads', ''),
             soft.get('sdk_differ', '')])) or 'not read yet'),
         ('Expansion', ', '.join('bay %s: %s rev %s%s' % (e['bay'], e['part'], e['revision'],
                                                          (', vendor ' + e['vendor']) if e.get('vendor') else '')
@@ -1116,16 +1140,30 @@ def from_heartbeat(node, family, boot):
     }]
 
 
+def confirmed_table(result):
+    """What a port check that agrees confirmed, as a key: the model and each port's binding - not its
+    link, which comes and goes, nor whether a LAGG's address made the driver's tag the way to tell."""
+    rows = [{k: v for k, v in r.items() if k not in ('link', 'by_tag')} for r in result.get('ports') or []]
+    text = json.dumps([result.get('assembly'), rows], sort_keys=True)
+    return hashlib.sha256(text.encode('utf-8')).hexdigest()[:16]
+
+
 def from_untested_model():
     """A model this project has not been run on (board.sh's "rnd"): once a boot, ten minutes in, its
     driver's ports held against what its coprocessor reports - scripts/xgs/portcheck.py, which compares
     on the appliance and prints only labels, tags and interface names. Its first owner's report is what
-    confirms the model's table, or shows where it is wrong."""
+    confirms the model's table, or shows where it is wrong.
+
+    A table that agrees is said once from an appliance, and again only when another table agrees - after
+    an update changed it - or after it had disagreed. Until 2026-11-07 it was sent from every boot: two
+    owners' XGS 126s found "they agree" forty times between them, and #812 took seventeen notes of it and
+    was reopened as if a fix had failed."""
     board = run(['/bin/sh', '/usr/local/opnsense/scripts/xgs/board.sh']).split()
     if len(board) < 3 or board[2] != 'rnd':
         return []
     boot = boot_time()
-    if not boot or time.time() - boot < READY_AFTER or load('untested.json', {}).get('boot') == boot:
+    last = load('untested.json', {})
+    if not boot or time.time() - boot < READY_AFTER or last.get('boot') == boot:
         return []
     # Nothing to hold the table against without the driver: the XGS 2300 of #818 sent "the coprocessor
     # could not be read" from the boot its driver was installed in (#657, 2026-11-02). Not this boot's
@@ -1137,7 +1175,18 @@ def from_untested_model():
         result = portcheck.check()
     except Exception:		# a check that cannot run says nothing; the driver's own report covers it
         return []
-    save('untested.json', {'boot': boot})
+    # A look that could not judge - not read, two interfaces on one address - keeps what agreed before;
+    # one that disagrees forgets it, so the next agreement is news again.
+    state = {'boot': boot, 'agreed': last.get('agreed')}
+    if result['verdict'] == 'agrees':
+        table = confirmed_table(result)
+        if table == last.get('agreed'):
+            save('untested.json', state)
+            return []
+        state['agreed'] = table
+    elif result['verdict'] == 'disagrees':
+        state['agreed'] = None
+    save('untested.json', state)
     said = {'agrees': 'they agree', 'disagrees': 'they do NOT agree - the table is wrong for this model',
             'unclear': 'not all of them can be judged - two of its interfaces carry one address'}
     # why it could not be read, since 2026-10-26 (#657); the signature stays the verdict's, so a
