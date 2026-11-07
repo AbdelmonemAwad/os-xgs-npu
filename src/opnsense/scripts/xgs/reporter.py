@@ -528,19 +528,23 @@ def driver_reading(generation, shift):
     and then what it sends of the commands from 36 on (the drivers' numbering header: 36 to 45 moved as
     the platform block was found, none from 46 on). '' when the driver has not said. A build of a
     version the driver has no row for shows here how it was taken: an owner's XGS 126 reported vendor
-    build 20.0.0.222 on #812 (2026-11-07), and the driver knows 21, 22 and 23."""
+    build 20.0.0.222 on #812 (2026-11-07), and the driver knows 21, 22 and 23.
+
+    Generation 0 with no shift placed, or a shift below 0, is not read as "no version it knows": before
+    a driver has read the coprocessor's platform block - npuep once its channel is open, octep once the
+    coprocessor is rpc_ready - it holds generation 0 and shift -1 too, and coprocessor.py may keep such a
+    reading. All it says is that the numbering has not been placed."""
     if generation in (None, ''):
         return ''
     if str(generation) != '0':
         return 'read by the driver as vendor version %s' % generation
-    known = 'read by the driver as no vendor version it knows'
     try:
         step = int(shift)
     except (TypeError, ValueError):
-        return known
+        return 'the driver has not placed its command numbering'
     if step < 0:
-        return known + '; commands from 36 on not sent'
-    return known + '; commands 36 to 45 sent %s, none from 46 on' % (
+        return 'the driver has not placed its command numbering; no command from 36 on is sent'
+    return 'read by the driver as no vendor version it knows; commands 36 to 45 sent %s, none from 46 on' % (
         'as numbered' if step == 0 else '%d higher' % step)
 
 
@@ -1141,11 +1145,26 @@ def from_heartbeat(node, family, boot):
 
 
 def confirmed_table(result):
-    """What a port check that agrees confirmed, as a key: the model and each port's binding - not its
-    link, which comes and goes, nor whether a LAGG's address made the driver's tag the way to tell."""
+    """What a port check that agrees confirmed, as a key: this appliance, the model, each port's binding
+    and the agent's front tags the table does not have - not a port's link, which comes and goes, nor
+    whether a LAGG's address made the driver's tag the way to tell. The appliance's own name is in it, so
+    a disk copied into another unit of the model says the agreement there too: the state is the disk's."""
     rows = [{k: v for k, v in r.items() if k not in ('link', 'by_tag')} for r in result.get('ports') or []]
-    text = json.dumps([result.get('assembly'), rows], sort_keys=True)
+    text = json.dumps([appliance_id(), result.get('assembly'), rows,
+                       result.get('agent_front_tags_not_in_table') or []], sort_keys=True)
     return hashlib.sha256(text.encode('utf-8')).hexdigest()[:16]
+
+
+# State files that say a report was made, written only once the queue holding that report is saved
+# (collect(), queue_saved()): a look that fails between the two leaves the report to be made again at
+# the next look, not marked as said and lost.
+AFTER_QUEUE = {}
+
+
+def queue_saved():
+    for name, value in list(AFTER_QUEUE.items()):
+        save(name, value)
+    AFTER_QUEUE.clear()
 
 
 def from_untested_model():
@@ -1154,10 +1173,13 @@ def from_untested_model():
     on the appliance and prints only labels, tags and interface names. Its first owner's report is what
     confirms the model's table, or shows where it is wrong.
 
-    A table that agrees is said once from an appliance, and again only when another table agrees - after
-    an update changed it - or after it had disagreed. Until 2026-11-07 it was sent from every boot: two
-    owners' XGS 126s found "they agree" forty times between them, and #812 took seventeen notes of it and
-    was reopened as if a fix had failed."""
+    A table that agrees is said once from an appliance: an agreement is sent when what it confirmed
+    (confirmed_table()) is not what the last agreement sent from this appliance confirmed - another
+    table after an update, the agent's front tags beyond it, another unit the disk was copied into - and
+    never for the same table again, whatever was found between (a table that disagreed and agrees again
+    unchanged is not news). Until 2026-11-07 it was sent from every boot: two owners' XGS 126s found
+    "they agree" forty times between them, and #812 took seventeen notes of it and was reopened as if a
+    fix had failed."""
     board = run(['/bin/sh', '/usr/local/opnsense/scripts/xgs/board.sh']).split()
     if len(board) < 3 or board[2] != 'rnd':
         return []
@@ -1175,8 +1197,8 @@ def from_untested_model():
         result = portcheck.check()
     except Exception:		# a check that cannot run says nothing; the driver's own report covers it
         return []
-    # A look that could not judge - not read, two interfaces on one address - keeps what agreed before;
-    # one that disagrees forgets it, so the next agreement is news again.
+    # Every other verdict - not read, two interfaces on one address, disagrees - keeps what the last
+    # agreement sent confirmed: the same table agreeing again after it is not news.
     state = {'boot': boot, 'agreed': last.get('agreed')}
     if result['verdict'] == 'agrees':
         table = confirmed_table(result)
@@ -1184,9 +1206,7 @@ def from_untested_model():
             save('untested.json', state)
             return []
         state['agreed'] = table
-    elif result['verdict'] == 'disagrees':
-        state['agreed'] = None
-    save('untested.json', state)
+    AFTER_QUEUE['untested.json'] = state
     said = {'agrees': 'they agree', 'disagrees': 'they do NOT agree - the table is wrong for this model',
             'unclear': 'not all of them can be judged - two of its interfaces carry one address'}
     # why it could not be read, since 2026-10-26 (#657); the signature stays the verdict's, so a
@@ -1655,6 +1675,7 @@ def collect(at_boot=False):
     config = settings()
     handle = lock()
     try:
+        AFTER_QUEUE.clear()		# a look that failed before its queue was saved marks nothing
         found = entries()
         if at_boot:
             resets = from_reset()		# kept up to date even with reporting off
@@ -1683,6 +1704,7 @@ def collect(at_boot=False):
             entry = remember(found, scrub, problem, held)
             if problem.get('condition') is not None:
                 holding[entry['id']] = problem['condition']
+        queue_saved()		# each report is in the queue (remember()): what marks it as made can be kept
         save('conditions.json', holding)
         prune(found, holding)
         sent = 0
