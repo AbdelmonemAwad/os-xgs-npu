@@ -189,7 +189,9 @@ check('K9: ... and none under its tag: not signed yet, as before', pl.latest_rel
 # signature, never the check ended by it; and a read cut short, or OpenSSL that did not answer, is the row's
 # reason, as update.py's check says it - not a traceback that took no plugin along
 with open(os.path.join(RELEASES, NAME, 'latest', 'download', 'release.json'), 'wb') as f:
-    f.write(b'[' * 5000)
+    # as large as a manifest may be: 5000 deep is a ValueError on Python 3.12 and later, caught before the
+    # fix too, so CI's Python passed it without the fix (K31); this deep, RecursionError on every version
+    f.write(b'[' * pl.MANIFEST_MAX)
 with open(os.path.join(RELEASES, NAME, 'latest', 'download', 'release.json.sig'), 'wb') as f:
     f.write(b'x' * 64)
 check('a manifest nested too deep to parse: refused by its signature, the check answers',

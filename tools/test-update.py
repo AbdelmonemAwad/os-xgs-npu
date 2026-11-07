@@ -882,8 +882,10 @@ r = up.run_check()
 check('K9: ... and with no signature published under its own tag: not signed yet, the signature named',
       (r.get('status'), r.get('message')),
       ('error', 'the newest release is not signed yet: it has no release.json.sig'))
-# a manifest nested deeper than the parser goes: refused by its signature, never the check ended by it
-PUBLISHED[''] = {up.MANIFEST: b'[' * 5000, up.MANIFEST + '.sig': b'x' * 64}
+# a manifest nested deeper than the parser goes: refused by its signature, never the check ended by it. As
+# large as a manifest may be: 5000 deep raised RecursionError on the appliances' Python 3.11 but a ValueError on
+# 3.12 and later, which the code before the fix caught too - so CI's Python passed it without the fix (K31)
+PUBLISHED[''] = {up.MANIFEST: b'[' * up.MANIFEST_MAX, up.MANIFEST + '.sig': b'x' * 64}
 r = up.run_check()
 check('a manifest nested too deep to parse: the check refuses it, and answers',
       (r.get('status'), 'does not verify' in r.get('message', '')), ('error', True))
@@ -1093,10 +1095,10 @@ UPDATE_IN = INSTALL_SH.index('install -S -m 0755 "${SRC}/src/opnsense/scripts/xg
 check('K10: the release keys renamed into place before update.py is installed', KEYS_IN < UPDATE_IN, True)
 check('K10: ... made whole beside the set they replace',
       INSTALL_SH.index('install -d -m 0755 "${KEYS}.new"') < KEYS_IN, True)
-# and update.py itself, and the scripts beside it (plugins.py among them), by a safe copy: written beside and
-# renamed over the one there - install(1) without -S takes that away before it copies, and a full disk then left
-# none (the release check's review of 0.1.0-alpha.15.1)
-check('update.py installed by a safe copy (-S)', UPDATE_IN > 0, True)
+# and update.py itself, and the scripts beside it (plugins.py among them), with -S: each flushed to disk once
+# copied. K20 took -S for a copy written beside and renamed over the one there - which FreeBSD 14.3 and 15.x's
+# install(1) always makes; that did not hold, and -S stays for the flush
+check('update.py installed with -S (flushed to disk)', UPDATE_IN > 0, True)
 check('... and the scripts beside it, plugins.py among them',
       'install -S -m 0755 "${SRC}/src/opnsense/scripts/xgs/${f}"' in INSTALL_SH, True)
 

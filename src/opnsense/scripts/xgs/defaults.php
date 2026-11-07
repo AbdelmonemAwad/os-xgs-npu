@@ -28,7 +28,8 @@
  * TAKEN OUT BY ANYTHING BUT ITS PAGE. A setting recorded as set and not in the configuration now was
  * taken out by a save after the last one that had it, and OPNsense's history names that save
  * (removed_by). The owner's None is a save of its page, and so is what the owner's own restore holds -
- * a configuration taken back from the history, sections restored, or a whole configuration restored;
+ * a configuration taken back from the history, sections restored, or a whole configuration restored,
+ * its history flushed or kept;
  * anything else - a script's save over it - is not the owner's choice, and the setting is set again,
  * the save that took it out said. Until 2026-11-07 the record alone decided, and an XGS 107w whose
  * configuration had lost the setting went without its CPU temperature from its next boot on, the
@@ -109,13 +110,17 @@ if (in_array($key, $done, true) && (string)$c->system->$key === '') {
     } elseif ($by !== null && strpos($by['description'], 'system_advanced_misc.php') !== false) {
         echo "{$key}: set once already, and set to None on System: Settings: Miscellaneous - " .
             revision_said($by) . " - left as the owner has it\n";
-    } elseif ($by === null || preg_match('/revert_backup|^Restored /', $by['description'])) {
+    } elseif ($by === null || preg_match('/revert_backup|^Restored |diag_backup\.php made changes/', $by['description'])) {
         /*
          * The owner's own restore: a configuration taken back from the history (revert_backup), sections
-         * restored, or a whole configuration restored - written past the history, so the newest backup
-         * still has it (null). What it held is the owner's to keep, None included: left as it is, and
-         * verify.sh says how to set it. Until the release check's review of 0.1.0-alpha.15.1 a restore
-         * was taken for a script's save, and the setting set again over it.
+         * restored ("Restored sections"), or a whole configuration restored - written past the history,
+         * so the newest backup still has it (null), or, with the console settings kept (ticked by
+         * default) or RRD data in it, saved by System: Configuration: Backups with no description of its
+         * own: "/diag_backup.php made changes" (OPNsense 26.7's diag_backup.php and config.inc). That
+         * page saves so only after a restore. What it held is the owner's to keep, None included: left
+         * as it is, and verify.sh says how to set it. Until the release check's review of 0.1.0-alpha.15.1
+         * a restore was taken for a script's save, and the setting set again over it; until its third
+         * review (K30), a whole restore with the history kept - the history not flushed - still was.
          */
         echo "{$key}: set once already, and None since the owner's restore - " . revision_said($by) .
             " - left as it is; System: Settings: Miscellaneous, Thermal Sensors sets it\n";

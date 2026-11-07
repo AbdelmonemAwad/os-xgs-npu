@@ -489,7 +489,8 @@
                 callback: function (ok) {
                     if (ok) {
                         ajaxCall('/api/xgs/updates/reboot', {}, function (r) {
-                            /* refused: the plugins' runner started since this page read the status */
+                            /* refused: an update, or the plugins' runner, started since this page read
+                               the status - refresh() shows it running and watches it to its end (K29) */
                             if (r && r.status === 'busy') {
                                 refresh();
                                 return;
