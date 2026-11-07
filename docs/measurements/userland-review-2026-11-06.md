@@ -8,7 +8,11 @@ the workflows and two plugins of the family - was read through for faults:
 with their severity, evidence and state. **135 of them were fixed by the end of that day, in 53 pull
 requests, each run before it was merged - on the lab appliances, as an owner meets it, wherever an
 appliance can show it - and every one of them with its tests.** The rest are open or confirmed there.
-This page was first published that evening with 121 in 45; those merged after it are added below.
+This page was first published that evening with 121 in 45; those merged after it are added below. By
+2026-11-07, 137 of 141 (U20 found that day): U5 and G3 too, in a 54th pull request after signed
+releases ([1121](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1121), with #1115 to #1120 and the
+eleven plugins' own), run on the first XGS 3300 -
+[the plugins' signed releases](signed-plugin-releases-2026-11-07.md).
 
 The appliances: the first XGS 3300 (vendor version 23), the second XGS 3300 (vendor version 22) and
 the XGS 136 (vendor version 21), on OPNsense 26.7 with this project's `main`. A change was put on an
