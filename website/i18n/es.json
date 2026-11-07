@@ -24,11 +24,11 @@
     "drawing_caption": "Los dos equipos que funcionan aquí, dibujados como están en el banco: un XGS 136 sobre un XGS 3300. Señale un puerto para ver su interfaz; un clic lo abre en la página de su modelo."
   },
   "alert": {
-    "bar": "Actualice OPNsense ahora - PHP2Shell: cada equipo, también uno de pruebas, a PHP 8.5.12 o posterior.",
-    "title": "Actualice OPNsense ahora - PHP2Shell.",
-    "text": "Dos fallos críticos de PHP (CVE-2026-109618, CVE-2026-109619) pueden permitir ejecutar código en un cortafuegos sin iniciar sesión, y la interfaz web de OPNsense funciona con PHP. Actualice cada equipo - también uno de pruebas - en System: Firmware: Status y compruebe después que php -v muestre 8.5.12 o posterior: tras la primera corrección, una actualización de paquetes, la versión seguía indicando 26.7.7; desde 26.7.8 la corrección llega con la propia actualización, y la versión indica 26.7.8. Las imágenes listas llevan un PHP más antiguo: actualice justo después de instalar.",
-    "link_text": "Qué hacer, paso a paso",
-    "link": "/news/update-opnsense-php2shell/"
+    "bar": "Dos actualizaciones de seguridad para cada equipo: os-xgs-npu 0.1.0-alpha.15 o posterior, cuyas versiones están firmadas, y OPNsense 26.7.8 o posterior (PHP2Shell).",
+    "title": "Actualice una vez: las versiones del proyecto ahora están firmadas.",
+    "text": "Desde 0.1.0-alpha.15 (2026-11-07) cada versión de os-xgs-npu está firmada, y XGS: Updates instala una versión solo si su firma se verifica con la clave de versiones del proyecto. Un equipo con 0.1.0-alpha.14 o anterior todavía tiene el actualizador anterior, que no comprueba ninguna firma: actualícelo una vez - XGS: Updates, Check for updates y luego Update - y cada actualización posterior se comprobará. Los plugins de los equipos lo harán con sus próximas versiones. Y OPNsense mismo a 26.7.8 o posterior, por PHP2Shell: las imágenes listas para usar parten de un OPNsense más antiguo, así que actualícelo justo después de instalar una.",
+    "link_text": "Qué cambió y qué hacer",
+    "link": "/news/update-once-signed-releases/"
   },
   "notice": {
     "title": "Nuevos descubrimientos, 2026-10-22.",

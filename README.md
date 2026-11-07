@@ -7,8 +7,30 @@
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/images/readme/notice-dark.svg">
   <source media="(prefers-color-scheme: light)" srcset="docs/images/readme/notice-light.svg">
-  <img src="docs/images/readme/notice-light.svg" alt="Update OPNsense now - PHP2Shell: update to PHP 8.5.12 or later, test appliances included" width="100%">
+  <img src="docs/images/readme/notice-light.svg" alt="Update once - the releases are signed now: update os-xgs-npu once to 0.1.0-alpha.15 or later, and OPNsense to 26.7.8 or later" width="100%">
 </picture>
+
+> [!CAUTION]
+> **Update once - the releases are signed now. 2026-11-07.** Since
+> [0.1.0-alpha.15](https://github.com/AbdelmonemAwad/os-xgs-npu/releases/tag/v0.1.0-alpha.15) every release
+> of os-xgs-npu is signed, and XGS: Updates installs a release only when its signature verifies with the
+> project's release key, whose public half is in
+> [release-keys](src/opnsense/scripts/xgs/release-keys) (`13ed7f86...d33b`). A release the key did not sign
+> is neither offered nor installed, whoever serves it - GitHub, or the copy of GitHub's answers on
+> npuforge.org. An appliance on **0.1.0-alpha.14 or earlier** still has the updater from before, which
+> checks no signature: its next update is taken the old way, once, and the release it installs carries the
+> new updater. So **update it once, now**, and every update after that is checked.
+>
+> - **Update:** XGS: Updates - *Check for updates*, then *Update*; reboot when the page asks.
+> - **Check:** XGS: Updates says 0.1.0-alpha.15 or later is installed. From the next update on, its
+>   *Installer log* says the release is "signed with xgs-release-key-13ed7f86.pub".
+> - **The appliance plugins** check their releases the same way from their next releases on.
+> - **The [ready-made images](https://github.com/AbdelmonemAwad/xgs-image-builder/releases)** of
+>   0.1.0-alpha.15 carry the new updater. They start from an older OPNsense: update OPNsense right after
+>   installing one (PHP2Shell, below).
+>
+> More in [the site's notice](https://npuforge.org/news/update-once-signed-releases/) and
+> [RELEASING.md](RELEASING.md).
 
 > [!CAUTION]
 > **Update OPNsense now, on every appliance - a test one too. PHP2Shell, 2026-10-21.** PHP fixed two

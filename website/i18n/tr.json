@@ -24,11 +24,11 @@
     "drawing_caption": "Burada çalıştırılan iki cihaz, tezgâhta durdukları gibi çizildi: bir XGS 3300'ün üzerinde bir XGS 136. Arayüzünü görmek için bir portun üzerine gelin; tıklamak onu modelinin sayfasında açar."
   },
   "alert": {
-    "bar": "OPNsense'i şimdi güncelleyin - PHP2Shell: test cihazı dahil her cihaz PHP 8.5.12 veya daha yenisine.",
-    "title": "OPNsense'i şimdi güncelleyin - PHP2Shell.",
-    "text": "PHP'deki iki kritik açık (CVE-2026-109618, CVE-2026-109619), oturum açmadan bir güvenlik duvarında kod çalıştırılmasına izin verebilir ve OPNsense'in web arayüzü PHP ile çalışır. Test cihazı dahil her cihazı System: Firmware: Status üzerinden güncelleyin, ardından php -v çıktısının 8.5.12 veya daha yeni olduğunu doğrulayın: ilk düzeltmeden, bir paket güncellemesinden sonra sürüm 26.7.7 olarak kalıyordu; 26.7.8'den beri düzeltme güncellemenin kendisiyle gelir ve sürüm 26.7.8 olarak görünür. Hazır imajlar daha eski bir PHP içerir: kurulumdan hemen sonra güncelleyin.",
-    "link_text": "Adım adım ne yapmalı",
-    "link": "/news/update-opnsense-php2shell/"
+    "bar": "Her cihaz için iki güvenlik güncellemesi: sürümleri imzalı olan os-xgs-npu 0.1.0-alpha.15 veya üstü ve OPNsense 26.7.8 veya üstü (PHP2Shell).",
+    "title": "Bir kez güncelleyin - projenin sürümleri artık imzalı.",
+    "text": "0.1.0-alpha.15 (2026-11-07) sürümünden bu yana os-xgs-npu'nun her sürümü imzalıdır ve XGS: Updates bir sürümü yalnızca imzası projenin sürüm anahtarıyla doğrulandığında kurar. 0.1.0-alpha.14 veya daha eski bir sürümdeki cihazda hâlâ hiçbir imzayı denetlemeyen eski güncelleyici vardır: cihazı bir kez güncelleyin - XGS: Updates, Check for updates, ardından Update - ve sonraki her güncelleme denetlenir. Cihaz eklentileri bunu bir sonraki sürümleriyle izleyecek. Ayrıca PHP2Shell nedeniyle OPNsense'in kendisini 26.7.8 veya üstüne güncelleyin: hazır imajlar daha eski bir OPNsense ile başlar, bu yüzden kurulumdan hemen sonra güncelleyin.",
+    "link_text": "Ne değişti ve ne yapmalı",
+    "link": "/news/update-once-signed-releases/"
   },
   "notice": {
     "title": "Yeni keşifler, 2026-10-22.",

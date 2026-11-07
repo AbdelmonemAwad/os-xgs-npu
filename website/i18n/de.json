@@ -24,11 +24,11 @@
     "drawing_caption": "Die beiden hier betriebenen Geräte, gezeichnet, wie sie auf dem Prüfstand stehen: eine XGS 136 auf einer XGS 3300. Zeigen Sie auf einen Port für seine Schnittstelle; ein Klick öffnet ihn auf der Seite seines Modells."
   },
   "alert": {
-    "bar": "OPNsense jetzt aktualisieren - PHP2Shell: jedes Gerät, auch ein Testgerät, auf PHP 8.5.12 oder neuer.",
-    "title": "OPNsense jetzt aktualisieren - PHP2Shell.",
-    "text": "Zwei kritische PHP-Lücken (CVE-2026-109618, CVE-2026-109619) können Code auf einer Firewall ohne Anmeldung ausführen lassen, und die Weboberfläche von OPNsense läuft mit PHP. Aktualisieren Sie jedes Gerät - auch ein Testgerät - unter System: Firmware: Status und prüfen Sie dann, dass php -v 8.5.12 oder neuer anzeigt: Nach der ersten Korrektur, einem Paket-Update, lautete die Version weiterhin 26.7.7; seit 26.7.8 kommt die Korrektur mit dem Update selbst, und die Version lautet 26.7.8. Die fertigen Images enthalten ein älteres PHP: direkt nach der Installation aktualisieren.",
-    "link_text": "Was zu tun ist, Schritt für Schritt",
-    "link": "/news/update-opnsense-php2shell/"
+    "bar": "Zwei Sicherheitsupdates für jedes Gerät: os-xgs-npu 0.1.0-alpha.15 oder neuer, dessen Releases signiert sind, und OPNsense 26.7.8 oder neuer (PHP2Shell).",
+    "title": "Einmal aktualisieren - die Releases des Projekts sind jetzt signiert.",
+    "text": "Seit 0.1.0-alpha.15 (2026-11-07) ist jedes Release von os-xgs-npu signiert, und XGS: Updates installiert ein Release nur, wenn seine Signatur mit dem Release-Schlüssel des Projekts geprüft ist. Ein Gerät mit 0.1.0-alpha.14 oder älter hat noch den bisherigen Updater, der keine Signatur prüft: Aktualisieren Sie es einmal - XGS: Updates, Check for updates, dann Update - und jedes spätere Update wird geprüft. Die Geräte-Plugins folgen mit ihren nächsten Releases. Und OPNsense selbst auf 26.7.8 oder neuer, wegen PHP2Shell: Die fertigen Images beginnen mit einem älteren OPNsense, also direkt nach der Installation aktualisieren.",
+    "link_text": "Was sich geändert hat und was zu tun ist",
+    "link": "/news/update-once-signed-releases/"
   },
   "notice": {
     "title": "Neue Entdeckungen, 2026-10-22.",
