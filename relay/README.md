@@ -31,9 +31,14 @@ the project's ten repositories. The owner of an appliance needs no GitHub accoun
   as completed, at most once a day. The appliance's name and the fingerprint are the sender's word,
   so the limits per issue hold whoever sends them.
 - Takes a port check that agrees - an `untested-model` report whose verdict is "they agree" - as what
-  it is, a model's table confirmed: noted once from each appliance, never again from it, and never
-  reopening its issue. Until 2026-11-07 two owners' XGS 126s had it noted every day and #812 reopened
-  as if a fix had failed. A port check that cannot judge or disagrees is a problem like any other.
+  it is, a model's table confirmed: it never reopens its issue, and is noted once for each appliance
+  and what it confirmed - the report's Evidence section with each line's last `; <link state>` taken
+  off. The same binding from the same appliance is not noted again, whatever the day; another (a table
+  changed by an update, a real count after "0 of 0", the agent's front tags beyond the table) is. It is
+  noted whenever its sightings were, before the issue was closed too, and one the issue's ten notes a
+  day leave out is answered 429 and kept by the appliance to send again. Until 2026-11-07 two owners'
+  XGS 126s had it noted every day and #812 reopened as if a fix had failed. A port check that cannot
+  judge or disagrees is a problem like any other.
 - Keeps a contact address, when the owner gave one, in its own store under the issue's number, never
   in the issue. The sending address is kept for two days for the allowance and for nothing else.
 - Changes nothing in the report's text: the appliance built it and cleaned it, and its page shows the
