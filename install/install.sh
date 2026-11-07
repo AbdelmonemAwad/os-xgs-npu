@@ -111,12 +111,20 @@ install -d -m 0755 "${PREFIX}/opnsense/scripts/xgs"
 install -m 0755 "${SRC}/src/opnsense/scripts/xgs/board.sh" "${PREFIX}/opnsense/scripts/xgs/board.sh"
 install -m 0755 "${SRC}/src/opnsense/scripts/xgs/status.py" "${PREFIX}/opnsense/scripts/xgs/status.py"
 install -m 0755 "${SRC}/src/opnsense/scripts/xgs/offload.sh" "${PREFIX}/opnsense/scripts/xgs/offload.sh"
-install -m 0755 "${SRC}/src/opnsense/scripts/xgs/update.py" "${PREFIX}/opnsense/scripts/xgs/update.py"
 # The public keys a release's manifest must be signed with for update.py to install it (its SIGNED
-# RELEASES): the set the tree holds, and no other - a key the tree dropped goes with this install.
-rm -rf "${PREFIX}/opnsense/scripts/xgs/release-keys"
-install -d -m 0755 "${PREFIX}/opnsense/scripts/xgs/release-keys"
-install -m 0644 "${SRC}"/src/opnsense/scripts/xgs/release-keys/*.pub "${PREFIX}/opnsense/scripts/xgs/release-keys/"
+# RELEASES): the set the tree holds, and no other - a key the tree dropped goes with this install. Put
+# in place before update.py, and whole: made beside the set they replace and renamed over it. Until
+# 2026-11-07 update.py came first and the keys were taken away and written after it, so an install that
+# stopped between the two - a full disk - left an update.py with no key at all, and every check after
+# it said so until an install by hand (the release check's review, K10).
+KEYS="${PREFIX}/opnsense/scripts/xgs/release-keys"
+rm -rf "${KEYS}.new" "${KEYS}.old"
+install -d -m 0755 "${KEYS}.new"
+install -m 0644 "${SRC}"/src/opnsense/scripts/xgs/release-keys/*.pub "${KEYS}.new/"
+if [ -d "${KEYS}" ]; then mv "${KEYS}" "${KEYS}.old"; fi
+mv "${KEYS}.new" "${KEYS}"
+rm -rf "${KEYS}.old"
+install -m 0755 "${SRC}/src/opnsense/scripts/xgs/update.py" "${PREFIX}/opnsense/scripts/xgs/update.py"
 install -m 0755 "${SRC}/src/opnsense/scripts/xgs/assign.php" "${PREFIX}/opnsense/scripts/xgs/assign.php"
 install -m 0755 "${SRC}/src/opnsense/scripts/xgs/countdown.py" "${PREFIX}/opnsense/scripts/xgs/countdown.py"
 # The settings page's apply, the readers of the Ports and IPsec pages, the appliance's settings in
@@ -188,6 +196,10 @@ elif [ -s "${SRC}/.update-commit" ]; then
 elif [ -s "${SRC}/.image-build" ]; then
     REV=$(awk '{print $1}' "${SRC}/.image-build"); RDATE=$(awk '{print $2}' "${SRC}/.image-build"); RSRC=image
     REL=$(awk '{print $3}' "${SRC}/.image-build")
+elif [ -s "${SRC}/.archive-commit" ] && ! grep -q 'Format:' "${SRC}/.archive-commit"; then
+    # an archive of a commit installed by hand - a release's, say: git archive wrote the commit and
+    # its date into it (.gitattributes, export-subst); a checkout's copy still says $Format:...$
+    REV=$(awk '{print $1}' "${SRC}/.archive-commit"); RDATE=$(awk '{print $2}' "${SRC}/.archive-commit"); RSRC=archive
 else
     REV=
 fi

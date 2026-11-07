@@ -247,11 +247,11 @@ def release_url(name, tag, file):
     return '%s/download/%s/%s' % (releases_of(name), urllib.parse.quote(tag, safe=''), file)
 
 
-def release_file(name, file, limit):
-    """A file of a plugin's latest release, read whole; one larger than limit is not a file of a
-    release. One missing from a test appliance's place (file://) is GitHub's 404 for a file a release
-    does not have."""
-    url = release_url(name, '', file)
+def release_file(name, file, limit, tag=''):
+    """A file of a plugin's latest release - or of release tag - read whole; one larger than limit is
+    not a file of a release. One missing from a test appliance's place (file://) is GitHub's 404 for a
+    file a release does not have."""
+    url = release_url(name, tag, file)
     try:
         answer = urllib.request.urlopen(urllib.request.Request(url, headers={'User-Agent': 'os-xgs-npu'}),
                                         timeout=60)
@@ -294,6 +294,17 @@ def signature_key(data, signature):
     return ''
 
 
+def named_tag(data):
+    """The tag a manifest not yet verified names, as only where to read its signature; '' when it
+    names none of the form a tag has, and the latest release's signature is read as before."""
+    try:
+        found = json.loads(data.decode('utf-8'))
+    except ValueError:
+        return ''
+    tag = found.get('tag') if isinstance(found, dict) else None
+    return tag if isinstance(tag, str) and FIELDS['tag'].match(tag) else ''
+
+
 def plugin_manifest(name):
     """The manifest of a plugin's latest release: read, its signature verified with a key in
     RELEASE_KEYS, and every field it must have checked. Its fields, and 'key', the key's name; Unsigned
@@ -302,7 +313,10 @@ def plugin_manifest(name):
     try:
         data = release_file(name, MANIFEST, MANIFEST_MAX)
         missing = MANIFEST + '.sig'
-        signature = release_file(name, missing, 64)
+        # its signature by the tag the manifest names, not through 'latest' a second time: a release
+        # published between the two reads paired one release's manifest with another's signature (the
+        # release check's review, K9). The tag only says where to look; the signature still decides.
+        signature = release_file(name, missing, 64, tag=named_tag(data))
     except urllib.error.HTTPError as error:
         if error.code == 404:
             raise Unsigned('its latest release is not signed yet: it has no %s' % missing) from error

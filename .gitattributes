@@ -39,3 +39,10 @@ tools/sfos-capture.sh export-ignore
 # appliance has no internet; LICENSE stays, the terms the code is given under.
 /README.md export-ignore
 /contrib/mvsw/README.md export-ignore
+
+# The commit an archive is of, and its date, written into .archive-commit by git archive itself (export-subst:
+# its $Format:...$ is the commit's hash and committer date - the same bytes wherever the archive is made, so a
+# release's archive stays the one signed). install.sh records them when nothing else says what the tree is: a
+# release's archive installed by hand. Until 2026-11-07 such an install recorded no commit, date or release,
+# and XGS: Updates offered the same release again (the release check's review, K11).
+/.archive-commit export-subst

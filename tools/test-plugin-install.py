@@ -172,6 +172,18 @@ trust()
 check('no key on the appliance: not offered', pl.latest_release(NAME).get('message'),
       "the signature of its latest release does not verify with this appliance's release keys - it has none")
 trust('owner')
+# K9 (the release check's review, 2026-11-07): the manifest and its signature read through 'latest' twice paired
+# one release's manifest with another's signature when a release was published between the two reads. The
+# signature is read by the tag the manifest names now: 'latest' holding another signature, the manifest's own
+# under its tag, the release is offered.
+publish(owner)
+with open(os.path.join(RELEASES, NAME, 'latest', 'download', 'release.json.sig'), 'wb') as f:
+    f.write(sign(owner, b'the manifest of the release before\n'))
+check('K9: latest holding the signature of another manifest: the one under its tag read, offered',
+      pl.latest_release(NAME).get('status'), 'found')
+os.remove(os.path.join(RELEASES, NAME, 'download', TAG, 'release.json.sig'))
+check('K9: ... and none under its tag: not signed yet, as before', pl.latest_release(NAME).get('message'),
+      'its latest release is not signed yet: it has no release.json.sig')
 for what, fields, said in (('another repository', {'repository': 'AbdelmonemAwad/os-fanctl'}, 'of another repository'),
                            ('no commit', {'commit': None}, 'has no commit'),
                            ('an archive name with a path', {'archive': '../x.tar.gz'}, 'has no archive'),

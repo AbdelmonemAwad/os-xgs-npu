@@ -326,6 +326,17 @@ FIELDS = {
 }
 
 
+def named_tag(data):
+    """The tag a manifest not yet verified names, as only where to read its signature; '' when it
+    names none of the form a tag has, and the newest release's signature is read as before."""
+    try:
+        found = json.loads(data.decode('utf-8'))
+    except ValueError:
+        return ''
+    name = found.get('tag') if isinstance(found, dict) else None
+    return name if isinstance(name, str) and FIELDS['tag'].match(name) else ''
+
+
 def signed_manifest(tag=''):
     """The manifest of release tag, or of the newest release: read, its signature verified with a key
     in RELEASE_KEYS, and every field it must have checked. Its fields, and 'key', the key's name;
@@ -333,7 +344,11 @@ def signed_manifest(tag=''):
     what = tag or 'the newest release'
     try:
         data = release_bytes(tag, MANIFEST, MANIFEST_MAX)
-        signature = release_bytes(tag, MANIFEST + '.sig', 64)
+        # The newest release's signature by the tag its manifest names, not through 'latest' a second
+        # time: a release published between the two reads paired one release's manifest with another's
+        # signature, and the check cried tampering until the next one (the release check's review, K9).
+        # The tag only says where to look; the signature still decides.
+        signature = release_bytes(tag or named_tag(data), MANIFEST + '.sig', 64)
     except urllib.error.HTTPError as error:
         if error.code == 404:
             raise Unsigned('%s is not signed yet: it has no %s' % (what, MANIFEST))
@@ -407,6 +422,34 @@ def when(stamp):
         return int(datetime.datetime.fromisoformat((stamp or '').replace('Z', '+00:00')).timestamp())
     except ValueError:
         return 0
+
+
+RELEASE_NUMBER = re.compile(r'v(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?\Z')
+
+
+def release_order(tag):
+    """Where a release's number sorts, as semantic versioning sorts it and RELEASING.md makes every
+    number - 0.1.0-alpha.15 before 0.1.0-alpha.15.1 before 0.1.0-alpha.16 before 0.1.0; None for a
+    tag that is not a release's number."""
+    found = RELEASE_NUMBER.match(tag or '')
+    if not found:
+        return None
+    major, minor, patch, pre = found.groups()
+    parts = tuple((0, int(p), '') if p.isdigit() else (1, 0, p) for p in pre.split('.')) if pre else ()
+    return (int(major), int(minor), int(patch), 0 if pre else 1, parts)
+
+
+def installed_after(inst, tag, date):
+    """How what is installed comes after release tag, dated date - 'numbered' or 'dated' - or None. A
+    release installed: by the two numbers, not the dates. An appliance updated by 0.1.0-alpha.14's
+    update.py holds the release's publication time as its date, where a manifest's is its commit's,
+    so a release merged in the minutes between another's merge and its publication read as older
+    than what was installed, and was never offered (the release check's review, K7). Anything else
+    installed - a build of main or of a branch - by the dates (issue 677)."""
+    ours, theirs = release_order(inst.get('release', '')), release_order(tag)
+    if ours is not None and theirs is not None:
+        return 'numbered' if ours > theirs else None
+    return 'dated' if newer_than(inst.get('date', ''), date) else None
 
 
 def newer_than(installed_date, target_date):
@@ -579,7 +622,7 @@ def check_releases():
     same = have == sha or have_rel == tag
     if same:
         result.update({'compare': 'identical', 'ahead_by': 0, 'behind_by': 0})
-    elif newer_than(inst.get('date', ''), signed['date']):
+    elif installed_after(inst, tag, signed['date']):
         # What is installed is dated after the newest release - a build from main, or from a branch
         # (issue 677): it is not taken back; the next release is offered.
         result['newer_than_target'] = True
@@ -1068,9 +1111,10 @@ def apply_locked(lock, made):
         if signed['commit'] != sha:
             return fail('the signed manifest of %s names commit %s, not the %s the check found; nothing '
                         'was downloaded - check for updates again' % (tag, signed['commit'][:12], sha[:12]))
-        if newer_than(installed().get('date', ''), signed['date']):
-            return fail('%s is dated before what is installed, and nothing is taken back; nothing was '
-                        'downloaded' % tag)
+        after = installed_after(installed(), tag, signed['date'])
+        if after:
+            return fail('%s is %s before what is installed, and nothing is taken back; nothing was '
+                        'downloaded' % (tag, after))
         say('%s is commit %s, signed with %s' % (tag, sha[:12], signed['key']))
         # And GitHub's own word for the tag, as before signed releases: a tag moved since it was signed
         # stops the update too.
