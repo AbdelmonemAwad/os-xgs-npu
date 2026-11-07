@@ -1163,6 +1163,26 @@ class ReporterTest(unittest.TestCase):
                                 '---<<BOOT>>---\nCopyright (c) 1992-2025 The FreeBSD Project.\n')
         self.assertEqual(self.reporter.from_reset(), [])
 
+    def test_a_boot_marker_glued_to_a_console_line_takes_no_panic_from_a_boot_before(self):
+        # the release check's review of 0.1.0-alpha.15.1: a boot that hung with a console line still open
+        # gets the next boot's marker glued onto it; dmesg drops that line, marker and all, so its
+        # second-to-last part was the boot before - here one that panicked - and this boot was filed as a
+        # panic. The boot's own lines are dmesg -a's, those of them the kernel wrote.
+        self.reporter.save('boots.json', {'last_boot': BOOT - 3600})
+        before = ('---<<BOOT>>---\nCopyright (c) 1992-2025 The FreeBSD Project.\n'
+                  'Fatal trap 12: page fault while in kernel mode\npanic: page fault\n'
+                  '---<<BOOT>>---\nCopyright (c) 1992-2025 The FreeBSD Project.\n'
+                  '[30] octep0: attached\n')
+        self.machine.console = before + 'Configuring interfaces...---<<BOOT>>---\n' \
+            'Copyright (c) 1992-2025 The FreeBSD Project.\n'
+        self.machine.dmesg = before + 'Copyright (c) 1992-2025 The FreeBSD Project.\n'
+        self.reporter.collect(at_boot=True)
+        reset = self.resets()
+        self.assertEqual(len(reset), 1)
+        self.assertEqual(reset[0]['title'], 'the appliance restarted without a shutdown')
+        self.assertEqual(reset[0]['id'], self.reporter.fingerprint(
+            'os-xgs-npu', 'unexpected-reset', 'unexpected reset warm'))
+
     def test_a_kernel_panic_is_still_found_with_the_console_beside_it(self):
         self.reporter.save('boots.json', {'last_boot': BOOT - 3600})
         self.shut_down(BOOT - 60)

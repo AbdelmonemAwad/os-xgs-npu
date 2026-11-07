@@ -97,8 +97,9 @@ class Appliance(unittest.TestCase):
             self.stub(os.path.join('..', '07-npuep'))
         for name in ('kldload', 'configctl', 'daemon'):
             self.stub(name)
-        # the running kernel, as uname -v says it, and /boot/modules with no stamp beside the module
+        # the running kernel, as uname -v says it, and /boot/modules with the module and no stamp beside it
         os.makedirs(os.path.join(d, 'modules'))
+        self.write(os.path.join('modules', '%s.ko' % drv), 'a module')
         self.script(os.path.join(self.bin, 'uname'), 'echo "%s"' % KERNEL_NOW)
         self.stub(os.path.join('..', 'rc.reload_all'),
                   'cat "%s/reload-said"\nexit $(cat "%s/reload-exit")' % (d, d))
@@ -260,6 +261,25 @@ class Armada(Reload, Appliance):
         self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
         self.assertEqual(self.calls('kldunload'), ['kldunload npuep.ko.prev'])
         self.assertEqual(self.loaded(), ['kldload /boot/modules/npuep.ko.prev'])
+
+    # the release check's review of 0.1.0-alpha.15.1: what the reset would leave nothing to recover with is
+    # refused before it - no file to load again, and a driver loaded from neither file
+    def test_no_module_file_to_load_again_resets_nothing(self):
+        os.remove(os.path.join(self.dir, 'modules', 'npuep.ko'))
+        done = self.recover()
+        self.assertEqual(done.returncode, 1, done.stdout + done.stderr)
+        self.assertIn('to load again; not taken up in place - nothing reset', done.stdout)
+        self.assertEqual(self.calls('python3'), [])
+        self.assertEqual(self.calls('kldunload'), [])
+        self.assertEqual(self.calls('kldload'), [])
+
+    def test_a_driver_from_neither_file_resets_nothing(self):
+        self.stub('kldstat', 'case "$*" in *-m*) exit 0 ;; *) exit 1 ;; esac')	# loaded, from another file
+        done = self.recover()
+        self.assertEqual(done.returncode, 1, done.stdout + done.stderr)
+        self.assertIn('the driver came from neither npuep.ko nor npuep.ko.prev', done.stdout)
+        self.assertEqual(self.calls('python3'), [])
+        self.assertEqual(self.calls('kldunload'), [])
 
     def test_no_module_for_this_kernel_resets_nothing(self):
         self.module('npuep.ko', KERNEL_NEXT)

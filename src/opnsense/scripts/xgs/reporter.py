@@ -1407,9 +1407,13 @@ def from_reset():
     # console and the syslog records too, so a program's own "panic: " line there filed a panic of the
     # kernel, and in automatic mode sent it (the release check's review of 2026-11-07, K5). The lines
     # shown as evidence stay -a's, which say more of what led to it.
-    kernel = run(['/sbin/dmesg']).split('---<<BOOT>>---') if kept else []
-    said = kernel[-2].splitlines() if len(kernel) > 2 else []
-    panicked = any(re.search(r'Fatal trap \d+|\bpanic: ', line) for line in said)
+    # The boot's own lines, as dmesg -a splits them, those of them the kernel itself wrote: not dmesg's own
+    # split, whose boot markers can number fewer - a warm restart glues the next boot's marker onto a
+    # console line still open ("Configuring interfaces..."), and dmesg drops that line, marker and all,
+    # so its second-to-last part was a boot before, and that boot's panic was filed for this one (the
+    # release check's review of 0.1.0-alpha.15.1, reproduced in its stand-ins).
+    kernel = set(run(['/sbin/dmesg']).splitlines()) if kept else set()
+    panicked = any(re.search(r'Fatal trap \d+|\bpanic: ', line) for line in prior if line in kernel)
     # AND A SHUTDOWN THAT BEGAN IN ORDER IS NOT ONE THAT ENDED IN ORDER. Its record is written as the
     # stop hooks run, and reboot(8)'s as that starts: OPNsense's last hook, shutdown(8) and the
     # kernel's own part - the disks' sync, every driver's shutdown method - all come after it. A panic

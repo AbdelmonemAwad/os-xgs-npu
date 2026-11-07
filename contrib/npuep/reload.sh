@@ -46,7 +46,11 @@ if [ -z "${MODULE:-}" ]; then
     else
         MODULE=/boot/modules/npuep.ko
         NOW=$(/usr/bin/uname -v)
-        if [ "$(cat "${MODULE}.kernel" 2>/dev/null)" != "${NOW}" ] && [ -f "${MODULE}.prev" ] &&
+        # .prev only for an npuep.ko stamped for another kernel: one with no stamp is loaded, as the hook
+        # loads it - until the release check's review of 0.1.0-alpha.15.1 an npuep.ko copied in by hand,
+        # without its stamp, gave way here to the older .prev
+        if [ -n "$(cat "${MODULE}.kernel" 2>/dev/null)" ] &&
+            [ "$(cat "${MODULE}.kernel" 2>/dev/null)" != "${NOW}" ] && [ -f "${MODULE}.prev" ] &&
             [ "$(cat "${MODULE}.prev.kernel" 2>/dev/null)" = "${NOW}" ]; then
             MODULE=${MODULE}.prev
         fi
