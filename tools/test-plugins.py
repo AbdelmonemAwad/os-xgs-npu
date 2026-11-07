@@ -307,5 +307,17 @@ check('a runner that stops: the one it ran said stopped, the one after it not co
 for thread in runners:
     thread.join(20)
 
+# The step a failed update's bar stops at, from its self-update's message (issue 1122, the review's U20):
+# a step over in less than the runner's half second was never seen, and an archive refused after its
+# download said Check for updates.
+for message, seen, want in (
+        ('the archive of v1.0.1 is not the one signed: 9 bytes; nothing was installed', 'check', 'download'),
+        ('v1.0.1 has no install/install.sh; nothing was installed', 'download', 'unpack'),
+        ('v1.0.1: install/install.sh failed with status 3; see update.log', 'unpack', 'install'),
+        ('the latest release is not signed yet: it has no release.json', 'check', 'check'),
+        ('the archive of v1.0.1 is not the one signed', 'install', 'install')):
+    check('a failed update stops at the step its message names, never before the one seen: %s' % want,
+          plugins.stopped_at(message, seen), want)
+
 print('all passed' if failures == 0 else '%d failed' % failures)
 sys.exit(1 if failures else 0)
