@@ -13,6 +13,40 @@ release on an appliance you can reach before you trust it with a network you dep
 
 Nothing yet.
 
+## 0.1.0-alpha.15.1 - 2026-11-07
+
+What remained after 0.1.0-alpha.15: three findings of [the userland review](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/1072) and [issue 890](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/890)'s; ten of the review made in the release check before 0.1.0-alpha.15; and
+eighteen found in this release's own check. Each fix was tested before its merge - by the repository's tests, and
+on the appliance it concerns where one can show it (the first XGS 3300, or the XGS 136 for the ARMADA driver's
+scripts); each pull request's Tested section says which. The release itself was taken by the three lab appliances
+the way an owner takes it - an XGS 136 and two XGS 3300s, from 0.1.0-alpha.15 - and its drivers carried two hours
+of traffic on all three without a failure.
+
+After updating, reload XGS: Updates before you press Reboot now: a page left open since before the update does
+not know to wait while a plugin is still being installed.
+
+**A security update for an appliance on 0.1.0-alpha.14 or earlier.** Its updater predates signed releases and checks
+no signature, so it takes this release the old way, once; the updater this release installs takes only signed
+releases from then on. Update such an appliance now ([the notice](https://npuforge.org/news/update-once-signed-releases/)).
+
+### Fixes
+
+- Problem reports: a panic at shutdown read from the kernel's own records ([#1130](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1130))
+
+### Improvements and additions
+
+- release.yml: a signing that was not started fails the run, and can be started again by hand ([#1125](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1125)) - the repository's release workflow; nothing on an appliance changes with it
+- ARMADA: npuep taken up again only from a module built for the running kernel ([#1126](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1126))
+- XGS: Updates: the plugin taken along named at the finish, Reboot now held while one installs ([#1127](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1127))
+- Plugins tab: an update refused after its download stopped at Download, not Check for updates ([#1128](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1128))
+- Thermal sensors: set again when anything but its own page took the setting out ([#1129](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1129))
+- Updates: releases compared by number, the newest's signature by its tag, the keys before update.py, an archive installed by hand recorded ([#1131](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1131))
+- octep: a dp.if_add refused for its tag clears the unit and the label staged for it ([#1132](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1132))
+- The security notice: the site's bar in eight languages, a news post and README, for an appliance on 0.1.0-alpha.14 or earlier, and OPNsense for PHP2Shell ([#1133](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1133)) - nothing on an appliance changes with it
+- Updates: the reboot held only as long as an update waits for one plugin, and while a plugin installs when the status cannot be read; the bar says it checks; a manifest too deep to parse refused; why a read failed said; the temporary key sets uninstalled ([#1134](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1134))
+- Problem reports: a panic at shutdown read from this boot's own lines; thermal sensors: an unreadable backup, or the owner's own restore, leaves the setting alone; ARMADA: reload.sh and recover.sh refuse what would leave nothing to recover with ([#1135](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1135))
+- Updates: no reboot while an update itself runs; thermal sensors: a whole configuration restored with its history kept is the owner's restore; plugins: a failed answer of npuforge.org's copy no longer stops the other updates ([#1136](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1136))
+
 ## 0.1.0-alpha.15 - 2026-11-07
 
 ### Fixes
