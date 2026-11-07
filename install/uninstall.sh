@@ -95,7 +95,9 @@ rm -f "${PREFIX}/opnsense/scripts/xgs/board.sh"
 rm -f "${PREFIX}/opnsense/scripts/xgs/status.py"
 rm -f "${PREFIX}/opnsense/scripts/xgs/offload.sh"
 rm -f "${PREFIX}/opnsense/scripts/xgs/update.py"
-rm -rf "${PREFIX}/opnsense/scripts/xgs/release-keys"
+# and the sets install.sh makes beside it while it puts a new one in place, should an install have stopped there
+rm -rf "${PREFIX}/opnsense/scripts/xgs/release-keys" "${PREFIX}/opnsense/scripts/xgs/release-keys.new" \
+    "${PREFIX}/opnsense/scripts/xgs/release-keys.old"
 rm -f "${PREFIX}/opnsense/scripts/xgs/assign.php"
 rm -f "${PREFIX}/opnsense/scripts/xgs/countdown.py"
 rm -f /var/db/os-xgs-npu/labels /var/db/os-xgs-npu/switch-jumbo.state

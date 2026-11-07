@@ -168,7 +168,11 @@ class UpdatesController extends ApiControllerBase
      * Not while the plugins' runner installs one: the reboot would cut its installer, and pkg with
      * it, in the middle (update.py, plugins_runner; the review's U18). The page hides Reboot now
      * meanwhile and reads the status again on busy; this is for a page shown before the runner
-     * started. A status that cannot be read holds nothing back.
+     * started. Held only as long as update.py says (hold: as long as an update waits for one plugin),
+     * not for ever. And a status that cannot be read is most likely configd restarted by a plugin's
+     * installer - the middle of an install: the runner is then looked for here, by its command line, as
+     * update.py looks for it. Until 0.1.0-alpha.15.1 an unreadable status let the reboot through (the
+     * release check's review).
      */
     public function rebootAction()
     {
@@ -176,8 +180,15 @@ class UpdatesController extends ApiControllerBase
             return ['status' => 'error', 'message' => gettext('this endpoint is POST only')];
         }
         $state = $this->run('update status');
-        if (!empty($state['plugins_running'])) {
-            return ['status' => 'busy'];
+        if (($state['status'] ?? '') === 'ok') {
+            if (!empty($state['plugins_running']['hold'])) {
+                return ['status' => 'busy'];
+            }
+        } else {
+            exec("/bin/pgrep -f 'scripts/xgs/plugins[.]py run' 2>/dev/null", $found, $rc);
+            if ($rc === 0) {
+                return ['status' => 'busy'];
+            }
         }
         (new Backend())->configdRun('system reboot', true);
         return ['status' => 'ok'];

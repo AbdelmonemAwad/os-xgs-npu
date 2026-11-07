@@ -124,14 +124,17 @@ install -m 0644 "${SRC}"/src/opnsense/scripts/xgs/release-keys/*.pub "${KEYS}.ne
 if [ -d "${KEYS}" ]; then mv "${KEYS}" "${KEYS}.old"; fi
 mv "${KEYS}.new" "${KEYS}"
 rm -rf "${KEYS}.old"
-install -m 0755 "${SRC}/src/opnsense/scripts/xgs/update.py" "${PREFIX}/opnsense/scripts/xgs/update.py"
+# -S, a safe copy: written beside and renamed over the one there. install(1) otherwise takes the one there
+# away before it copies, so a full disk left no update.py at all (the release check's review of
+# 0.1.0-alpha.15.1) - and with it no way to update but by hand.
+install -S -m 0755 "${SRC}/src/opnsense/scripts/xgs/update.py" "${PREFIX}/opnsense/scripts/xgs/update.py"
 install -m 0755 "${SRC}/src/opnsense/scripts/xgs/assign.php" "${PREFIX}/opnsense/scripts/xgs/assign.php"
 install -m 0755 "${SRC}/src/opnsense/scripts/xgs/countdown.py" "${PREFIX}/opnsense/scripts/xgs/countdown.py"
 # The settings page's apply, the readers of the Ports and IPsec pages, the appliance's settings in
 # OPNsense's own pages, the runner other plugins use to reach the coprocessor (npu-run.sh), and the
 # driver's settings put where it reads them before the early hooks load it (tunables-kenv.sh).
 for f in apply.php portmap.py ipsec.py reassign.sh defaults.php npu-run.sh tunables-kenv.sh temperatures.sh watchdog.sh transceivers.py bundle.py flows.py flow_exclude.php lists_cut.py ja4_cut.py hwdrop.py anomaly.py poe.py plugins.py health.py portstats.py models.py portcheck.py fastpath.py recover.sh cp_users.py cp_overlay.py coprocessor.py fpcounters.py console_log.py feeder.py npu-sysrq.sh subnets.py npu-clock.sh npu-log.sh; do
-    install -m 0755 "${SRC}/src/opnsense/scripts/xgs/${f}" "${PREFIX}/opnsense/scripts/xgs/${f}"
+    install -S -m 0755 "${SRC}/src/opnsense/scripts/xgs/${f}" "${PREFIX}/opnsense/scripts/xgs/${f}"
 done
 # Jumbo frames through the coprocessor's switch chip at every boot, on both families: the script,
 # its start hook, and the switch tool it puts on the coprocessor (an aarch64 binary for the
@@ -200,6 +203,11 @@ elif [ -s "${SRC}/.archive-commit" ] && ! grep -q 'Format:' "${SRC}/.archive-com
     # an archive of a commit installed by hand - a release's, say: git archive wrote the commit and
     # its date into it (.gitattributes, export-subst); a checkout's copy still says $Format:...$
     REV=$(awk '{print $1}' "${SRC}/.archive-commit"); RDATE=$(awk '{print $2}' "${SRC}/.archive-commit"); RSRC=archive
+    # and the release, from the directory a release's archive unpacks into, os-xgs-npu-<tag>
+    # (RELEASING.md: git archive --prefix=os-xgs-npu-<tag>/), checked below as any release is: without
+    # it the dates alone compared what is installed with a release, and a release of a lower number
+    # published later was taken for a newer one (the release check's review of 0.1.0-alpha.15.1)
+    case ${SRC##*/} in os-xgs-npu-v*) REL=${SRC##*/os-xgs-npu-} ;; esac
 else
     REV=
 fi

@@ -497,6 +497,18 @@ write(up.LOG, AT_PLUGINS)
 check('... the update done: 100, nothing named', plugin_bar(dict(running, status='done')), ('finish', 100, None))
 check('... the update stopped: nothing named', plugin_bar(dict(stopped))[2], None)
 
+# Before the queue, while sync checks which releases to take - a check holding plugins.py's lock - the bar
+# says it checks (the release check's review of 0.1.0-alpha.15.1); a queue of an earlier run, not this one's.
+import fcntl
+up.PLUGINS_CHECK_LOCK = os.path.join(STATE, 'plugins-check.lock')
+queue(running['started_at'] - 100, **{'os-netreport': 'done'})
+write(up.LOG, AT_PLUGINS)
+with open(up.PLUGINS_CHECK_LOCK, 'w') as lock:
+    fcntl.flock(lock, fcntl.LOCK_EX)
+    check('U19: the plugins being checked, no queue of this update yet: the bar says so', plugin_bar(running),
+          ('finish', 96, {'name': None, 'at': None, 'of': None, 'ended': None, 'checking': True}))
+check('U19: ... the check over: nothing said', plugin_bar(running), ('finish', 96, None))
+
 # U18: Reboot now waits while the plugins' runner runs - the runner found by its command line, its place
 # read from its progress; with no runner, nothing held, whatever its progress says.
 check('U18: the runner as plugins.py starts it', re.search(up.PLUGINS_RUNNER,
@@ -508,10 +520,31 @@ runner = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(60)', 
                            'os-netreport'])
 try:
     time.sleep(0.5)
-    check('U18: the runner running: held, the plugin it is on named', up.plugins_runner(),
-          {'name': 'os-netreport', 'at': 1, 'of': 2, 'ended': 0, 'running': True})
+
+    def held():
+        found = up.plugins_runner() or {}
+        return {k: v for k, v in found.items() if k != 'since'}
+
+    check('U18: the runner running: held, the plugin it is on named', held(),
+          {'name': 'os-netreport', 'at': 1, 'of': 2, 'ended': 0, 'running': True, 'hold': True})
+    # held for a while, not for ever: as long as an update waits for one plugin (PLUGINS_HOLD), from the
+    # plugin's own start - then the reboot is offered again, the plugin shown beside it
+    with open(up.PLUGINS_PROGRESS, encoding='utf-8') as handle:
+        prog = json.load(handle)
+    prog['jobs']['os-netreport']['started_at'] = int(time.time()) - 60
+    with open(up.PLUGINS_PROGRESS, 'w', encoding='utf-8') as handle:
+        json.dump(prog, handle)
+    check('U18: a plugin a minute into its update: held', (up.plugins_runner() or {}).get('hold'), True)
+    prog['jobs']['os-netreport']['started_at'] = int(time.time()) - up.PLUGINS_HOLD - 60
+    with open(up.PLUGINS_PROGRESS, 'w', encoding='utf-8') as handle:
+        json.dump(prog, handle)
+    found = up.plugins_runner() or {}
+    check('U18: ... past the wait an update gives one plugin: no longer held, still named',
+          (found.get('hold'), found.get('name'), found.get('running')), (False, 'os-netreport', True))
     os.remove(up.PLUGINS_PROGRESS)
-    check('U18: ... its progress not there: held all the same', up.plugins_runner(), {'running': True})
+    found = up.plugins_runner() or {}
+    check("U18: ... its progress not there: held all the same, the runner's age from ps",
+          (found.get('running'), found.get('hold'), abs(time.time() - (found.get('since') or 0)) < 30), (True, True, True))
 finally:
     runner.kill()
     runner.wait()
@@ -846,8 +879,14 @@ check('K9: the newest manifest beside the signature of the one before it, throug
       (r.get('status'), r.get('target', {}).get('tag'), r.get('signed_with')), ('ok', NEXT, 'test-release-key.pub'))
 del PUBLISHED[NEXT]
 r = up.run_check()
-check('K9: ... and with no signature published under its own tag: not signed yet, as before',
-      (r.get('status'), r.get('message')), ('error', 'the newest release is not signed yet: it has no release.json'))
+check('K9: ... and with no signature published under its own tag: not signed yet, the signature named',
+      (r.get('status'), r.get('message')),
+      ('error', 'the newest release is not signed yet: it has no release.json.sig'))
+# a manifest nested deeper than the parser goes: refused by its signature, never the check ended by it
+PUBLISHED[''] = {up.MANIFEST: b'[' * 5000, up.MANIFEST + '.sig': b'x' * 64}
+r = up.run_check()
+check('a manifest nested too deep to parse: the check refuses it, and answers',
+      (r.get('status'), 'does not verify' in r.get('message', '')), ('error', True))
 
 # K7 (the release check's review, 2026-11-07): a release installed is compared with the newest by number, not
 # by date. 0.1.0-alpha.14's update.py recorded a release's publication time, after the commit date a manifest
@@ -1009,8 +1048,10 @@ RECORD = RECORD[:RECORD.index('install -d -m 0755 "${PREFIX}/share/os-xgs-npu"')
 ARCHIVED = 'd' * 40 + ' 2026-11-07T10:50:43+04:00\n'
 
 
-def recorded(**stamps):
-    tree = tempfile.mkdtemp(prefix='test-update-tree-')
+def recorded(unpacked_as=None, **stamps):
+    top = tempfile.mkdtemp(prefix='test-update-tree-')
+    tree = os.path.join(top, unpacked_as) if unpacked_as else top
+    os.makedirs(tree, exist_ok=True)
     try:
         for name, text in stamps.items():
             with open(os.path.join(tree, '.' + name.replace('_', '-')), 'w', encoding='utf-8') as handle:
@@ -1018,12 +1059,18 @@ def recorded(**stamps):
         said = subprocess.run(['sh', '-c', RECORD + 'echo "${REV}|${RDATE}|${RSRC}|${REL}"'],
                               env=dict(os.environ, SRC=tree), capture_output=True, text=True).stdout.strip()
     finally:
-        shutil.rmtree(tree, ignore_errors=True)
+        shutil.rmtree(top, ignore_errors=True)
     return said.split('|')
 
 
 check('K11: a release archive installed by hand: its commit and date, from the archive',
       recorded(archive_commit=ARCHIVED), ['d' * 40, '2026-11-07T10:50:43+04:00', 'archive', ''])
+check('K11: ... unpacked as a release unpacks, os-xgs-npu-<tag>: the release named too',
+      recorded(unpacked_as='os-xgs-npu-v0.1.0-alpha.15', archive_commit=ARCHIVED),
+      ['d' * 40, '2026-11-07T10:50:43+04:00', 'archive', 'v0.1.0-alpha.15'])
+check('K11: ... a directory of another name: no release taken from it',
+      recorded(unpacked_as='os-xgs-npu-main', archive_commit=ARCHIVED),
+      ['d' * 40, '2026-11-07T10:50:43+04:00', 'archive', ''])
 check('K11: ... a checkout\'s copy, not written by git archive: nothing taken from it',
       recorded(archive_commit='$Format:%H %cI$\n'), ['', '', 'unknown', ''])
 check('K11: ... update.py\'s stamp beside it: the stamp, with the release',
@@ -1042,10 +1089,16 @@ with open(os.path.join(HERE, '..', '.gitattributes'), encoding='utf-8') as handl
 # they replace and renamed over it - before update.py, so an install that stops between the two never leaves an
 # update.py with no key.
 KEYS_IN = INSTALL_SH.index('mv "${KEYS}.new" "${KEYS}"')
-UPDATE_IN = INSTALL_SH.index('install -m 0755 "${SRC}/src/opnsense/scripts/xgs/update.py"')
+UPDATE_IN = INSTALL_SH.index('install -S -m 0755 "${SRC}/src/opnsense/scripts/xgs/update.py"')
 check('K10: the release keys renamed into place before update.py is installed', KEYS_IN < UPDATE_IN, True)
 check('K10: ... made whole beside the set they replace',
       INSTALL_SH.index('install -d -m 0755 "${KEYS}.new"') < KEYS_IN, True)
+# and update.py itself, and the scripts beside it (plugins.py among them), by a safe copy: written beside and
+# renamed over the one there - install(1) without -S takes that away before it copies, and a full disk then left
+# none (the release check's review of 0.1.0-alpha.15.1)
+check('update.py installed by a safe copy (-S)', UPDATE_IN > 0, True)
+check('... and the scripts beside it, plugins.py among them',
+      'install -S -m 0755 "${SRC}/src/opnsense/scripts/xgs/${f}"' in INSTALL_SH, True)
 
 for path in (STATE, WORK, KEYS):
     shutil.rmtree(path, ignore_errors=True)
