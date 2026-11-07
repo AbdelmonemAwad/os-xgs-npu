@@ -78,6 +78,26 @@ jobs:
             --notes-file notes.md --latest
           echo "published v${VERSION} at ${target}"
 
+      # The release signed at once (RELEASING.md, step 5): an appliance whose update.py checks the
+      # signature offers no release before its three files are up. The signing repository is another
+      # one, private, whose workflow this run's own token cannot start: SIGNING_DISPATCH_TOKEN is a
+      # fine-grained token with Actions read and write on it alone. Without it, that repository's own
+      # look every six hours finds the release; a failure here never undoes the release.
+      - name: Start the signing of the release
+        if: steps.version.outputs.version != ''
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ secrets.SIGNING_DISPATCH_TOKEN }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -eu
+          if [ -z "${GH_TOKEN}" ]; then
+            echo "no SIGNING_DISPATCH_TOKEN: os-xgs-npu-release-signing signs v${VERSION} at its next look, within six hours"
+            exit 0
+          fi
+          gh workflow run sign.yml -R AbdelmonemAwad/os-xgs-npu-release-signing -f tag="v${VERSION}"
+          echo "os-xgs-npu-release-signing is signing v${VERSION}"
+
       # The site's home page gives the newest release, read from the tags (website/build.py). Its build
       # of this same push starts beside this run and reads the tags first: for 0.1.0-alpha.14 it read
       # them five seconds before the release was made, and the home page said 0.1.0-alpha.13 until a

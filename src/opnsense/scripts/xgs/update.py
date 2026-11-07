@@ -58,9 +58,10 @@ confirm stops there.
 
 SIGNED RELEASES (since 2026-11-07). A release is installed only as its owner signed it. Three files
 are published with each release on GitHub: os-xgs-npu-<tag>.tar.gz, the tag's tree made by `git
-archive` on the owner's machine; release.json, the manifest, naming the tag, its commit and its date
-and the archive's SHA-256 and size; and release.json.sig, the manifest's Ed25519 signature, made with
-a key only the owner holds - never in CI, never on GitHub. The appliance holds the public keys
+archive`; release.json, the manifest, naming the tag, its commit and its date and the archive's
+SHA-256 and size; and release.json.sig, the manifest's Ed25519 signature, made with the release key -
+by the owner's private signing repository as the release is published, or on the owner's machine;
+never by this repository's own CI (RELEASING.md, step 5). The appliance holds the public keys
 (RELEASE_KEYS). The check reads the newest release's manifest - GitHub's download of the newest
 release's file, not its API, so not the hourly allowance either - and offers it only when its
 signature verifies with one of them, and it is dated after what is installed; the update reads the
