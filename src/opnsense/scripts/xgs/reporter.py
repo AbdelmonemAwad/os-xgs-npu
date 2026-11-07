@@ -1403,7 +1403,13 @@ def from_reset():
     # no dump is there and nowhere else - the kernel restarts the machine itself, which reads as a
     # reboot to the chipset (2026-10-26: an XGS 126 reset a minute into a boot, bit 19 alone).
     prior = boots[-2].splitlines() if kept else []
-    panicked = any(re.search(r'Fatal trap \d+|\bpanic: ', line) for line in prior)
+    # Whether it panicked, from the kernel's own records alone: dmesg -a holds what was written to the
+    # console and the syslog records too, so a program's own "panic: " line there filed a panic of the
+    # kernel, and in automatic mode sent it (the release check's review of 2026-11-07, K5). The lines
+    # shown as evidence stay -a's, which say more of what led to it.
+    kernel = run(['/sbin/dmesg']).split('---<<BOOT>>---') if kept else []
+    said = kernel[-2].splitlines() if len(kernel) > 2 else []
+    panicked = any(re.search(r'Fatal trap \d+|\bpanic: ', line) for line in said)
     # AND A SHUTDOWN THAT BEGAN IN ORDER IS NOT ONE THAT ENDED IN ORDER. Its record is written as the
     # stop hooks run, and reboot(8)'s as that starts: OPNsense's last hook, shutdown(8) and the
     # kernel's own part - the disks' sync, every driver's shutdown method - all come after it. A panic

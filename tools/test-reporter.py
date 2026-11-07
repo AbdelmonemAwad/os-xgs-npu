@@ -60,6 +60,7 @@ class Machine:
         self.boot = BOOT
         self.heartbeat = {}		# dev.octep.0.heartbeat.<name>: value, when a test gives it one
         self.dmesg = '---<<BOOT>>---\nCopyright (c) 1992-2025 The FreeBSD Project.\n'
+        self.console = None		# dmesg -a, when it holds more than the kernel's records
         self.next_kernel = KERNEL	# the version /boot/kernel/kernel carries: the running one, until an update
         self.on_disk = '15.1-RELEASE-p4'	# freebsd-version -k: the kernel on disk, the running one until an update
         self.last = 'shutdown time                              Thu Jan  1 2026 06:57\n'
@@ -108,7 +109,9 @@ class Machine:
                     'xhci0@pci0:3:0:3:\tclass=0x0c0330 rev=0x00 hdr=0x00 vendor=0x1022 device=0x15e0 subvendor=0x1022 subdevice=0x7914\n'
                     "    device     = 'USB controller'\n")
         if name == '/sbin/dmesg':
-            return self.dmesg
+            # -a: the kernel's records with what was written to the console and syslog's among them,
+            # when a test gives those (console); without it, the kernel's alone
+            return (self.console or self.dmesg) if '-a' in argv else self.dmesg
         return ''
 
 
@@ -1140,6 +1143,40 @@ class ReporterTest(unittest.TestCase):
         self.assertIn('kernel: panic: page fault', reset[0]['evidence'])
         self.assertEqual(reset[0]['id'], self.reporter.fingerprint(
             'os-xgs-npu', 'unexpected-reset', 'unexpected reset panic in shutdown'))
+
+    def test_a_programs_panic_line_on_the_console_is_not_the_kernels(self):
+        # the release check's review of 2026-11-07 (K5): dmesg -a holds the console's output and syslog's
+        # records too; a program's own "panic: " line there filed a kernel panic for a shutdown that ended
+        # in order
+        self.reporter.save('boots.json', {'last_boot': BOOT - 3600})
+        self.shut_down(BOOT - 60)
+        self.machine.dmesg = ('---<<BOOT>>---\nCopyright (c) 1992-2025 The FreeBSD Project.\n'
+                              '[2049] Syncing disks, vnodes remaining... 0 done\n'
+                              '[2050] All buffers synced.\n'
+                              '[2051] Uptime: 34m11s\n'
+                              '---<<BOOT>>---\nCopyright (c) 1992-2025 The FreeBSD Project.\n')
+        self.machine.console = ('---<<BOOT>>---\nCopyright (c) 1992-2025 The FreeBSD Project.\n'
+                                '<13>Nov  7 06:00:01 fw someprogram[4242]: panic: the program gave up\n'
+                                '[2049] Syncing disks, vnodes remaining... 0 done\n'
+                                '[2050] All buffers synced.\n'
+                                '[2051] Uptime: 34m11s\n'
+                                '---<<BOOT>>---\nCopyright (c) 1992-2025 The FreeBSD Project.\n')
+        self.assertEqual(self.reporter.from_reset(), [])
+
+    def test_a_kernel_panic_is_still_found_with_the_console_beside_it(self):
+        self.reporter.save('boots.json', {'last_boot': BOOT - 3600})
+        self.shut_down(BOOT - 60)
+        kernel = ('---<<BOOT>>---\nCopyright (c) 1992-2025 The FreeBSD Project.\n'
+                  'Syncing disks, vnodes remaining... 0 done\n'
+                  'Fatal trap 12: page fault while in kernel mode\n'
+                  'panic: page fault\n'
+                  '---<<BOOT>>---\nCopyright (c) 1992-2025 The FreeBSD Project.\n')
+        self.machine.dmesg = kernel
+        self.machine.console = kernel.replace('Syncing disks', '<13>Nov  7 06:00:01 fw init: stopping\nSyncing disks')
+        self.reporter.collect(at_boot=True)
+        reset = self.resets()
+        self.assertEqual(len(reset), 1)
+        self.assertEqual(reset[0]['title'], 'the appliance panicked while it shut down')
 
     def test_a_shutdown_that_finished_is_not_reported_from_its_message_buffer(self):
         # the boot before as a support bundle's dmesg.txt keeps one that ended in order: its sync and its
