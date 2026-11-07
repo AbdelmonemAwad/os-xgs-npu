@@ -13,6 +13,84 @@ release on an appliance you can reach before you trust it with a network you dep
 
 Nothing yet.
 
+## 0.1.0-alpha.15 - 2026-11-07
+
+### Fixes
+
+- feeder.py, fastpath.py, console_log.py, recover.sh: crash records marked only once kept, an error in a handler not the end, the ARMADA's stop seen at once, a boot told by a token, and a lock probe no failed recovery ([#1095](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1095))
+
+### Improvements and additions
+
+- octep, npuep: VLAN_MTU on every front port - a vlan takes its port's whole MTU ([#1054](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1054))
+- reporter.py: an address that ends a sentence, a disk's serial and other programs' names kept out of reports ([#1055](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1055))
+- update.py, install.sh: an update that stopped is said to have stopped, and a driver that did not build fails the update ([#1056](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1056))
+- checks: every shell script parsed, each failure counted; the C step that parsed nothing removed ([#1057](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1057))
+- mcp2210.py, 06-npuctl, recover.sh: the release written on every way out of a pulse, the bridge found by its USB ids, boards 200 and 224 refused for every caller ([#1058](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1058))
+- assign.php, xgs.inc: a front port in service through a VLAN, a LAGG or a PPP link counts as set up; every driver device volatile, so a boot without the coprocessor rewrites no assignment ([#1059](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1059))
+- workflows: each finds only its own issue; upstream reads opnsense/core's tags; docs labelled; a release closes "A release is due"; every issue told ([#1060](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1060))
+- the drivers found by their module's name, unloaded by the file they came from: a driver running from its .prev file is seen ([#1061](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1061))
+- scripts: command output decoded with errors='replace' everywhere, so one byte that is not UTF-8 stops no script ([#1062](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1062))
+- reporter.py: the machine's names withheld whole, not inside other words; a missing driver's evidence from this boot alone ([#1063](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1063))
+- verify.sh: octep.ko built for the kernel the next boot will use is said to be, not a failure of the chain ([#1064](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1064))
+- flow_exclude.php: a Never offloaded list longer than the driver's 64 keeps everything with the host, where it was refused and nothing was kept ([#1065](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1065))
+- bringup.sh: the RPC write gate shut on every way out, a failure or a stop part-way included ([#1066](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1066))
+- 30-xgs-assign, countdown.py, assign.php: a countdown that failed is asked again, a failed assignment is marked, a configured bridge0 is seen, nothing written unbacked ([#1067](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1067))
+- coprocessor.py: a look that cannot read the coprocessor keeps the reading before it, for the next look and a report's vendor build ([#1068](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1068))
+- lists_cut.py, ja4_cut.py: a run whose pf states could not be read keeps its new entries and its place for the next run ([#1069](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1069))
+- fastpath.py: a restart asked for in this boot is not asked for again by the next minute's check ([#1070](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1070))
+- feeder.py: no SysRq keys into a reset under way; only no prompt is a silent console; a silence weighed again when a look finds no prompt ([#1071](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1071))
+- recover.sh, switch-jumbo.sh: the switch ports set to 10,240 again after a recovery in place; the console's lock not held through a second link wait, nor taken against the watch ([#1073](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1073))
+- plugin-release-pr.py: an open release pull request whose branch carries a person's commits is left to that person; the branch replaced only where it was read ([#1074](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1074))
+- reporter.py: a module waiting for its reboot is no module-mismatch; failing configd actions told apart by their program; the shutdown before a boot not taken for its end ([#1075](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1075))
+- transceivers.py: a cage the reply did not reach keeps its last read and the driver its medium; portstats.py, coprocessor.py, temperatures.sh: the ports named by models.py, so an XGS 2100 or 2300 is not shown as a 3300 ([#1076](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1076))
+- kernel-follow.sh, stop/20-octep: the kernel.old fall-back armed at the reboot while another run holds the follower's lock, and said only when it was ([#1077](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1077))
+- npu-platform.sh: the platform database read through npu-run.sh, under the console's lock and with its logger standing aside ([#1078](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1078))
+- bringup.sh, 07-npuep: the inspector's marker made to agree with the configuration at boot, so a factory reset or a restore does not leave the inspector's function and ring 0 taken ([#1080](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1080))
+- reporter.py, relay: a report the relay refuses spends nothing and waits for the owner's Send; a condition that holds is one occurrence until it clears; the relay files for all ten parts ([#1082](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1082))
+- feeder.py, fastpath.py: a passing reading no longer settles a silence, the stop's report is sent behind the recovery, and a recovery past its cap is ended whole ([#1083](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1083))
+- release.yml, changelog.py, thanks, answered: the tag on the release's own commit and the site built after it; corrected lines listed; thanks per person; no runner held by a wait in a crowd ([#1084](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1084))
+- upgrade/20-octep, kernel-follow.sh, bringup.sh, npu-run.sh: the upgrade's rebuild bounded and its warning true, an earlier load's handshake said at once, and the console's logger never left paused ([#1085](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1085))
+- anomaly.py, ipsec.py, temperatures.sh, ja4_cut.py, offload.sh: one window at a time, the associations in UDP shown, a boot token the clock does not move, each cut state's own ends, and one rpc command at a time ([#1086](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1086))
+- bridge-pathcost.sh, mgmt-link.sh, npuhs.py: an owner's path cost kept, 2.5G ports read, old STP's sixteen bits asked for, the console waited for, and the endpoint found by its id ([#1087](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1087))
+- stop hooks, switch-jumbo.sh, tunables-kenv.sh, reset_reason.py, npu-clock.sh, apply.php, subnets.py, 74-xgs-defaults: the watches stopped after the rebuild, failures said, and the settings /conf takes with it set again ([#1089](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1089))
+- feeder.py, npu-sysrq.sh, reload.sh, recover.sh, install.sh: a declined SysRq said with its reason, the console's logger let back in after one, and the endpoint taken by its id ([#1091](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1091))
+- bringup.sh: a port left without its address named, with the reason, and an answer of zeros not taken for one ([#1093](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1093))
+- 07-npuep, recover.sh, reload.sh: the ARMADA's offload gate after a reset of its coprocessor - waited for as long as the driver waits, its old word not shown as this one's - and reload.sh loading a module that is there ([#1094](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1094))
+- reporter.py, portcheck.py, octep.c: the Kernel row the running kernel's, a short line of the coprocessor's ports said, and the temperature sensors described for every model ([#1096](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1096))
+- device_facts.py, devices-table.py: the XGS 2100's and 2300's F1 and F2 on the switch on the site's pages, and the table stopped where the facts and models.py disagree ([#1097](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1097))
+- coprocessor.py, plugins.py, npu-run.sh: the long reads started in the background and answered at once, the console held in short sessions, and one plugins check at a time ([#1088](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1088))
+- update.py, install.sh, kernel-follow.sh, updates.volt: the update's progress read from its own run only, and no number where it cannot be told ([#1081](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1081))
+- SettingsController.php, status.volt: the settings API holds to xgs.general, and the Overview draws its cards when the settings cannot be read ([#1079](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1079))
+- ReportsController, PoeController: a user with user-config-readonly refused before config.xml is saved ([#1092](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1092))
+- apply.php, status.volt, ports.volt, reports.volt, updates.volt, reporter.py: the flow maker's hand-set tunables removed, a refused action said, only an https issue address a link, the panel's tooltips named, and the API's text escaped once ([#1099](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1099))
+- recover.sh, kernel-follow.sh, reporter.py, early/05-xgs-report: reload's answer read, a refused detach asked again, a stamp never naming the wrong module, and a boot that crashed early reported ([#1100](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1100))
+- kernel-follow.sh: the fall-back to kernel.old never across a FreeBSD major release ([#1103](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1103))
+- update.py, install.sh: the update's lock on descriptor 9, closed for every daemon the installer starts ([#1102](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1102))
+- update.py, install.sh, uninstall.sh, verify.sh, kernel-follow.sh: an ARMADA appliance's stray octep.ko taken off, an uninstall that leaves nothing armed, verify.sh naming what is installed, a download tried again, and the releases read past the twenty newest ([#1104](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1104))
+- octep, npuep, hwdrop.py, flows.py, flows.volt: a verdict or a hand-back names its connection by index and revision, an index given to another connection since is refused, and Return to host is drawn ([#1090](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1090))
+- 31-xgs-mgmt-link, mgmt-link.sh, install.sh: the ARMADA's management link assigned at the first boot that has it, before OPNsense configures its interfaces ([#1106](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1106))
+- octep, npuep, hwdrop.py, flows.py, flows.volt: #1090 put back, which the merge of #1106 had taken out ([#1108](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1108))
+- octep, bringup.sh, ports.py, portmap.py, portstats.py: every front port named by its place, so one that does not come up renames no other ([#1109](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1109))
+- octep, npuep, hwdrop.py: the flow table read past its first page, so a cut reaches every connection ([#1110](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1110))
+- plugins.py: the project's update waits for a plugin 15 minutes at most, and never stops one ([#1113](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1113))
+- update.py: a release is installed only as its owner signed it ([#1115](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1115))
+- release.yml: a release is signed by the owner's private signing repository, started as soon as the release is made ([#1117](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1117))
+- release.yml: a release made a draft, signed and then published by the signing repository; released.yml does what follows it ([#1118](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1118))
+- plugins.py: a plugin that is not here is installed only as signed ([#1121](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1121))
+
+### Documentation
+
+- docs: the measurements of 2026-11-06 - two plugin releases checked, and the userland review's fixes as they were run ([#1101](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1101))
+- docs: the userland review's page with the day's last three pull requests - an update's lock no daemon keeps, no fall-back across a major release, a download tried again ([#1105](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1105))
+- docs: the userland review's page with a connection named by its revision and the management link assigned at boot ([#1107](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1107))
+- docs: the userland review's page with every front port named by its place and a cut that reaches past the flow table's first page ([#1111](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1111))
+- docs: the userland review's page says the update that brings #1102 in still leaves the lock held once ([#1112](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1112))
+- docs: the userland review's page with an update that waits for a plugin 15 minutes, not for ever ([#1114](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1114))
+- docs: signed releases, run on the first XGS 3300 ([#1116](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1116))
+- docs: the plugins' signed releases, run on the first XGS 3300 ([#1119](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1119))
+- docs: opnsense-arabic and opnsense-rtl signed too; how a plugin's release is signed ([#1120](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1120))
+- docs: the userland review's count, 137 of 141 by 2026-11-07 ([#1123](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1123))
+
 ## 0.1.0-alpha.14 - 2026-11-06
 
 ### Fixes
