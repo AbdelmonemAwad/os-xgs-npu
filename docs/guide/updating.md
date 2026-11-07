@@ -172,6 +172,12 @@ release is offered. And **Update** checks again before it downloads anything: on
 it had installed what an earlier check found, after the check made since had failed. Now a check
 that fails stops the update with the check's own reason, and nothing is downloaded.
 
+When what is installed is itself a release, the two release numbers decide, not the dates: 0.1.0-alpha.15
+is before 0.1.0-alpha.15.1, which is before 0.1.0-alpha.16. Until 0.1.0-alpha.15.1 the dates decided
+for releases too. An appliance updated by 0.1.0-alpha.14 records the time a release was published as
+its date, while a signed release carries its commit's, so a release merged in the minutes before the
+one installed was published would have been taken for an older one and never offered.
+
 ## The appliance plugins
 
 The **Plugins** tab updates the appliance plugins - Arabic, right-to-left, fan control, the front panel, link

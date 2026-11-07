@@ -831,6 +831,48 @@ r = checked(manifest(TAG, SIGNED_SHA, SIGNED_DATE), change=lambda d: d + b' ')
 check('... one byte added to it: not offered', (r.get('status'), 'does not verify' in r.get('message', '')),
       ('error', True))
 
+# K9 (the release check's review, 2026-11-07): the newest release's manifest and its signature read through
+# 'latest' twice paired one release's manifest with another's signature when a release was published between
+# the two reads. Its signature is read by the tag the manifest names now: GitHub's 'latest' here gives the
+# newer manifest beside the older signature, and the newer release is taken all the same.
+PUBLISHED.clear()
+NEXT, NEXT_SHA = 'v0.1.0-alpha.201', 'a' * 40
+publish(manifest(TAG, SIGNED_SHA, SIGNED_DATE))
+older = PUBLISHED['']
+publish(manifest(NEXT, NEXT_SHA, '2026-11-07T09:00:00+00:00'))
+PUBLISHED[''] = {up.MANIFEST: PUBLISHED[''][up.MANIFEST], up.MANIFEST + '.sig': older[up.MANIFEST + '.sig']}
+r = up.run_check()
+check('K9: the newest manifest beside the signature of the one before it, through latest: the newest taken',
+      (r.get('status'), r.get('target', {}).get('tag'), r.get('signed_with')), ('ok', NEXT, 'test-release-key.pub'))
+del PUBLISHED[NEXT]
+r = up.run_check()
+check('K9: ... and with no signature published under its own tag: not signed yet, as before',
+      (r.get('status'), r.get('message')), ('error', 'the newest release is not signed yet: it has no release.json'))
+
+# K7 (the release check's review, 2026-11-07): a release installed is compared with the newest by number, not
+# by date. 0.1.0-alpha.14's update.py recorded a release's publication time, after the commit date a manifest
+# carries; a release merged between the installed one's merge and its publication read as older, and was
+# never offered.
+kept_installed = up.installed
+up.installed = lambda: {'commit': 'c' * 40, 'date': '2026-11-07T10:05:00+00:00', 'source': 'update',
+                        'release': 'v0.1.0-alpha.200'}
+r = checked(manifest('v0.1.0-alpha.200.1', SIGNED_SHA, '2026-11-07T10:03:00+00:00'))
+check('K7: the next release merged before the installed one was published: offered all the same',
+      (r.get('update_available'), r.get('newer_than_target')), (True, None))
+r = checked(manifest('v0.1.0-alpha.199', SIGNED_SHA, '2026-11-08T00:00:00+00:00'))
+check('K7: an older release dated after what is installed: not offered, not taken back',
+      (r.get('update_available'), r.get('newer_than_target')), (False, True))
+up.installed = lambda: {'commit': 'c' * 40, 'date': '2026-11-07T10:05:00+00:00', 'source': 'update', 'release': ''}
+r = checked(manifest('v0.1.0-alpha.200.1', SIGNED_SHA, '2026-11-07T10:03:00+00:00'))
+check('K7: a build that is not a release, dated after the newest: by the dates, as before',
+      (r.get('update_available'), r.get('newer_than_target')), (False, True))
+for older, newer in (('v0.1.0-alpha.15', 'v0.1.0-alpha.15.1'), ('v0.1.0-alpha.15.1', 'v0.1.0-alpha.16'),
+                     ('v0.1.0-alpha.9', 'v0.1.0-alpha.10'), ('v0.1.0-alpha.16', 'v0.1.0'), ('v0.1.0', 'v0.2.0-alpha.1'),
+                     ('v0.2.0-alpha.1', 'v1.0.0')):
+    check('K7: %s before %s' % (older, newer), up.release_order(older) < up.release_order(newer), True)
+check('K7: a tag that is not a release number: no order', up.release_order('images-v0.1.0-alpha.15'), None)
+up.installed = kept_installed
+
 up.RELEASE_KEYS = KEYS + '/none'
 r = checked(manifest(TAG, SIGNED_SHA, SIGNED_DATE))
 check('an appliance with no release key: nothing offered, and said why',
@@ -956,6 +998,54 @@ r, record, asked, log = update(GOOD_SIGNED)
 check('GitHub saying the tag is another commit than the one signed: failed, nothing downloaded',
       (record.get('status'), asked), ('failed', []))
 up.time.sleep = real_sleep
+
+# K11 (the release check's review, 2026-11-07): what install.sh records of the tree it installs - read here from
+# its own lines - when the tree is an archive installed by hand: the commit and the date git archive wrote into
+# .archive-commit; a stamp of update.py's or of an image's first, as they name the release too.
+with open(os.path.join(HERE, '..', 'install', 'install.sh'), encoding='utf-8') as handle:
+    INSTALL_SH = handle.read()
+RECORD = INSTALL_SH[INSTALL_SH.index('REV=; RDATE=; RSRC=unknown; REL='):]
+RECORD = RECORD[:RECORD.index('install -d -m 0755 "${PREFIX}/share/os-xgs-npu"')]
+ARCHIVED = 'd' * 40 + ' 2026-11-07T10:50:43+04:00\n'
+
+
+def recorded(**stamps):
+    tree = tempfile.mkdtemp(prefix='test-update-tree-')
+    try:
+        for name, text in stamps.items():
+            with open(os.path.join(tree, '.' + name.replace('_', '-')), 'w', encoding='utf-8') as handle:
+                handle.write(text)
+        said = subprocess.run(['sh', '-c', RECORD + 'echo "${REV}|${RDATE}|${RSRC}|${REL}"'],
+                              env=dict(os.environ, SRC=tree), capture_output=True, text=True).stdout.strip()
+    finally:
+        shutil.rmtree(tree, ignore_errors=True)
+    return said.split('|')
+
+
+check('K11: a release archive installed by hand: its commit and date, from the archive',
+      recorded(archive_commit=ARCHIVED), ['d' * 40, '2026-11-07T10:50:43+04:00', 'archive', ''])
+check('K11: ... a checkout\'s copy, not written by git archive: nothing taken from it',
+      recorded(archive_commit='$Format:%H %cI$\n'), ['', '', 'unknown', ''])
+check('K11: ... update.py\'s stamp beside it: the stamp, with the release',
+      recorded(archive_commit=ARCHIVED, update_commit='e' * 40 + ' 2026-11-07T09:18:49+04:00 v0.1.0-alpha.15\n'),
+      ['e' * 40, '2026-11-07T09:18:49+04:00', 'update', 'v0.1.0-alpha.15'])
+check('K11: ... an image\'s stamp beside it: the image\'s',
+      recorded(archive_commit=ARCHIVED, image_build='f' * 40 + ' 2026-11-07T09:18:49+04:00 v0.1.0-alpha.15\n'),
+      ['f' * 40, '2026-11-07T09:18:49+04:00', 'image', 'v0.1.0-alpha.15'])
+check('K11: the stamp in the tree is the one git archive fills in',
+      open(os.path.join(HERE, '..', '.archive-commit'), encoding='utf-8').read(), '$Format:%H %cI$\n')
+with open(os.path.join(HERE, '..', '.gitattributes'), encoding='utf-8') as handle:
+    check('K11: ... and .gitattributes has it filled in', '/.archive-commit export-subst' in handle.read().splitlines(),
+          True)
+
+# K10 (the release check's review, 2026-11-07): install.sh puts the release keys in place - made beside the set
+# they replace and renamed over it - before update.py, so an install that stops between the two never leaves an
+# update.py with no key.
+KEYS_IN = INSTALL_SH.index('mv "${KEYS}.new" "${KEYS}"')
+UPDATE_IN = INSTALL_SH.index('install -m 0755 "${SRC}/src/opnsense/scripts/xgs/update.py"')
+check('K10: the release keys renamed into place before update.py is installed', KEYS_IN < UPDATE_IN, True)
+check('K10: ... made whole beside the set they replace',
+      INSTALL_SH.index('install -d -m 0755 "${KEYS}.new"') < KEYS_IN, True)
 
 for path in (STATE, WORK, KEYS):
     shutil.rmtree(path, ignore_errors=True)
