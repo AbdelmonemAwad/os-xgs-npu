@@ -132,7 +132,10 @@ and the chipset's record are of the later reset. At most the last twenty such bo
 hook, `shutdown(8)` and the kernel's own part - the disks' sync, every driver's shutdown method - come
 after both, and nothing of the system's own runs late enough to write a later line. A panic there is in
 the message buffer the restart kept, and is a report of its own: the appliance panicked while it shut
-down. A hang there that only the power ended leaves nothing a boot can read - the disks were synced
+down. Whether it panicked is read from the kernel's own records in that buffer (`dmesg`), since
+0.1.0-alpha.15.1: `dmesg -a` holds what was written to the console and the syslog records too, and a
+program's own "panic: " line there was taken for the kernel's. The report's evidence still quotes
+`dmesg -a`, which says more of what led to it. A hang there that only the power ended leaves nothing a boot can read - the disks were synced
 with the line on them, and the buffer went with the memory - and still reads as an orderly shutdown.
 Both were found in a review of the code and are tested with stand-ins (`tools/test-reporter.py`, and
 the early hook in `tools/test-hooks.py`), not yet on an appliance.
