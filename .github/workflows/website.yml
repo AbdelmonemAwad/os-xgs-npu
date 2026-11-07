@@ -54,6 +54,7 @@ jobs:
         with:
           repository: AbdelmonemAwad/os-xgs-npu.wiki
           path: wiki
+          fetch-depth: 0          # each story page's own last change, for its date in the sitemap
 
       - name: MkDocs Material
         run: |

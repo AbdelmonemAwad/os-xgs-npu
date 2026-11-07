@@ -11,6 +11,7 @@ what they need: the home page's words from website/i18n/, the language switch, t
 the edit link of a page gathered from somewhere other than website/pages/. A link to the page of a
 plugin that has none yet goes to its repository (plugins.fallback).
 """
+import datetime
 import json
 import os
 import pathlib
@@ -256,6 +257,44 @@ def source_of(page):
     return 'website/pages/' + page.file.src_uri
 
 
+def later(a, b):
+    """The later of two times as search engines take them - ISO 8601 with a zone - either of which may
+    be None. Compared as times: '2026-11-07T00:00:00+00:00' and '2026-11-07T15:24:17+04:00' do not
+    sort as text the way they fall in time."""
+    if not a or not b:
+        return a or b
+    try:
+        return a if datetime.datetime.fromisoformat(a) >= datetime.datetime.fromisoformat(b) else b
+    except (TypeError, ValueError):
+        return max(a, b)
+
+
+def post_modified(post):
+    """A news post's last change as seo() takes it for the post's own page: its date - updated, else
+    created - at the start of its day in UTC, or the last commit of the file it is made from
+    (dated_by, build.py) when that is later."""
+    date = getattr(getattr(post, 'config', None), 'date', None) or {}
+    d = date.get('updated') or date.get('created') if hasattr(date, 'get') else None
+    day = str(d)[:10] + 'T00:00:00+00:00' if d else None
+    return later(day, dates.get((getattr(post, 'meta', None) or {}).get('dated_by')))
+
+
+release_dates = {}
+
+
+def release_date(tag):
+    """The day the release the home page shows was made: its tag's commit time, as git has it."""
+    if not tag:
+        return None
+    if tag not in release_dates:
+        try:
+            release_dates[tag] = subprocess.run(['git', 'log', '-1', '--format=%cI', tag], cwd=ROOT, capture_output=True,
+                                                text=True, check=True).stdout.strip() or None
+        except (OSError, subprocess.CalledProcessError):
+            release_dates[tag] = None
+    return release_dates[tag]
+
+
 # Paragraphs that say what a page is rather than what is in it: a move, a review, a translation.
 NOT_A_SUMMARY = ('Moved here', 'Last changed', '\u062a\u0631\u062c\u0645\u0629\u0020\u0635\u0641\u062d\u0629')
 
@@ -347,6 +386,16 @@ def on_page_content(html, page, config, files):
             src = urljoin(base, src)
         if src.startswith(SITE) and re.search(r'\.(png|jpe?g|webp)$', src, re.I):
             page.meta['image'] = src
+    # Every picture the page shows, the site's own, for its entry in the sitemap (build.py): the
+    # measurements' photographs and the appliances' are found by image search through it. A badge or a
+    # picture from elsewhere is not the site's to list; at most a thousand a page, as the sitemap allows.
+    shown = []
+    for src in FIRST_IMG.findall(html):
+        if not re.match(r'^[a-z]+:', src):
+            src = urljoin(config['site_url'] + page.url, src)
+        if src.startswith(SITE) and re.search(r'\.(png|jpe?g|webp|gif|svg)$', src, re.I) and src not in shown:
+            shown.append(src)
+    page.meta['images_shown'] = shown[:1000]
     return html
 
 
@@ -356,6 +405,11 @@ def seo(page, config, lang):
     url = page.canonical_url or (config['site_url'] + page.url)
     path = url[len(SITE):] if url.startswith(SITE) else '/' + page.url
     src = source_of(page)
+    # A news post names build.py, which makes it, as its edit link; it is dated by the file it is made
+    # from (dated_by), and a release's post by its own day alone. Until 2026-11-07 every post took
+    # build.py's last commit: 47 of them said 2026-11-05, the day build.py had last changed.
+    if type(page).__name__ == 'Post':
+        src = page.meta.get('dated_by')
     # A news post's own date (Material gives it as a date, or as {created: ...}), else the source's.
     d = page.meta.get('date')
     if isinstance(d, dict):
@@ -363,9 +417,16 @@ def seo(page, config, lang):
     # as search engines take a date: with its time and zone - a post's day at its start, in UTC; a
     # file's last commit as git has it
     published = str(d)[:10] + 'T00:00:00+00:00' if d else None
-    modified = published
-    if src and src in dates and (not modified or dates[src] > modified):
-        modified = dates[src]
+    modified = later(published, dates.get(src)) if src else published
+    # A list of the news is as new as the newest post it lists - no file of its own changes when a post
+    # is added, and every page of a list moves by one - and the home page as new as the release it
+    # shows (overrides/home.html). Until 2026-11-07 both kept the day their own file last changed,
+    # 2026-10-20, in the sitemap - and the news' list in its structured data too - while the news and
+    # the releases went on; a list's further pages, with no file of their own, had no date at all.
+    for post in getattr(page, 'posts', None) or []:
+        modified = later(modified, post_modified(post))
+    if page.is_homepage:
+        modified = later(modified, release_date(config.extra.get('release')))
     english = path if lang == 'en' else english_of.get(path)
     others = versions.get(english, {})
     alternates = [(lang, SITE + path)] + [(other, SITE + others[other]) for other in LANGS if other != lang and other in others]
@@ -373,7 +434,8 @@ def seo(page, config, lang):
         alternates.append(('x-default', SITE + english))
     # a hidden page stays out of the sitemap too, and so does one that names another as the one to index
     if not page.meta.get('hidden') and not page.meta.get('canonical'):
-        recorded[url] = {'lastmod': modified, 'lang': lang, 'alternates': alternates}
+        recorded[url] = {'lastmod': modified, 'lang': lang, 'alternates': alternates,
+                         'images': page.meta.get('images_shown') or []}
     # The page's own description, the home page's from the catalogue, else the language's own; as long
     # as a result shows - Japanese, a character twice as wide, about half as many.
     words = catalogues.get(lang, {}).get('meta', {})
