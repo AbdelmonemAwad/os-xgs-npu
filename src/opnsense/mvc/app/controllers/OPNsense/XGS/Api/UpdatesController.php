@@ -164,11 +164,20 @@ class UpdatesController extends ApiControllerBase
     /**
      * The firewall's own reboot, as System: Power runs it - offered once an update is installed,
      * because the new driver is loaded only at the next boot. Never called on its own.
+     *
+     * Not while the plugins' runner installs one: the reboot would cut its installer, and pkg with
+     * it, in the middle (update.py, plugins_runner; the review's U18). The page hides Reboot now
+     * meanwhile and reads the status again on busy; this is for a page shown before the runner
+     * started. A status that cannot be read holds nothing back.
      */
     public function rebootAction()
     {
         if (!$this->request->isPost()) {
             return ['status' => 'error', 'message' => gettext('this endpoint is POST only')];
+        }
+        $state = $this->run('update status');
+        if (!empty($state['plugins_running'])) {
+            return ['status' => 'busy'];
         }
         (new Backend())->configdRun('system reboot', true);
         return ['status' => 'ok'];

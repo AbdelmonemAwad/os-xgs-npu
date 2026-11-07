@@ -281,6 +281,12 @@
                 const n = String(p.detail).split('/');
                 text += ' - ' + "{{ lang._('%1 of %2 source files compiled') }}".replace('%1', n[0]).replace('%2', n[1]);
             }
+            /* The plugins taken along, the update's last section: the one it is on, as the Plugins tab
+               names it (the review's U19 - the bar stood at "Finishing" and said nothing of them). */
+            if (p.plugin && p.plugin.name) {
+                text += ' - ' + "{{ lang._('Updating %1 of %2: %3') }}".replace('%1', p.plugin.at)
+                    .replace('%2', p.plugin.of).replace('%3', p.plugin.name);
+            }
             $now.attr('class', 'xgs-now text-info').text(text);
             const $clock = $('<span class="xgs-clock"/>').appendTo($now);
             function tick() {
@@ -296,6 +302,14 @@
             // what the reboot is for: the new driver, or the boot steps alone when the driver is the one running
             $('#reboot-driver').toggle(!st.driver_unchanged);
             $('#reboot-steps').toggle(!!st.driver_unchanged);
+            /* Not while the plugins' runner installs one (the review's U18): the reboot would cut its
+               installer, and pkg with it, in the middle. Reboot now is back once the runner has ended;
+               refresh reads the status until then. */
+            const busy = st.plugins_running;
+            $('#rebootAct').toggle(!busy);
+            $('#reboot-wait').toggle(!!busy).text(!busy ? '' : (busy.name ?
+                "{{ lang._('Updating %1 of %2: %3') }}".replace('%1', busy.at).replace('%2', busy.of)
+                    .replace('%3', busy.name) : "{{ lang._('Updating...') }}"));
             show_progress(st);
             /* The installer's log is on its own tab, as the firmware's update log is; a running
                or failed update says so here and the log is one click away. */
@@ -417,9 +431,11 @@
                     $('#apply-log').text(plain((lg && lg.log) ||
                         "{{ lang._('No update has run on this firewall from this page.') }}"));
                 });
-                if (running && polling === null) {
+                /* read again while the reboot waits for the plugins' runner, too (show_apply) */
+                const watching = running || !!(st.pending_reboot && st.plugins_running);
+                if (watching && polling === null) {
                     polling = setInterval(refresh, 2000);
-                } else if (!running && polling !== null) {
+                } else if (!watching && polling !== null) {
                     clearInterval(polling);
                     polling = null;
                 }
@@ -467,7 +483,12 @@
                 btnOKLabel: "{{ lang._('Reboot now') }}",
                 callback: function (ok) {
                     if (ok) {
-                        ajaxCall('/api/xgs/updates/reboot', {}, function () {
+                        ajaxCall('/api/xgs/updates/reboot', {}, function (r) {
+                            /* refused: the plugins' runner started since this page read the status */
+                            if (r && r.status === 'busy') {
+                                refresh();
+                                return;
+                            }
                             $('#reboot-cell').empty().append($('<span class="text-info"/>').text(
                                 "{{ lang._('Rebooting. Reload this page once the firewall is back.') }}"));
                         });
@@ -483,7 +504,7 @@
          * as the last check found it, and its last update. Update starts the plugin's own
          * self-update; the list is read again every few seconds while one runs.
          */
-        let pluginPoll = null, pluginMisses = 0, pluginSkew = 0;
+        let pluginPoll = null, pluginMisses = 0, pluginSkew = 0, pluginsWereBusy = false;
         /*
          * Seconds since the epoch, as plugins.py keeps them. Not when(): a second function of that
          * name took the place of the first, which formats GitHub's dates, and every date at the top
@@ -699,7 +720,13 @@
                 pluginMisses = 0;
                 pluginSkew = d.now - Date.now() / 1000;
                 $('#plugins-away').hide();
-                const busy = pluginsShow(d);
+                const busy = !!pluginsShow(d);
+                /* the reboot waits while plugins are being installed (show_apply): the status read
+                   again when they start and when they end */
+                if (busy !== pluginsWereBusy) {
+                    pluginsWereBusy = busy;
+                    refresh();
+                }
                 if (busy && pluginPoll === null) {
                     pluginPoll = setInterval(pluginsLoad, 1000);
                 } else if (!busy && pluginPoll !== null) {
@@ -845,6 +872,7 @@
                         <span class="text-warning" id="reboot-driver">{{ lang._('An update is installed and waits for a reboot to load the new driver.') }}</span>
                         <span class="text-warning" id="reboot-steps" style="display: none;">{{ lang._('An update is installed and waits for a reboot to run its new boot steps.') }}</span>
                         <button class="btn btn-warning btn-xs" id="rebootAct" type="button">{{ lang._('Reboot now') }}</button>
+                        <span class="text-info" id="reboot-wait" style="display: none;"></span>
                     </td>
                 </tr>
                 <tr>
