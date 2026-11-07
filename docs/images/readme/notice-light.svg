@@ -1,4 +1,4 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 300" width="1200" height="300" role="img" aria-label="Update OPNsense now - PHP2Shell: update OPNsense to PHP 8.5.12 or later, test appliances included">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 300" width="1200" height="300" role="img" aria-label="Update once - the releases are signed now: update os-xgs-npu once to 0.1.0-alpha.15 or later, whose releases are signed, and OPNsense to 26.7.8 or later">
   <rect x="1" y="1" width="1198" height="298" rx="14" fill="#FFEBE9" stroke="#CF222E" stroke-width="2"/>
   <rect x="1" y="1" width="10" height="298" rx="5" fill="#CF222E"/>
   <g transform="translate(52 44)">
@@ -6,12 +6,12 @@
     <rect x="33" y="24" width="6" height="22" rx="3" fill="#CF222E"/>
     <circle cx="36" cy="54" r="3.6" fill="#CF222E"/>
   </g>
-  <text x="150" y="74" font-family="ui-sans-serif,-apple-system,Segoe UI,Inter,Helvetica,Arial,sans-serif" font-size="32" font-weight="700" fill="#1F2328" text-anchor="start" letter-spacing="-0.5">Update OPNsense now - PHP2Shell</text>
-  <text x="152" y="102" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-size="14" font-weight="600" fill="#CF222E" text-anchor="start">CRITICAL &#183; CVE-2026-109618 &#183; CVE-2026-109619</text>
-  <text x="150" y="136" font-family="ui-sans-serif,-apple-system,Segoe UI,Inter,Helvetica,Arial,sans-serif" font-size="17" font-weight="400" fill="#1F2328" text-anchor="start">Two PHP flaws can let code run on the firewall without a login - and its web interface runs on PHP.</text>
-  <text x="150" y="166" font-family="ui-sans-serif,-apple-system,Segoe UI,Inter,Helvetica,Arial,sans-serif" font-size="17" font-weight="400" fill="#59636E" text-anchor="start">Since 26.7.8 the update carries the fix, PHP 8.5.12: the version reads 26.7.8 after it.</text>
-  <text x="150" y="196" font-family="ui-sans-serif,-apple-system,Segoe UI,Inter,Helvetica,Arial,sans-serif" font-size="17" font-weight="400" fill="#1F2328" text-anchor="start">System &#8250; Firmware &#8250; Status &#8250; Check for updates &#8250; Update - every appliance, a test one too.</text>
-  <text x="150" y="226" font-family="ui-sans-serif,-apple-system,Segoe UI,Inter,Helvetica,Arial,sans-serif" font-size="17" font-weight="400" fill="#59636E" text-anchor="start">The ready-made images carry OPNsense 26.7&#8217;s own PHP: update right after installing.</text>
+  <text x="150" y="74" font-family="ui-sans-serif,-apple-system,Segoe UI,Inter,Helvetica,Arial,sans-serif" font-size="32" font-weight="700" fill="#1F2328" text-anchor="start" letter-spacing="-0.5">Update once - the releases are signed now</text>
+  <text x="152" y="102" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-size="14" font-weight="600" fill="#CF222E" text-anchor="start">SECURITY &#183; SIGNED RELEASES SINCE 0.1.0-alpha.15 &#183; KEY 13ed7f86</text>
+  <text x="150" y="136" font-family="ui-sans-serif,-apple-system,Segoe UI,Inter,Helvetica,Arial,sans-serif" font-size="17" font-weight="400" fill="#1F2328" text-anchor="start">Since 0.1.0-alpha.15 a release is installed only when its signature verifies with the project&#8217;s key.</text>
+  <text x="150" y="166" font-family="ui-sans-serif,-apple-system,Segoe UI,Inter,Helvetica,Arial,sans-serif" font-size="17" font-weight="400" fill="#59636E" text-anchor="start">On 0.1.0-alpha.14 or earlier nothing checks a signature: update once, and every update after it is checked.</text>
+  <text x="150" y="196" font-family="ui-sans-serif,-apple-system,Segoe UI,Inter,Helvetica,Arial,sans-serif" font-size="17" font-weight="400" fill="#1F2328" text-anchor="start">XGS &#8250; Updates &#8250; Check for updates &#8250; Update - every appliance, a test one too.</text>
+  <text x="150" y="226" font-family="ui-sans-serif,-apple-system,Segoe UI,Inter,Helvetica,Arial,sans-serif" font-size="17" font-weight="400" fill="#59636E" text-anchor="start">And OPNsense 26.7.8 or later for PHP2Shell - right after installing a ready-made image too.</text>
   <rect x="150" y="248" width="380" height="34" rx="8" fill="#F6F8FA" stroke="#D0D7DE"/>
-  <text x="166" y="271" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-size="15" font-weight="400" fill="#1F2328" text-anchor="start">php -v  &#8594;  8.5.12 or later</text>
+  <text x="166" y="271" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-size="15" font-weight="400" fill="#1F2328" text-anchor="start">installed  &#8594;  0.1.0-alpha.15 or later</text>
 </svg>

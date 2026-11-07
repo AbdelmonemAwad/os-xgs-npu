@@ -24,11 +24,11 @@
     "drawing_caption": "The two appliances run here, drawn as they stand on the bench: an XGS 136 on an XGS 3300. Point at a port for its interface; a click opens it on its model's page."
   },
   "alert": {
-    "bar": "Update OPNsense now - PHP2Shell: every appliance, a test one too, to PHP 8.5.12 or later.",
-    "title": "Update OPNsense now - PHP2Shell.",
-    "text": "Two critical PHP flaws (CVE-2026-109618, CVE-2026-109619) can let code run on a firewall without a login, and OPNsense's web interface runs on PHP. Update every appliance - a test one too - in System: Firmware: Status, then check that php -v reads 8.5.12 or later: after the first fix, a package update, the version still read 26.7.7; since 26.7.8 the fix comes with the update itself, and the version reads 26.7.8. The ready-made images carry an older PHP: update right after installing.",
-    "link_text": "What to do, step by step",
-    "link": "/news/update-opnsense-php2shell/"
+    "bar": "Two security updates for every appliance: os-xgs-npu 0.1.0-alpha.15 or later, whose releases are signed, and OPNsense 26.7.8 or later (PHP2Shell).",
+    "title": "Update once - the project's releases are signed now.",
+    "text": "Since 0.1.0-alpha.15 (2026-11-07) every release of os-xgs-npu is signed, and XGS: Updates installs a release only when its signature verifies with the project's release key. An appliance on 0.1.0-alpha.14 or earlier still has the updater from before, which checks no signature: update it once - XGS: Updates, Check for updates, then Update - and every update after that is checked. The appliance plugins follow with their next releases. And OPNsense itself to 26.7.8 or later, for PHP2Shell: the ready-made images start from an older OPNsense, so update it right after installing one.",
+    "link_text": "What changed, and what to do",
+    "link": "/news/update-once-signed-releases/"
   },
   "notice": {
     "title": "New discoveries, 2026-10-22.",

@@ -498,16 +498,19 @@ def banner(theme):
 # The security notice above the banner, while there is one. Its words are the README's caution
 # block's, shortened; the block carries the links and the detail.
 NOTICE = {
-    'title': 'Update OPNsense now - PHP2Shell',
-    'chip': 'CRITICAL &#183; CVE-2026-109618 &#183; CVE-2026-109619',
+    'title': 'Update once - the releases are signed now',
+    'chip': 'SECURITY &#183; SIGNED RELEASES SINCE 0.1.0-alpha.15 &#183; KEY 13ed7f86',
     'lines': [
-        ('Two PHP flaws can let code run on the firewall without a login - and its web interface runs on PHP.', 'fg'),
-        ('The fix, PHP 8.5.12, comes to OPNsense 26.7.7 as a package update: the version still reads 26.7.7.', 'sub'),
-        ('System &#8250; Firmware &#8250; Status &#8250; Check for updates &#8250; Update - every appliance, a test one too.', 'fg'),
-        ('The ready-made images carry OPNsense 26.7&#8217;s own PHP: update right after installing.', 'sub'),
+        ('Since 0.1.0-alpha.15 a release is installed only when its signature verifies with the project&#8217;s key.', 'fg'),
+        ('On 0.1.0-alpha.14 or earlier nothing checks a signature: update once, and every update after it is checked.', 'sub'),
+        ('XGS &#8250; Updates &#8250; Check for updates &#8250; Update - every appliance, a test one too.', 'fg'),
+        ('And OPNsense 26.7.8 or later for PHP2Shell - right after installing a ready-made image too.', 'sub'),
     ],
-    'check': 'php -v  &#8594;  8.5.12 or later',
+    'check': 'installed  &#8594;  0.1.0-alpha.15 or later',
+    'label': 'update os-xgs-npu once to 0.1.0-alpha.15 or later, whose releases are signed, and OPNsense to 26.7.8 or later',
 }
+# Until 2026-11-07 the notice was PHP2Shell's alone (2026-10-25): its words are in the README's caution block
+# below the new one, and in the site's news post.
 
 
 def notice(theme):
@@ -515,7 +518,7 @@ def notice(theme):
     n = NOTICE
     h = 300
     lines = ''.join(text(150, 136 + 30 * i, s, 17, t[c]) + '\n  ' for i, (s, c) in enumerate(n['lines']))
-    return f'''<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 {h}" width="1200" height="{h}" role="img" aria-label="{n['title']}: update OPNsense to PHP 8.5.12 or later, test appliances included">
+    return f'''<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 {h}" width="1200" height="{h}" role="img" aria-label="{n['title']}: {n['label']}">
   <rect x="1" y="1" width="1198" height="{h - 2}" rx="14" fill="{t['warnbg']}" stroke="{t['warn']}" stroke-width="2"/>
   <rect x="1" y="1" width="10" height="{h - 2}" rx="5" fill="{t['warn']}"/>
   <g transform="translate(52 44)">

@@ -1627,8 +1627,8 @@ The page: [xgs3300-many-2026-10-19.md](../measurements/xgs3300-many-2026-10-19.m
 |---|---|
 | [banner-dark.svg](readme/banner-dark.svg) | [README.md](../../README.md) |
 | [banner-light.svg](readme/banner-light.svg) | [README.md](../../README.md) |
-| [notice-dark.svg](readme/notice-dark.svg) | [README.md](../../README.md), [2026-10-25-update-opnsense-php2shell.md](../../website/news/2026-10-25-update-opnsense-php2shell.md) |
-| [notice-light.svg](readme/notice-light.svg) | [README.md](../../README.md), [2026-10-25-update-opnsense-php2shell.md](../../website/news/2026-10-25-update-opnsense-php2shell.md) |
+| [notice-dark.svg](readme/notice-dark.svg) | [README.md](../../README.md), [2026-10-25-update-opnsense-php2shell.md](../../website/news/2026-10-25-update-opnsense-php2shell.md), [2026-11-07-update-once-signed-releases.md](../../website/news/2026-11-07-update-once-signed-releases.md) |
+| [notice-light.svg](readme/notice-light.svg) | [README.md](../../README.md), [2026-10-25-update-opnsense-php2shell.md](../../website/news/2026-10-25-update-opnsense-php2shell.md), [2026-11-07-update-once-signed-releases.md](../../website/news/2026-11-07-update-once-signed-releases.md) |
 | [status-dark.svg](readme/status-dark.svg) | *no page yet* |
 | [status-light.svg](readme/status-light.svg) | *no page yet* |
 

@@ -24,11 +24,11 @@
     "drawing_caption": "Les deux boîtiers utilisés ici, dessinés tels qu'ils sont posés sur le banc : un XGS 136 sur un XGS 3300. Pointez un port pour voir son interface ; un clic l'ouvre sur la page de son modèle."
   },
   "alert": {
-    "bar": "Mettez OPNsense à jour maintenant - PHP2Shell : chaque appareil, y compris de test, vers PHP 8.5.12 ou plus récent.",
-    "title": "Mettez OPNsense à jour maintenant - PHP2Shell.",
-    "text": "Deux failles critiques de PHP (CVE-2026-109618, CVE-2026-109619) peuvent permettre d'exécuter du code sur un pare-feu sans authentification, et l'interface web d'OPNsense tourne sous PHP. Mettez à jour chaque appareil - y compris un appareil de test - dans System : Firmware : Status, puis vérifiez que php -v affiche 8.5.12 ou plus récent : après le premier correctif, une mise à jour de paquets, la version restait 26.7.7, mais depuis 26.7.8 le correctif arrive avec la mise à jour elle-même, et la version indique 26.7.8. Les images prêtes à l'emploi contiennent un PHP plus ancien : mettez à jour juste après l'installation.",
-    "link_text": "Que faire, étape par étape",
-    "link": "/news/update-opnsense-php2shell/"
+    "bar": "Deux mises à jour de sécurité pour chaque appareil : os-xgs-npu 0.1.0-alpha.15 ou plus récent, dont les versions sont signées, et OPNsense 26.7.8 ou plus récent (PHP2Shell).",
+    "title": "Mettez à jour une fois : les versions du projet sont désormais signées.",
+    "text": "Depuis 0.1.0-alpha.15 (2026-11-07), chaque version d'os-xgs-npu est signée, et XGS: Updates n'installe une version que si sa signature est vérifiée avec la clé de publication du projet. Un appareil en 0.1.0-alpha.14 ou antérieur a encore l'ancien programme de mise à jour, qui ne vérifie aucune signature : mettez-le à jour une fois - XGS: Updates, Check for updates, puis Update - et chaque mise à jour suivante sera vérifiée. Les plugins des appareils suivront avec leurs prochaines versions. Et OPNsense lui-même en 26.7.8 ou plus récent, à cause de PHP2Shell : les images prêtes à l'emploi partent d'un OPNsense plus ancien, donc mettez-le à jour juste après l'installation.",
+    "link_text": "Ce qui a changé, et ce qu'il faut faire",
+    "link": "/news/update-once-signed-releases/"
   },
   "notice": {
     "title": "Nouvelles découvertes, 2026-10-22.",
