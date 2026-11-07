@@ -159,6 +159,112 @@ await test('sightings from before an issue was closed leave it closed', async ()
     assert.equal(github.comments.length, comments + 1);
 });
 
+// A port check's report as the reporter builds it: its verdict, its evidence, and the line it ends with.
+const portCheck = (appliance, verdict, {bound = 'oxp1', link = 'active', extra = '', seen = '2026-11-07 09:00:00'} = {}) => report({
+    fingerprint: verdict === 'they agree' ? '0000000000000812' : '0000000000000657', kind: 'untested-model',
+    appliance, model: 'Sophos XGS 126r1',
+    title: '[untested-model] XGS 126 (AMDA0201-0001): added untested - its ports as its coprocessor reports them',
+    body: '### What happened\n\nThis model was added from the vendor\'s board files without being tested: '
+        + 'there is no such appliance here. This holds its driver\'s port table against what its '
+        + `coprocessor reports, port by port: ${verdict}.\n\n`
+        + '### Evidence\n\n```text\nXGS 126 (AMDA0201-0001), ARMADA\n'
+        + `coprocessor port 1 (eth1, mac = 00:00:00:00:00:01): the board says Port1; the driver bound ${bound} (Port1) there - agrees; ${link}\n`
+        + extra
+        + '1 of 1 of the coprocessor\'s own front ports as the board says\n```\n\n'
+        + '### The appliance\n\n| Model | XGS 126 |\n\n'
+        + `Seen 1 time(s) between ${seen} UTC and ${seen} UTC. Sent automatically by the problem reporter of os-xgs-npu.`,
+});
+const nextDay = env => {	// the once-a-day keys gone, as the next day finds them
+    for (const key of [...env.REPORTS.map.keys()]) {
+        if (key.startsWith('seen:') || key.startsWith('reopened:') || key.startsWith('rate:')) env.REPORTS.map.delete(key);
+    }
+};
+const confirmedKeys = env => [...env.REPORTS.map.keys()].filter(k => k.startsWith('confirmed:'));
+
+await test('a port check that agrees is noted once for each appliance and binding, and never reopens (#812)', async () => {
+    const env = environment();
+    const {data} = await post(env, portCheck('f9de0af37e10', 'they agree'));
+    const issue = github.issues.get(data.issue);
+    const notes = () => github.comments.filter(c => c.issue === data.issue).length;
+    Object.assign(issue, {state: 'closed', state_reason: 'completed'});
+
+    // another owner's appliance agrees: noted, and the issue stays closed
+    const other = await post(env, portCheck('2d1696cff16e', 'they agree'));
+    assert.equal(other.data.noted, true);
+    assert.equal(issue.state, 'closed');
+    assert.equal(notes(), 1);
+
+    // both again, the next day and the one after, a cable taken out on one: nothing more, still closed
+    for (let i = 0; i < 2; i++) {
+        nextDay(env);
+        assert.equal((await post(env, portCheck('f9de0af37e10', 'they agree', {link: 'no carrier'}))).data.noted, false);
+        assert.equal((await post(env, portCheck('2d1696cff16e', 'they agree'))).data.noted, false);
+    }
+    assert.equal(issue.state, 'closed');
+    assert.equal(notes(), 1);
+
+    // a third appliance's agreement is news once
+    assert.equal((await post(env, portCheck('333333333333', 'they agree'))).data.noted, true);
+    assert.equal(issue.state, 'closed');
+    assert.equal(notes(), 2);
+
+    // a port check that could not read the coprocessor is a problem: noted, and it reopens, as before
+    const unread = await post(env, portCheck('f9de0af37e10', 'the coprocessor did not answer.'));
+    const problem = github.issues.get(unread.data.issue);
+    Object.assign(problem, {state: 'closed', state_reason: 'completed'});
+    nextDay(env);
+    const again = await post(env, portCheck('2d1696cff16e', 'the coprocessor did not answer.'));
+    assert.equal(again.data.noted, true);
+    assert.equal(problem.state, 'open');
+});
+
+await test('an appliance confirming another binding is noted again, and the issue stays closed', async () => {
+    const env = environment();
+    const {data} = await post(env, portCheck('f9de0af37e10', 'they agree'));
+    const issue = github.issues.get(data.issue);
+    Object.assign(issue, {state: 'closed', state_reason: 'completed'});
+    const notes = () => github.comments.filter(c => c.issue === data.issue).length;
+    nextDay(env);
+    // an update bound the port elsewhere: another table confirmed, from the same appliance
+    assert.equal((await post(env, portCheck('f9de0af37e10', 'they agree', {bound: 'oxp2'}))).data.noted, true);
+    assert.equal(notes(), 1);
+    // the same day, the agent's front tags beyond the table: news too, the day's note notwithstanding
+    const extra = 'front tags the agent has and the table does not (an expansion module\'s, or the table is short): 0x0105\n';
+    assert.equal((await post(env, portCheck('f9de0af37e10', 'they agree', {bound: 'oxp2', extra}))).data.noted, true);
+    // and the binding seen before, its link changed: not
+    assert.equal((await post(env, portCheck('f9de0af37e10', 'they agree', {bound: 'oxp2', link: 'no carrier'}))).data.noted, false);
+    assert.equal(notes(), 2);
+    assert.equal(issue.state, 'closed');
+    assert.equal(confirmedKeys(env).length, 3);
+});
+
+await test('a confirmation the issue\'s daily notes leave out is refused for today and noted later', async () => {
+    const env = environment();
+    const {data} = await post(env, portCheck('f9de0af37e10', 'they agree'));
+    const notes = () => github.comments.filter(c => c.issue === data.issue).length;
+    const keys = confirmedKeys(env).length;
+    await env.REPORTS.put(`rate:issue:os-xgs-npu:${data.issue}:${new Date().toISOString().slice(0, 10)}`, '10');
+    const late = await post(env, portCheck('2d1696cff16e', 'they agree'));
+    assert.equal(late.status, 429);
+    assert.equal(late.data.status, 'failed');
+    assert.equal(confirmedKeys(env).length, keys, 'no key kept for a confirmation not noted');
+    assert.equal(notes(), 0);
+    nextDay(env);
+    assert.equal((await post(env, portCheck('2d1696cff16e', 'they agree'))).data.noted, true);
+    assert.equal(notes(), 1);
+});
+
+await test('a confirmation seen before the issue was closed is noted from a new appliance, and reopens nothing', async () => {
+    const env = environment();
+    const {data} = await post(env, portCheck('f9de0af37e10', 'they agree'));
+    const issue = github.issues.get(data.issue);
+    Object.assign(issue, {state: 'closed', state_reason: 'completed', closed_at: '2026-11-07T12:00:00Z'});
+    const early = await post(env, portCheck('2d1696cff16e', 'they agree', {seen: '2026-11-07 08:00:00'}));
+    assert.equal(early.data.noted, true);
+    assert.equal(issue.state, 'closed');
+    assert.equal(github.comments.filter(c => c.issue === data.issue).length, 1);
+});
+
 await test('the last sighting is read from the line every report ends with', async () => {
     const {lastSeen} = await import('./worker.js');
     assert.equal(lastSeen('Seen 1 time(s) between 2026-10-27 08:30:02 UTC and 2026-10-27 08:30:02 UTC. Sent'),

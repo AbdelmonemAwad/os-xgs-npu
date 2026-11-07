@@ -15,7 +15,9 @@
  *     spends none of them on a report one of the others refuses;
  *   - opens an issue for a fingerprint it has not seen, and comments on the issue it opened before
  *     for one it has - at most once a day per appliance, and ten times a day on one issue in all -
- *     reopening it, at most once a day, if it had been closed as done;
+ *     reopening it, at most once a day, if it had been closed as done; a port check that agrees is
+ *     noted once for each appliance and binding it confirms - the report's evidence without its
+ *     link states - and never reopens its issue (confirms());
  *   - keeps a contact address, when one is given, in its own store and never in the issue.
  * It changes nothing in the report: the appliance built the text and cleaned it, and the page there
  * shows the owner exactly what was sent.
@@ -78,6 +80,36 @@ export function lastSeen(body) {
     const m = /Seen \d+ time\(s\) between \d{4}-\d\d-\d\d \d\d:\d\d:\d\d UTC and (\d{4}-\d\d-\d\d) (\d\d:\d\d:\d\d) UTC\./
         .exec(body || '');
     return m ? Date.parse(`${m[1]}T${m[2]}Z`) : null;
+}
+
+// A port check that agrees - the reporter's "untested-model" whose verdict is "they agree" - confirms a
+// model's table, and is never a reason to reopen its issue, which was closed as confirmed and not as a
+// fix that may not hold. It is noted once for each appliance and what it confirmed (confirmedKey()):
+// the same appliance confirming the same binding again is not noted, and one confirming another - a
+// table changed by an update, a real count after "0 of 0", the agent's front tags beyond the table - is,
+// whenever its sightings were (the rule for sightings from before a close is for a problem that may
+// come back). One the issue's daily notes leave out is answered 429 and its key not kept, so the
+// appliance keeps it and sends it again (reporter.py, send() and due()). Until 2026-11-07 every day's
+// agreement from each appliance was noted and reopened the issue: #812, two owners' XGS 126s, seventeen
+// notes and a reopening, every one of them "they agree". A verdict that cannot judge or that disagrees
+// is a problem, and is noted and reopens as any other.
+export function confirms(doc) {
+    return doc.kind === 'untested-model' && /port by port: they agree\./.test(doc.body || '');
+}
+
+// What a confirmation confirmed: the report's Evidence section with each line's last "; <link state>"
+// taken off (a port's line ends "- agrees; active" or "- agrees; no carrier", the agent's ": the agent
+// has it; active"), as the first 16 hex digits of its SHA-256 - so a cable put in or taken out
+// confirms nothing new.
+export async function evidenceDigest(body) {
+    const m = /### Evidence[^\n]*\n([\s\S]*?)(?=\n### |$)/.exec(body || '');
+    const text = (m ? m[1] : '').split('\n').map(line => line.replace(/;[^;\n]*$/, '')).join('\n');
+    const hash = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text));
+    return [...new Uint8Array(hash)].map(b => b.toString(16).padStart(2, '0')).join('').slice(0, 16);
+}
+
+async function confirmedKey(doc) {
+    return `confirmed:${doc.repo}:${doc.fingerprint}:${doc.appliance}:${await evidenceDigest(doc.body)}`;
 }
 
 function labelsFor(doc) {
@@ -173,31 +205,37 @@ export async function file(doc, env, address) {
     const token = await installationToken(env);
     const repo = `/repos/${env.GITHUB_OWNER}/${doc.repo}`;
     const known = await kv.get(`fp:${doc.repo}:${doc.fingerprint}`, 'json');
+    const confirmation = confirms(doc);
+    const confirmed = confirmation ? await confirmedKey(doc) : null;
 
     if (known && known.issue) {
-        // A repeat: a comment on the issue it belongs to, at most once a day for one appliance.
+        // A repeat: a comment on the issue it belongs to, at most once a day for one appliance - a
+        // confirmation once for each appliance and what it confirmed, whatever the day (confirms()).
         const once = `seen:${doc.repo}:${doc.fingerprint}:${doc.appliance}:${day}`;
         const number = known.issue;
         const url = `https://github.com/${env.GITHUB_OWNER}/${doc.repo}/issues/${number}`;
-        if (await kv.get(once)) {
+        if (await kv.get(confirmation ? confirmed : once)) {
             return answer(200, {status: 'ok', issue: number, url, created: false, noted: false});
         }
         // The appliance's name and the fingerprint are the sender's word, and a fingerprint can be
         // worked out from an issue's text and this project's code; so whoever sends them, one issue
-        // takes at most PER_ISSUE notes a day and is reopened at most once a day.
+        // takes at most PER_ISSUE notes a day and is reopened at most once a day. A confirmation left
+        // out is refused for today, not answered as taken: the appliance sends it only once.
         if (!await allow(kv, [[`rate:issue:${doc.repo}:${number}:${day}`, PER_ISSUE]])) {
+            if (confirmation) return refuse(429, 'the issue\'s daily allowance is used up; try again tomorrow');
             return answer(200, {status: 'ok', issue: number, url, created: false, noted: false});
         }
         const issue = await github(env, token, 'GET', `${repo}/issues/${number}`);
         // Sightings that all came before the issue was closed are the old problem arriving late - a
         // report collected before the fix and sent with a later day's allowance (#756) - not a sign
-        // that the fix did not hold: the issue stays as it is and takes no note.
+        // that the fix did not hold: the issue stays as it is and takes no note. Not a confirmation,
+        // which reopens nothing and is news whenever it was seen.
         const seen = lastSeen(doc.body);
-        if (issue.ok && issue.data.state === 'closed' && seen !== null && issue.data.closed_at
+        if (!confirmation && issue.ok && issue.data.state === 'closed' && seen !== null && issue.data.closed_at
             && seen <= Date.parse(issue.data.closed_at)) {
             return answer(200, {status: 'ok', issue: number, url, created: false, noted: false});
         }
-        if (issue.ok && issue.data.state === 'closed' && issue.data.state_reason === 'completed'
+        if (!confirmation && issue.ok && issue.data.state === 'closed' && issue.data.state_reason === 'completed'
             && await allow(kv, [[`reopened:${doc.repo}:${number}:${day}`, 1]])) {
             await github(env, token, 'PATCH', `${repo}/issues/${number}`, {state: 'open'});
             await github(env, token, 'POST', `${repo}/issues/${number}/labels`, {labels: ['seen again after a fix']});
@@ -210,6 +248,7 @@ export async function file(doc, env, address) {
         const comment = await github(env, token, 'POST', `${repo}/issues/${number}/comments`, {body: note});
         if (!comment.ok) return refuse(502, 'GitHub did not take the comment: ' + comment.status);
         await kv.put(once, '1', {expirationTtl: 2 * DAY});
+        if (confirmation) await kv.put(confirmed, '1');	// for good: the same binding from it is not news
         await keepContact(kv, doc, number);
         return answer(200, {status: 'ok', issue: number, url, created: false, noted: true});
     }
@@ -228,6 +267,7 @@ export async function file(doc, env, address) {
     const number = created.data.number;
     await kv.put(`fp:${doc.repo}:${doc.fingerprint}`, JSON.stringify({issue: number, at: Date.now()}));
     await kv.put(`seen:${doc.repo}:${doc.fingerprint}:${doc.appliance}:${day}`, '1', {expirationTtl: 2 * DAY});
+    if (confirmation) await kv.put(confirmed, '1');
     await keepContact(kv, doc, number);
     return answer(200, {status: 'ok', issue: number, url: created.data.html_url, created: true});
 }
