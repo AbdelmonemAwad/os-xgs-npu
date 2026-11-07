@@ -160,7 +160,18 @@ if [ "${FAMILY}" = armada ]; then
 	elif [ -f /boot/modules/npuep.ko.prev ] && [ "$(cat /boot/modules/npuep.ko.prev.kernel 2>/dev/null)" = "${now}" ]; then
 		ko=/boot/modules/npuep.ko.prev
 	else
-		say "npuep.ko is built for another kernel and no npuep.ko.prev is for this one; not taken up in place - nothing reset, the driver left as it is, and the next boot loads the right one"
+		say "npuep.ko is built for another kernel and no npuep.ko.prev is for this one; not taken up in place - nothing reset, the driver left as it is; at the next boot 07-npuep loads whichever of the two is built for that kernel"
+		exit 1
+	fi
+	# And what the reset would leave nothing to recover with, refused before it too (the release check's
+	# review of 0.1.0-alpha.15.1): no file to load again - a module taken away by hand - and a driver loaded
+	# from neither file, which kldunload by these names would not take out.
+	if [ ! -f "${ko}" ]; then
+		say "no ${ko} to load again; not taken up in place - nothing reset, the driver left as it is"
+		exit 1
+	fi
+	if kldstat -q -m pci/npuep && ! kldstat -q -n "${loaded}"; then
+		say "the driver came from neither npuep.ko nor npuep.ko.prev; not taken up in place - nothing reset, the driver left as it is"
 		exit 1
 	fi
 	say "resetting the coprocessor"

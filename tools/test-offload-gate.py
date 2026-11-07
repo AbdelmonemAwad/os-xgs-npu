@@ -246,6 +246,10 @@ class Recovery(Appliance):
 
     def recover(self, hook):
         d = self.dir
+        # the installed module, with no stamp: recover.sh refuses before the reset when there is none to load
+        # again (the release check's review of 0.1.0-alpha.15.1, K26)
+        os.makedirs(os.path.join(d, 'modules'), exist_ok=True)
+        self.write(os.path.join('modules', 'npuep.ko'), 'a module')
         script = self.copy(RECOVER, 'recover.sh', [
             ('PATH=/sbin:/bin:/usr/sbin:/usr/bin:/usr/local/sbin:/usr/local/bin',
              'PATH=%s:/usr/bin:/bin' % self.bin),
@@ -254,7 +258,9 @@ class Recovery(Appliance):
             ('LOCK=/var/run/xgs-recover.lock', 'LOCK=%s' % os.path.join(d, 'recover.lock')),
             ('/var/db/os-xgs-npu/switch-jumbo.state', os.path.join(d, 'switch-jumbo.state')),
             ('/usr/local/etc/rc.syshook.d/early/07-npuep', hook),
-            ('/usr/local/etc/rc.reload_all', os.path.join(d, 'rc.reload_all'))],
+            ('/usr/local/etc/rc.reload_all', os.path.join(d, 'rc.reload_all')),
+            ('/boot/modules/', os.path.join(d, 'modules') + '/'),
+            ('/usr/bin/uname', os.path.join(self.bin, 'uname'))],
             # the token's path is not asked for: a recover.sh without one is what these are against
             optional=[('/var/run/xgs-npuep-boot', self.token)])
         return self.run_sh(script)
@@ -362,6 +368,17 @@ class Reload(Appliance):
         done = self.run_sh(script)
         self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
         self.assertEqual(self.loaded(), [os.path.join(self.dir, 'boot', 'npuep.ko.prev')])
+
+    def test_an_installed_npuep_ko_with_no_stamp_is_loaded_not_prev(self):
+        """As the boot hook loads it: an npuep.ko with no stamp - copied in by hand - is npuep.ko, whatever
+        .prev is built for (the release check's review of 0.1.0-alpha.15.1)."""
+        script = self.reload()
+        self.write('boot/npuep.ko', '')
+        self.write('boot/npuep.ko.prev', '')
+        self.write('boot/npuep.ko.prev.kernel', 'FreeBSD 15.0 a made-up kernel')
+        done = self.run_sh(script)
+        self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+        self.assertEqual(self.loaded(), [os.path.join(self.dir, 'boot', 'npuep.ko')])
 
     # The release check's review, 2026-11-07: a module stamped for another kernel is refused before anything
     # is unloaded, as 07-npuep refuses it at boot; and no reset under a driver still loaded after the unload.

@@ -27,12 +27,14 @@
  *
  * TAKEN OUT BY ANYTHING BUT ITS PAGE. A setting recorded as set and not in the configuration now was
  * taken out by a save after the last one that had it, and OPNsense's history names that save
- * (removed_by). The owner's None is a save of its page; anything else - a configuration restored
- * from before it was set, or a script's save over it - is not the owner's choice, and the setting is
- * set again, the save that took it out said. Until 2026-11-07 the record alone decided, and an XGS
- * 107w whose configuration had lost the setting went without its CPU temperature from its next boot
- * on, the record saying it was set (issue 890). When the history no longer goes back to that save,
- * the setting is left as it is, and verify.sh says how to set it.
+ * (removed_by). The owner's None is a save of its page, and so is what the owner's own restore holds -
+ * a configuration taken back from the history, sections restored, or a whole configuration restored;
+ * anything else - a script's save over it - is not the owner's choice, and the setting is set again,
+ * the save that took it out said. Until 2026-11-07 the record alone decided, and an XGS 107w whose
+ * configuration had lost the setting went without its CPU temperature from its next boot on, the
+ * record saying it was set (issue 890). When the history does not show that save - it no longer goes
+ * back so far, or a backup on the way cannot be read - the setting is left as it is, and verify.sh
+ * says how to set it.
  */
 
 require_once 'config.inc';
@@ -61,6 +63,10 @@ function removed_by($cfg, $key)
     foreach ($cfg->getBackups() as $file) {
         $xml = @simplexml_load_file($file, 'SimpleXMLElement', LIBXML_NOERROR | LIBXML_ERR_NONE);
         if ($xml === false) {
+            /* a backup that cannot be read - left empty by a power cut or a full /conf - may be the very
+               save that took it out: the save after the one that has it is then not known (false), and
+               the setting is left as it is (the release check's review of 0.1.0-alpha.15.1) */
+            $after = false;
             continue;
         }
         if (isset($xml->system->$key) && (string)$xml->system->$key !== '') {
@@ -98,11 +104,21 @@ $again = null;
 if (in_array($key, $done, true) && (string)$c->system->$key === '') {
     $by = removed_by($cfg, $key);
     if ($by === false) {
-        echo "{$key}: set once already, and None now; the configuration's history no longer goes back to the save " .
+        echo "{$key}: set once already, and None now; the configuration's history does not show the save " .
             "that took it out, so it is left as it is - System: Settings: Miscellaneous, Thermal Sensors sets it\n";
     } elseif ($by !== null && strpos($by['description'], 'system_advanced_misc.php') !== false) {
         echo "{$key}: set once already, and set to None on System: Settings: Miscellaneous - " .
             revision_said($by) . " - left as the owner has it\n";
+    } elseif ($by === null || preg_match('/revert_backup|^Restored /', $by['description'])) {
+        /*
+         * The owner's own restore: a configuration taken back from the history (revert_backup), sections
+         * restored, or a whole configuration restored - written past the history, so the newest backup
+         * still has it (null). What it held is the owner's to keep, None included: left as it is, and
+         * verify.sh says how to set it. Until the release check's review of 0.1.0-alpha.15.1 a restore
+         * was taken for a script's save, and the setting set again over it.
+         */
+        echo "{$key}: set once already, and None since the owner's restore - " . revision_said($by) .
+            " - left as it is; System: Settings: Miscellaneous, Thermal Sensors sets it\n";
     } else {
         $again = revision_said($by);
     }

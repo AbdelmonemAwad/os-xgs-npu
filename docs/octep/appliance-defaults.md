@@ -40,11 +40,13 @@ record again; at every other boot it reads the record's name and stops.
 The record alone does not decide any more. When it says the setting was set and the configuration
 no longer has it, the script looks in OPNsense's own history (`/conf/backup`) for the save that took
 it out - the one after the newest backup that still has it - and only a save of the Miscellaneous
-page itself counts as the owner's None. Anything else - a configuration restored from before the
-setting, or a script's save over it - is not the owner's choice: the next install or update sets it
-again and says which save took it out. Until 0.1.0-alpha.15.1 the record alone decided, and an XGS
-107w whose configuration had lost the setting went without its CPU temperature from its next boot
-on (#890). When the history no longer reaches back to that save, the setting is left as it is.
+page itself counts as the owner's None - and so does the owner's own restore: a configuration taken
+back from the history, sections restored, or a whole configuration restored. Anything else - a
+script's save over it - is not the owner's choice: the next install or update sets it again and says
+which save took it out. Until 0.1.0-alpha.15.1 the record alone decided, and an XGS 107w whose
+configuration had lost the setting went without its CPU temperature from its next boot on (#890).
+When the history does not show that save - it no longer reaches back so far, or a backup on the way
+cannot be read - the setting is left as it is.
 `verify.sh` says how to set it on the page, and what the script found. On the first XGS 3300 on
 2026-11-07: taken out by a script's save, the script named it and set amdtemp again; taken out by a
 save of the Miscellaneous page, it left None as it was.
