@@ -497,10 +497,14 @@ def confirmed_copy(name):
         with urllib.request.urlopen(request, timeout=20) as answer:
             return json.loads(answer.read().decode('utf-8'))
 
+    # Whatever the copy answers, never the runner ended by it: an answer cut short (IncompleteRead, an
+    # HTTPException) or nested deeper than the parser goes (RecursionError) ended run() after it had written
+    # the job as running - that plugin and the rest of the queue not updated (the release check before
+    # 0.1.0-alpha.15.1, its third review: K32).
     try:
         tag = ask_copy('/repos/%s/%s/releases/latest' % (OWNER, name))['tag_name']
         sha = ask_copy('/repos/%s/%s/commits/%s' % (OWNER, name, urllib.parse.quote(tag, safe='')))['sha']
-    except (urllib.error.URLError, OSError, ValueError, KeyError, TypeError):
+    except (*READ_FAILED, KeyError, TypeError, RecursionError):
         return ''
     return sha if sha and refs_commit(name, tag) == sha else ''
 

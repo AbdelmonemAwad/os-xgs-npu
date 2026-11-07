@@ -319,5 +319,39 @@ for message, seen, want in (
     check('a failed update stops at the step its message names, never before the one seen: %s' % want,
           plugins.stopped_at(message, seen), want)
 
+# K32 (the release check before 0.1.0-alpha.15.1, its third review): npuforge.org's copy answering cut short,
+# or nested deeper than the parser goes. confirmed_copy says '' - the update then asks GitHub itself - where it
+# raised, and run() ended with the job written as running.
+import http.client  # noqa: E402
+
+REAL_URLOPEN = plugins.urllib.request.urlopen
+
+
+class CopyAnswer:
+    def __init__(self, body=b'', cut=False):
+        self.body, self.cut = body, cut
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+    def read(self):
+        if self.cut:
+            raise http.client.IncompleteRead(b'{"tag_na', 200)
+        return self.body
+
+
+for what, answer in (('cut short (IncompleteRead)', CopyAnswer(cut=True)),
+                     ('nested deeper than the parser goes', CopyAnswer(body=b'[' * 65536))):
+    plugins.urllib.request.urlopen = lambda request, timeout=None, given=answer: given
+    try:
+        got = plugins.confirmed_copy('os-demo')
+    except Exception as error:  # what ended the runner
+        got = 'raised %s' % type(error).__name__
+    check('K32: the copy answering %s: no copy taken, nothing raised' % what, got, '')
+plugins.urllib.request.urlopen = REAL_URLOPEN
+
 print('all passed' if failures == 0 else '%d failed' % failures)
 sys.exit(1 if failures else 0)

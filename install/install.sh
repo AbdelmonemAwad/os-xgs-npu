@@ -124,9 +124,10 @@ install -m 0644 "${SRC}"/src/opnsense/scripts/xgs/release-keys/*.pub "${KEYS}.ne
 if [ -d "${KEYS}" ]; then mv "${KEYS}" "${KEYS}.old"; fi
 mv "${KEYS}.new" "${KEYS}"
 rm -rf "${KEYS}.old"
-# -S, a safe copy: written beside and renamed over the one there. install(1) otherwise takes the one there
-# away before it copies, so a full disk left no update.py at all (the release check's review of
-# 0.1.0-alpha.15.1) - and with it no way to update but by hand.
+# -S: each file flushed to disk once it is copied, so a power cut just after leaves the whole file, not part
+# of it. The copy itself is written beside the one there and renamed over it either way: install(1) on
+# FreeBSD 14.3 and 15.x has no other way ("Temporary files are no longer optional"). K20 of the release check
+# before 0.1.0-alpha.15.1 took -S for that copy, and its "a full disk left no update.py" did not hold there.
 install -S -m 0755 "${SRC}/src/opnsense/scripts/xgs/update.py" "${PREFIX}/opnsense/scripts/xgs/update.py"
 install -m 0755 "${SRC}/src/opnsense/scripts/xgs/assign.php" "${PREFIX}/opnsense/scripts/xgs/assign.php"
 install -m 0755 "${SRC}/src/opnsense/scripts/xgs/countdown.py" "${PREFIX}/opnsense/scripts/xgs/countdown.py"

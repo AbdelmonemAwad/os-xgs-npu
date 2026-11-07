@@ -173,6 +173,12 @@ class UpdatesController extends ApiControllerBase
      * installer - the middle of an install: the runner is then looked for here, by its command line, as
      * update.py looks for it. Until 0.1.0-alpha.15.1 an unreadable status let the reboot through (the
      * release check's review).
+     *
+     * Nor while an update itself runs (K29): the page hides Reboot now while one runs, but a page shown
+     * since an earlier update - another tab, or one left open - reads the status no more once nothing
+     * runs, so it still offered the reboot when another session started an update, and the restart cut
+     * that update's install. update.py apply is looked for by its command line too when the status
+     * cannot be read.
      */
     public function rebootAction()
     {
@@ -181,11 +187,11 @@ class UpdatesController extends ApiControllerBase
         }
         $state = $this->run('update status');
         if (($state['status'] ?? '') === 'ok') {
-            if (!empty($state['plugins_running']['hold'])) {
+            if (($state['apply']['status'] ?? '') === 'running' || !empty($state['plugins_running']['hold'])) {
                 return ['status' => 'busy'];
             }
         } else {
-            exec("/bin/pgrep -f 'scripts/xgs/plugins[.]py run' 2>/dev/null", $found, $rc);
+            exec("/bin/pgrep -f 'scripts/xgs/(update[.]py apply|plugins[.]py run)' 2>/dev/null", $found, $rc);
             if ($rc === 0) {
                 return ['status' => 'busy'];
             }
