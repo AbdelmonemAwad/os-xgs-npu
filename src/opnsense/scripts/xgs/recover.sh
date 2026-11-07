@@ -143,6 +143,26 @@ if [ "${FAMILY}" = armada ]; then
 	# unload: killing kldunload stops nothing in the kernel, and only made this script give up while
 	# the detach went on.
 	gone_or_refuse
+	# The driver is unloaded by the file it came from, and loaded again from the file built for the
+	# running kernel - chosen as 07-npuep chooses it: npuep.ko when its stamp names this kernel,
+	# npuep.ko.prev when that one's does. A kernel update the follower has rebuilt for, before the
+	# restart, leaves npuep.ko for the next kernel and the running one's as npuep.ko.prev. Until
+	# 2026-11-07 the file loaded was the one loaded before, whatever it was built for (the release
+	# check's review), and until 2026-11-06 npuep.ko whatever it was for. Chosen before anything is
+	# done: with no module for this kernel the coprocessor is not reset, and the driver is left as it
+	# is. A module with no stamp at all is loaded, as 07-npuep loads it: nothing can tell what it is for.
+	now=$(/usr/bin/uname -v)
+	loaded=npuep.ko
+	kldstat -q -n npuep.ko.prev && loaded=npuep.ko.prev
+	built=$(cat /boot/modules/npuep.ko.kernel 2>/dev/null || true)
+	if [ -z "${built}" ] || [ "${built}" = "${now}" ]; then
+		ko=/boot/modules/npuep.ko
+	elif [ -f /boot/modules/npuep.ko.prev ] && [ "$(cat /boot/modules/npuep.ko.prev.kernel 2>/dev/null)" = "${now}" ]; then
+		ko=/boot/modules/npuep.ko.prev
+	else
+		say "npuep.ko is built for another kernel and no npuep.ko.prev is for this one; not taken up in place - nothing reset, the driver left as it is, and the next boot loads the right one"
+		exit 1
+	fi
 	say "resetting the coprocessor"
 	# Refused (2) before the bridge is opened on a board whose reset values have run at no boot, 200
 	# and 224 (#1050): nothing was reset, and the datapath attaches once per coprocessor boot (07-npuep),
@@ -168,13 +188,9 @@ if [ "${FAMILY}" = armada ]; then
 	fi
 	say "the coprocessor answers again after ${i} s; the driver unloaded and loaded"
 	jumbo_reset
-	# The file the driver came from is the one loaded again: npuep.ko, or npuep.ko.prev when 07-npuep
-	# found npuep.ko built for another kernel. Until 2026-11-06 this asked kldstat for a file named
-	# npuep - which a driver from npuep.ko.prev is not - and then loaded npuep.ko whatever it was for.
-	ko=/boot/modules/npuep.ko
-	kldstat -q -n npuep.ko.prev && ko=/boot/modules/npuep.ko.prev
+	# unloaded by the file it came from, loaded from the one chosen above for this kernel
 	if kldstat -q -m pci/npuep; then
-		kldunload "${ko##*/}" || { say "the driver did not unload; not taken up in place"; exit 1; }
+		kldunload "${loaded}" || { say "the driver did not unload; not taken up in place"; exit 1; }
 	fi
 	kldload "${ko}" || { say "the driver did not load"; exit 1; }
 	# the attach itself waits up to 120 s for the coprocessor's facility table

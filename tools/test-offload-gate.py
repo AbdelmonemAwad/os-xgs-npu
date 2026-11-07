@@ -108,10 +108,16 @@ exit 0''' % d)
         self.script(os.path.join(d, 'scripts', 'xgs', 'board.sh'), "echo '201 armada'")
         # the reset bridge, mcp2210.py run by python3: its answer is the pulse file's
         self.stub('python3', 'exit $(cat "%s")' % os.path.join(d, 'pulse'))
-        self.stub('kldstat', 'case "$*" in *npuep.ko.prev*) exit 1 ;; esac')
+        # the driver loaded, until kldunload unloads it and kldload loads it again - as kldstat -m reads it
+        # (reload.sh asks after its unload, and resets nothing under a driver still loaded)
+        unloaded = os.path.join(d, 'unloaded')
+        self.stub('kldstat', 'case "$*" in *npuep.ko.prev*) exit 1 ;; *pci/npuep*) [ ! -f "%s" ] ;; esac'
+                  % unloaded)
         self.stub('kldstat-none', 'exit 1')
-        for name in ('kldunload', 'kldload', 'configctl', 'daemon', 'dmesg', 'kenv'):
+        for name in ('configctl', 'daemon', 'dmesg', 'kenv'):
             self.stub(name)
+        self.stub('kldunload', 'touch "%s"' % unloaded)
+        self.stub('kldload', 'rm -f "%s"' % unloaded)
         self.stub('rc.reload_all', where=d)
         self.env = dict(os.environ, PATH=self.bin + os.pathsep + '/usr/bin:/bin', XGS_RECOVER_LOCKED='1',
                         STATE=self.state, BOOT_TOKEN=self.token, CONFIG_READER=os.path.join(self.bin, 'config'),
@@ -356,6 +362,43 @@ class Reload(Appliance):
         done = self.run_sh(script)
         self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
         self.assertEqual(self.loaded(), [os.path.join(self.dir, 'boot', 'npuep.ko.prev')])
+
+    # The release check's review, 2026-11-07: a module stamped for another kernel is refused before anything
+    # is unloaded, as 07-npuep refuses it at boot; and no reset under a driver still loaded after the unload.
+    def called(self):
+        return [line.split(' ', 1)[0] for line in self.lines('calls')] if os.path.exists(
+            os.path.join(self.dir, 'calls')) else []
+
+    def test_a_module_stamped_for_another_kernel_is_refused_before_the_unload(self):
+        script = self.reload()
+        self.write('npuep.ko', '')
+        self.write('npuep.ko.kernel', 'FreeBSD 15.1 the kernel an update brought')
+        done = self.run_sh(script)
+        self.assertEqual(done.returncode, 1, done.stdout + done.stderr)
+        self.assertIn('is built for another kernel (FreeBSD 15.1 the kernel an update brought): nothing is '
+                      'unloaded and the coprocessor is not reset', done.stdout)
+        self.assertNotIn('kldunload', self.called())
+        self.assertNotIn('python3', self.called(), 'the reset asked for')
+
+    def test_force_loads_a_module_stamped_for_another_kernel(self):
+        script = self.reload()
+        self.write('npuep.ko', '')
+        self.write('npuep.ko.kernel', 'FreeBSD 15.1 the kernel an update brought')
+        self.env['FORCE'] = '1'
+        done = self.run_sh(script)
+        self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+        self.assertEqual(self.loaded(), [os.path.join(self.dir, 'npuep.ko')])
+
+    def test_a_driver_still_loaded_after_the_unload_gets_no_reset(self):
+        self.stub('kldunload', 'exit 0')		# it says it unloaded; kldstat still finds the driver
+        script = self.reload()
+        self.write('npuep.ko', '')
+        done = self.run_sh(script)
+        self.assertEqual(done.returncode, 1, done.stdout + done.stderr)
+        self.assertIn('the driver is still loaded (kldstat -m pci/npuep): the coprocessor is not reset',
+                      done.stdout + done.stderr)
+        self.assertNotIn('python3', self.called(), 'the reset asked for')
+        self.assertEqual(self.loaded(), [])
 
 
 if __name__ == '__main__':
