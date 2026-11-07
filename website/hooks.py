@@ -386,14 +386,17 @@ def on_page_content(html, page, config, files):
             src = urljoin(base, src)
         if src.startswith(SITE) and re.search(r'\.(png|jpe?g|webp)$', src, re.I):
             page.meta['image'] = src
-    # Every picture the page shows, the site's own, for its entry in the sitemap (build.py): the
-    # measurements' photographs and the appliances' are found by image search through it. A badge or a
-    # picture from elsewhere is not the site's to list; at most a thousand a page, as the sitemap allows.
+    # Every photograph and screenshot the page shows - the repository's images, all under /docs/images/
+    # - for its entry in the sitemap (build.py): the measurements' photographs and the appliances' are
+    # found by image search through it. The site's copies of badges (/assets/badges/, badges()) and
+    # the README's status board are not pictures of anything, and were listed from 2026-11-07 (#1140)
+    # until this; at most a thousand a page, as the sitemap allows.
     shown = []
     for src in FIRST_IMG.findall(html):
         if not re.match(r'^[a-z]+:', src):
             src = urljoin(config['site_url'] + page.url, src)
-        if src.startswith(SITE) and re.search(r'\.(png|jpe?g|webp|gif|svg)$', src, re.I) and src not in shown:
+        if (src.startswith(SITE + '/docs/images/') and re.search(r'\.(png|jpe?g|webp|gif|svg)$', src, re.I)
+                and src not in shown):
             shown.append(src)
     page.meta['images_shown'] = shown[:1000]
     return html
