@@ -19,10 +19,10 @@ to a new image, and the checks fail on one without them.
 |---|---|---|
 | [screens/](screens/) | The web interface, page by page, in English and in Arabic | 81 |
 | [hardware/](hardware/) | Photographs and drawings of the appliances, one folder each | 41 |
-| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 739 |
+| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 741 |
 | [readme/](readme/) | The README's banner and status board, drawn by tools/readme-art.py | 6 |
 
-906 images in all.
+908 images in all.
 
 ## The web interface
 
@@ -1216,7 +1216,7 @@ The page: [shaper-3300-2026-10-20.md](../measurements/shaper-3300-2026-10-20.md)
 | [01-before.png](measurements/shaper-3300-2026-10-20/01-before.png) | Before: a 100 Mbit/s shaper, the stream in hardware at 8,816 Mbit/s | [shaper-3300-2026-10-20.md](../measurements/shaper-3300-2026-10-20.md) |
 | [02-after.png](measurements/shaper-3300-2026-10-20/02-after.png) | After: the same shaper, the stream with the host at 99.5 Mbit/s | [shaper-3300-2026-10-20.md](../measurements/shaper-3300-2026-10-20.md) |
 
-### measurements/signed-plugin-releases-2026-11-07/ (7)
+### measurements/signed-plugin-releases-2026-11-07/ (9)
 
 The page: [signed-plugin-releases-2026-11-07.md](../measurements/signed-plugin-releases-2026-11-07.md).
 
@@ -1229,6 +1229,8 @@ The page: [signed-plugin-releases-2026-11-07.md](../measurements/signed-plugin-r
 | [05-eight-signed-releases-installed-first-3300.png](measurements/signed-plugin-releases-2026-11-07/05-eight-signed-releases-installed-first-3300.png) | The eight installed as signed | [signed-plugin-releases-2026-11-07.md](../measurements/signed-plugin-releases-2026-11-07.md) |
 | [06-arabic-and-rtl-archives-refused-first-3300.png](measurements/signed-plugin-releases-2026-11-07/06-arabic-and-rtl-archives-refused-first-3300.png) | opnsense-arabic and opnsense-rtl: an archive one byte from the signed one, both updates stopped | [signed-plugin-releases-2026-11-07.md](../measurements/signed-plugin-releases-2026-11-07.md) |
 | [07-all-eleven-installed-as-signed-first-3300.png](measurements/signed-plugin-releases-2026-11-07/07-all-eleven-installed-as-signed-first-3300.png) | All eleven plugins installed as signed | [signed-plugin-releases-2026-11-07.md](../measurements/signed-plugin-releases-2026-11-07.md) |
+| [08-a-plugin-not-here-not-signed-yet-first-3300.png](measurements/signed-plugin-releases-2026-11-07/08-a-plugin-not-here-not-signed-yet-first-3300.png) | A plugin that is not here, whose latest release is not signed: listed with the reason, Install not offered | [signed-plugin-releases-2026-11-07.md](../measurements/signed-plugin-releases-2026-11-07.md) |
+| [09-a-plugin-not-here-installed-as-signed-first-3300.png](measurements/signed-plugin-releases-2026-11-07/09-a-plugin-not-here-installed-as-signed-first-3300.png) | The same plugin installed by Install from its signed archive | [signed-plugin-releases-2026-11-07.md](../measurements/signed-plugin-releases-2026-11-07.md) |
 
 ### measurements/signed-releases-2026-11-07/ (5)
 

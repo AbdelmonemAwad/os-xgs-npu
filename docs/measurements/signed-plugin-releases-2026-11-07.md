@@ -109,3 +109,39 @@ appliance.
 ![opnsense-arabic and opnsense-rtl: an archive one byte from the signed one, both updates stopped](../images/measurements/signed-plugin-releases-2026-11-07/06-arabic-and-rtl-archives-refused-first-3300.png)
 
 ![All eleven plugins installed as signed](../images/measurements/signed-plugin-releases-2026-11-07/07-all-eleven-installed-as-signed-first-3300.png)
+
+## A plugin that is not here
+
+Until then the Plugins tab's Install took a missing plugin's `self-update.py` from
+raw.githubusercontent.com at its latest release's tag, as it came, and ran it as root (1072, G3).
+Now `plugins.py` reads that release's signed manifest and verifies it with this project's own
+release key. It downloads the archive the manifest names and checks its SHA-256 and size, then takes
+only the plugin's `self-update.py` and the release keys beside it out of that archive. That
+`self-update.py` checks the release again with those keys before it installs anything.
+
+Run on the same appliance, 02:21 to 02:28 UTC, with that change's `plugins.py` put in place.
+os-portguard was taken away for the test by its own `install/uninstall.sh` (its settings stay) and put
+back after.
+
+GitHub's own latest release of os-portguard, published before signing, is listed with the reason, and
+Install is not offered: *its latest release is not signed yet: it has no release.json*.
+
+![A plugin that is not here, whose latest release is not signed: listed with the reason, Install not offered](../images/measurements/signed-plugin-releases-2026-11-07/08-a-plugin-not-here-not-signed-yet-first-3300.png)
+
+Then a lab release, v1.0.1 by the commit GitHub's tag names. Its archive was os-portguard's main as
+merged that day (its pull request 11), which holds the signed `self-update.py`, with the throwaway key
+in place of the release key; it was signed with that key, which stood in beside the release key while
+the test ran.
+
+- One byte of the archive changed: Install refused at once - *the archive of its latest release,
+  v1.0.1, is not the one signed; nothing was taken from it; nothing was installed* - and nothing was
+  left in `/var/tmp`.
+- As signed: Install installed it in 7 s - *updated to v1.0.1 (8498e3f5f64a), signed with
+  lab-key-b20d1046.pub* - and the update's log named the archive as the one signed, 41015 bytes.
+
+![The same plugin installed by Install from its signed archive](../images/measurements/signed-plugin-releases-2026-11-07/09-a-plugin-not-here-installed-as-signed-first-3300.png)
+
+Afterwards os-portguard v1.0.1 was installed again from its tag, and its `self-update.py` was the file
+it had been, by its MD5. The lab's files, places and key were taken away, and main's `plugins.py` was
+put back. Without an appliance, `tools/test-plugin-install.py` runs 20 checks of the same, with
+throwaway keys.
