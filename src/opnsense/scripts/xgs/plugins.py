@@ -91,6 +91,7 @@ done.
 import fcntl
 import glob
 import hashlib
+import http.client
 import json
 import os
 import posixpath
@@ -109,6 +110,11 @@ SHARE = '/usr/local/share'
 MIRROR = os.environ.get('XGS_UPDATE_MIRROR', 'https://npuforge.org/api/github')
 STATE = '/var/db/os-xgs-npu/plugins-check.json'
 PROGRESS = '/var/db/os-xgs-npu/plugins-update.json'
+# What a release's read can end in, said as the reason rather than a traceback: a connection that failed,
+# a download cut short (IncompleteRead), and OpenSSL that did not answer in time - as update.py's check
+# catches them since 0.1.0-alpha.15.1 (the release check's review, which found these three escaping
+# here: an update's plugins.py sync then ended in a traceback, and took no plugin along).
+READ_FAILED = (urllib.error.URLError, OSError, ValueError, http.client.HTTPException, subprocess.SubprocessError)
 SEEN = '/var/db/os-xgs-npu/plugins-seen.json'
 AUTO = '/var/db/os-xgs-npu/plugins-auto'
 # a check under way (ONE CHECK AT A TIME above): CHECK_LOCK held by it, and CHECKING written by
@@ -299,7 +305,7 @@ def named_tag(data):
     names none of the form a tag has, and the latest release's signature is read as before."""
     try:
         found = json.loads(data.decode('utf-8'))
-    except ValueError:
+    except (ValueError, RecursionError):
         return ''
     tag = found.get('tag') if isinstance(found, dict) else None
     return tag if isinstance(tag, str) and FIELDS['tag'].match(tag) else ''
@@ -355,7 +361,7 @@ def latest_release(name):
         return {'status': 'failed', 'message': str(reason)}
     except urllib.error.HTTPError as error:
         return {'status': 'failed', 'message': "GitHub refused its latest release's manifest (%s)" % error.code}
-    except (urllib.error.URLError, OSError, ValueError) as error:
+    except READ_FAILED as error:
         return {'status': 'failed', 'message': 'could not reach GitHub: %s' % error}
     return {'status': 'found', 'tag': found['tag'], 'sha': found['commit'], 'installed': '', 'take': False,
             'signed_with': found['key']}
@@ -473,7 +479,7 @@ def refs_commit(name, tag):
             at += size
             if len(line) > 41 and line[40] == ' ':
                 refs[line[41:]] = line[:40]
-    except (urllib.error.URLError, OSError, ValueError):
+    except READ_FAILED:
         return ''
     return refs.get('refs/tags/%s^{}' % tag) or refs.get('refs/tags/%s' % tag) or ''
 
@@ -771,7 +777,7 @@ def start(names, install=False):
             except urllib.error.HTTPError as error:
                 return {'status': 'failed', 'message': "%s: GitHub refused its latest release's files (%s); "
                         'nothing was installed' % (name, error.code)}
-            except (urllib.error.URLError, OSError, ValueError) as error:
+            except READ_FAILED as error:
                 return {'status': 'failed', 'message': '%s: its installer could not be fetched: %s' % (name, error)}
             continue
         if not os.path.isfile(script):
@@ -852,7 +858,7 @@ def sync():
             installs.append(name)
         except Unsigned as reason:
             lines.append('%s: not installed - %s' % (name, reason))
-        except (urllib.error.URLError, OSError, ValueError) as error:
+        except READ_FAILED as error:
             lines.append('%s: not installed - its installer could not be fetched: %s' % (name, error))
     names = updates + installs
     if not names:

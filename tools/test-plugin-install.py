@@ -11,6 +11,7 @@ directory, named by RELEASES_FROM, and OpenSSL makes and checks the signatures a
 
     python3 tools/test-plugin-install.py"""
 import hashlib
+import http.client
 import importlib.util
 import io
 import json
@@ -184,6 +185,25 @@ check('K9: latest holding the signature of another manifest: the one under its t
 os.remove(os.path.join(RELEASES, NAME, 'download', TAG, 'release.json.sig'))
 check('K9: ... and none under its tag: not signed yet, as before', pl.latest_release(NAME).get('message'),
       'its latest release is not signed yet: it has no release.json.sig')
+# the release check's review of 0.1.0-alpha.15.1: a manifest nested deeper than the parser goes is refused by its
+# signature, never the check ended by it; and a read cut short, or OpenSSL that did not answer, is the row's
+# reason, as update.py's check says it - not a traceback that took no plugin along
+with open(os.path.join(RELEASES, NAME, 'latest', 'download', 'release.json'), 'wb') as f:
+    f.write(b'[' * 5000)
+with open(os.path.join(RELEASES, NAME, 'latest', 'download', 'release.json.sig'), 'wb') as f:
+    f.write(b'x' * 64)
+check('a manifest nested too deep to parse: refused by its signature, the check answers',
+      'does not verify' in (pl.latest_release(NAME).get('message') or ''), True)
+kept_release_file = pl.release_file
+for what, error in (('cut short', http.client.IncompleteRead(b'{"form', 300)),
+                    ('OpenSSL that did not answer', subprocess.TimeoutExpired(['openssl'], 30))):
+    def failing(*args, **kwargs):
+        raise error
+    pl.release_file = failing
+    said = pl.latest_release(NAME)
+    check('a read %s: failed, the reason said' % what,
+          (said.get('status'), (said.get('message') or '').startswith('could not reach GitHub: ')), ('failed', True))
+pl.release_file = kept_release_file
 for what, fields, said in (('another repository', {'repository': 'AbdelmonemAwad/os-fanctl'}, 'of another repository'),
                            ('no commit', {'commit': None}, 'has no commit'),
                            ('an archive name with a path', {'archive': '../x.tar.gz'}, 'has no archive'),

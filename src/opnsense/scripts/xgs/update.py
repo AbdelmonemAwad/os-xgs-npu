@@ -151,6 +151,10 @@ BUILD_RUN = "the driver's build is logged in "
 # itself, found by its command line (plugins_runner): the reboot waits while it runs.
 PLUGINS_PROGRESS = '/var/db/os-xgs-npu/plugins-update.json'
 PLUGINS_RUNNER = 'scripts/xgs/plugins[.]py run'
+# How long the reboot waits for one plugin: as long as an update waits for one (plugins.py, SYNC_WAIT).
+# And the lock a check of the plugins holds while it runs (plugins.py, CHECK_LOCK): the bar says so.
+PLUGINS_HOLD = 15 * 60
+PLUGINS_CHECK_LOCK = '/var/run/xgs-plugins-check.lock'
 # How far back to look for a commit whose checks passed. Unauthenticated, GitHub allows sixty
 # requests an hour from one address, and each commit looked at is one request.
 LOOK_BACK = 5
@@ -328,10 +332,13 @@ FIELDS = {
 
 def named_tag(data):
     """The tag a manifest not yet verified names, as only where to read its signature; '' when it
-    names none of the form a tag has, and the newest release's signature is read as before."""
+    names none of the form a tag has, and the newest release's signature is read as before. Read
+    before anything vouches for it, so nothing in it may end the check: a manifest nested too deep for
+    the parser (RecursionError) is one that names no tag, and its signature then refuses it (the release
+    check's review of 0.1.0-alpha.15.1)."""
     try:
         found = json.loads(data.decode('utf-8'))
-    except ValueError:
+    except (ValueError, RecursionError):
         return ''
     name = found.get('tag') if isinstance(found, dict) else None
     return name if isinstance(name, str) and FIELDS['tag'].match(name) else ''
@@ -342,16 +349,20 @@ def signed_manifest(tag=''):
     in RELEASE_KEYS, and every field it must have checked. Its fields, and 'key', the key's name;
     Unsigned when it is not to be taken. A network failure is the caller's to say."""
     what = tag or 'the newest release'
+    missing = MANIFEST
     try:
         data = release_bytes(tag, MANIFEST, MANIFEST_MAX)
         # The newest release's signature by the tag its manifest names, not through 'latest' a second
         # time: a release published between the two reads paired one release's manifest with another's
         # signature, and the check cried tampering until the next one (the release check's review, K9).
         # The tag only says where to look; the signature still decides.
-        signature = release_bytes(tag or named_tag(data), MANIFEST + '.sig', 64)
+        missing = MANIFEST + '.sig'
+        signature = release_bytes(tag or named_tag(data), missing, 64)
     except urllib.error.HTTPError as error:
         if error.code == 404:
-            raise Unsigned('%s is not signed yet: it has no %s' % (what, MANIFEST))
+            # the file that is not there, as plugins.py says it: until 0.1.0-alpha.15.1 a release with
+            # its manifest and no signature was said to have no manifest
+            raise Unsigned('%s is not signed yet: it has no %s' % (what, missing))
         raise
     key = signature_key(data, signature)
     if not key:
@@ -774,11 +785,17 @@ def plugins_now(state):
     runner's progress (PLUGINS_PROGRESS); the name None between two, the runner not yet on the next -
     and None for all when the queue there was started before this update. Until 2026-11-07 the bar
     stood at 96%, "Finishing", for as long as that took - fifteen minutes on the first XGS 3300 that
-    day, one plugin updating itself - and said nothing of the plugins (the review's U19)."""
+    day, one plugin updating itself - and said nothing of the plugins (the review's U19). Before the
+    queue, while sync checks which releases to take - a minute or two when GitHub is slow - checking is
+    True, a check holding plugins.py's lock (the release check's review of 0.1.0-alpha.15.1)."""
     prog = read_json(PLUGINS_PROGRESS, {})
-    if not isinstance(prog, dict) or (prog.get('started_at') or 0) < (state.get('started_at') or 0):
-        return None
-    return queue_place(prog)
+    if isinstance(prog, dict) and (prog.get('started_at') or 0) >= (state.get('started_at') or 0):
+        place = queue_place(prog)
+        if place:
+            return place
+    if plugins_checking():
+        return {'name': None, 'at': None, 'of': None, 'ended': None, 'checking': True}
+    return None
 
 
 def queue_place(prog):
@@ -812,7 +829,52 @@ def plugins_runner():
         return None
     if found.returncode != 0 or not found.stdout.strip():
         return None
-    return dict(queue_place(read_json(PLUGINS_PROGRESS, {})) or {}, running=True)
+    prog = read_json(PLUGINS_PROGRESS, {})
+    place = queue_place(prog) or {}
+    # HELD FOR A WHILE, NOT FOR EVER. A self-update that never ends - an installer waiting on pkg's
+    # lock, say - kept the reboot back for as long as it lived; an update waits PLUGINS_HOLD for a
+    # plugin and goes on, and so does this (the release check's review of 0.1.0-alpha.15.1). The time
+    # is the plugin's own start, as its job has it, or else the runner's, as ps has it; hold says
+    # whether the reboot waits still, and the page shows the plugin beside Reboot now once it does not.
+    jobs = prog.get('jobs') if isinstance(prog, dict) and isinstance(prog.get('jobs'), dict) else {}
+    since = (jobs.get(place['name']) or {}).get('started_at') if place.get('name') else None
+    if not isinstance(since, (int, float)) or isinstance(since, bool):
+        since = runner_since(found.stdout.split())
+    hold = since is None or time.time() - since < PLUGINS_HOLD
+    return dict(place, running=True, since=int(since) if since is not None else None, hold=hold)
+
+
+def runner_since(pids):
+    """When the oldest of the runner's processes started, from ps's elapsed seconds; None if ps does not
+    say."""
+    oldest = None
+    for pid in pids:
+        try:
+            said = subprocess.run(['/bin/ps', '-o', 'etimes=', '-p', pid], capture_output=True, text=True,
+                                  errors='replace', timeout=10).stdout.strip()
+            age = int(said)
+        except (OSError, subprocess.SubprocessError, ValueError):
+            continue
+        oldest = age if oldest is None else max(oldest, age)
+    return None if oldest is None else time.time() - oldest
+
+
+def plugins_checking():
+    """Whether a check of the plugins holds plugins.py's CHECK_LOCK now - asked as plugins.py's own
+    check_locked() asks it, with a shared lock given back at once, so a check is never refused for it."""
+    if fcntl is None:
+        return False
+    try:
+        fd = os.open(PLUGINS_CHECK_LOCK, os.O_RDONLY)
+    except OSError:
+        return False
+    try:
+        fcntl.flock(fd, fcntl.LOCK_SH | fcntl.LOCK_NB)
+    except OSError:
+        return True
+    finally:
+        os.close(fd)
+    return False
 
 
 def progress(state):
@@ -886,7 +948,7 @@ def progress(state):
     plugin = None
     if state.get('status') == 'running' and headers and headers[-1].startswith('== the plugins'):
         plugin = plugins_now(state)
-        if plugin:
+        if plugin and plugin.get('of'):
             percent = max(percent or 0, min(99, 96 + 3 * plugin['ended'] // plugin['of']))
     if state.get('status') == 'done':
         step, percent, detail = 'finish', 100, ''

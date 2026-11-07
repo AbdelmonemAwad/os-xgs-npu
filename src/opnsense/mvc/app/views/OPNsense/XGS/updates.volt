@@ -286,6 +286,9 @@
             if (p.plugin && p.plugin.name) {
                 text += ' - ' + "{{ lang._('Updating %1 of %2: %3') }}".replace('%1', p.plugin.at)
                     .replace('%2', p.plugin.of).replace('%3', p.plugin.name);
+            } else if (p.plugin && p.plugin.checking) {
+                /* before the queue: which releases to take, being checked */
+                text += ' - ' + "{{ lang._('Checking for updates...') }}";
             }
             $now.attr('class', 'xgs-now text-info').text(text);
             const $clock = $('<span class="xgs-clock"/>').appendTo($now);
@@ -304,9 +307,11 @@
             $('#reboot-steps').toggle(!!st.driver_unchanged);
             /* Not while the plugins' runner installs one (the review's U18): the reboot would cut its
                installer, and pkg with it, in the middle. Reboot now is back once the runner has ended;
-               refresh reads the status until then. */
+               refresh reads the status until then. Held for as long as an update waits for one plugin,
+               not for ever (hold): past that, Reboot now is offered with the plugin still named beside it. */
             const busy = st.plugins_running;
-            $('#rebootAct').toggle(!busy);
+            const holding = !!(busy && busy.hold);
+            $('#rebootAct').toggle(!holding);
             $('#reboot-wait').toggle(!!busy).text(!busy ? '' : (busy.name ?
                 "{{ lang._('Updating %1 of %2: %3') }}".replace('%1', busy.at).replace('%2', busy.of)
                     .replace('%3', busy.name) : "{{ lang._('Updating...') }}"));
@@ -432,7 +437,7 @@
                         "{{ lang._('No update has run on this firewall from this page.') }}"));
                 });
                 /* read again while the reboot waits for the plugins' runner, too (show_apply) */
-                const watching = running || !!(st.pending_reboot && st.plugins_running);
+                const watching = running || !!(st.pending_reboot && st.plugins_running && st.plugins_running.hold);
                 if (watching && polling === null) {
                     polling = setInterval(refresh, 2000);
                 } else if (!watching && polling !== null) {
