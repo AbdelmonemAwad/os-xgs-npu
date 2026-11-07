@@ -22,7 +22,9 @@ and size are the signed ones.
 os-netreport went first ([its pull request 43](https://github.com/AbdelmonemAwad/os-netreport/pull/43),
 with [its own page](https://github.com/AbdelmonemAwad/os-netreport/blob/main/docs/signed-releases.md)).
 This page is the eight that followed - os-fanctl, os-frontpanel, os-linkhealth, os-watchdog,
-os-kernelfollow, os-blocklists, os-portguard and os-fallbackcrypto - all at once.
+os-kernelfollow, os-blocklists, os-portguard and os-fallbackcrypto - all at once, and then the last
+two, opnsense-arabic and opnsense-rtl, whose `self-update.py` sits at the top of their repository
+([the last two](#the-last-two)).
 
 ## How it was run
 
@@ -80,6 +82,8 @@ and the appliance was not restarted.
 | os-blocklists | v1.0.1 | 45908 | 05bdc59d2507 |
 | os-portguard | v1.0.1 | 38033 | 8498e3f5f64a |
 | os-fallbackcrypto | v1.0.1 | 36189 | c68414407d80 |
+| opnsense-arabic | v1.0.6 | 748814 | 694a3f6b6838 |
+| opnsense-rtl | v1.1 | 14865 | 5dd540ee4d7e |
 
 The lab files, the lab places and the branches' trees were taken away after. The release-keys
 directories went too, since the `self-update.py` installed again reads none. Each plugin's
@@ -87,5 +91,21 @@ directories went too, since the `self-update.py` installed again reads none. Eac
 
 Without a firewall, a plugin's [test-self-update.py](https://github.com/AbdelmonemAwad/os-netreport/blob/main/tools/test-self-update.py)
 makes releases and signs them with throwaway keys: 42 checks of what a check takes and refuses and
-what an update installs. Each plugin's pull request for this change adds it to that plugin's checks,
-and all 42 passed in each of the eight before it was run here.
+what an update installs. Each plugin's pull request for this change added it to that plugin's checks,
+and all 42 passed in each of the ten before it was run here.
+
+## The last two
+
+opnsense-arabic keeps its `self-update.py` and its keys in `/usr/local/share/opnsense-arabic`, and
+opnsense-rtl in `/root/opnsense-rtl`; each one's `install.sh` puts them there. Neither had a release
+workflow - their releases were made by hand - so each was given one that makes the draft from an
+annotated tag and starts the signing. They ran the same way on the same appliance, 01:57 to 02:01
+UTC: GitHub's own latest releases, not signed yet, not offered; signed with the throwaway key while
+only the release key was installed, not offered; one byte of each archive changed, both updates
+stopped with nothing installed (Updated 0 of 2 in 4 s); as signed, both installed by Update all in
+10 s. With them, all eleven plugins of the family had installed a release as signed on this
+appliance.
+
+![opnsense-arabic and opnsense-rtl: an archive one byte from the signed one, both updates stopped](../images/measurements/signed-plugin-releases-2026-11-07/06-arabic-and-rtl-archives-refused-first-3300.png)
+
+![All eleven plugins installed as signed](../images/measurements/signed-plugin-releases-2026-11-07/07-all-eleven-installed-as-signed-first-3300.png)
