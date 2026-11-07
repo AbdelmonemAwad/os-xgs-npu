@@ -57,7 +57,10 @@ done, and the number stays alpha until the owner says otherwise.
 5. It is signed and published. The release workflow starts the owner's private signing repository,
    `AbdelmonemAwad/os-xgs-npu-release-signing`, as soon as the draft is made - given
    `SIGNING_DISPATCH_TOKEN` here, a fine-grained token with Actions read and write on that repository
-   alone; without it, that repository's own look every six hours finds the draft. It signs the release,
+   alone; without it, that repository's own look every six hours finds the draft. A start that fails
+   fails the release run, red, and the draft waits for that look; the release workflow run by hand with
+   `sign` set to the tag starts the signing again, and nothing else (2026-11-07: v0.1.0-alpha.15's start
+   failed - the token could not see the signing repository - and the run said success). It signs the release,
    adds the three files below to the draft and then publishes it, marked the latest: this repository's
    releases are immutable, and a published one takes no file more, so a release is signed before it is
    published or never (v0.1.0-alpha.14, published before, could not be). A release whose signing fails

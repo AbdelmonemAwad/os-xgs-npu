@@ -24,7 +24,17 @@ on:
   push:
     branches: [ main ]
     paths: [ CHANGELOG.md ]
+  # By hand: as a push does, or - given `sign` - only the signing of that tag's release started again,
+  # nothing tagged and nothing made: for a release whose start failed, and to try the start itself. The
+  # signing repository signs a draft and publishes it, and of a release published and signed already it
+  # says so and does nothing (2026-11-07: v0.1.0-alpha.15's start failed - the token could not see the
+  # signing repository - and nothing on GitHub showed it).
   workflow_dispatch:
+    inputs:
+      sign:
+        description: "a release's tag, as v0.1.0-alpha.15: only its signing started (empty: as a push)"
+        required: false
+        default: ''
 
 permissions:
   contents: read
@@ -51,10 +61,15 @@ jobs:
 
       - name: A version the changelog has and the tags do not
         id: version
+        env:
+          SIGN: ${{ inputs.sign }}
         run: |
           set -eu
           v=$(python3 tools/changelog.py --top)
-          if [ -z "${v}" ]; then
+          if [ -n "${SIGN:-}" ]; then
+            echo "run by hand to start the signing of ${SIGN} alone - nothing tagged or made"
+            echo "version=" >> "$GITHUB_OUTPUT"
+          elif [ -z "${v}" ]; then
             echo "CHANGELOG.md has no released version"
             echo "version=" >> "$GITHUB_OUTPUT"
           elif git rev-parse -q --verify "refs/tags/v${v}" > /dev/null; then
@@ -86,18 +101,26 @@ jobs:
 
       # The signing repository is another one, private, whose workflow this run's own token cannot
       # start: SIGNING_DISPATCH_TOKEN is a fine-grained token with Actions read and write on it alone.
-      # Without it, that repository's own look every six hours finds the draft.
+      # Without it, that repository's own look every six hours finds the draft. A start that fails
+      # fails the run, where to anyone looking it shows: until 2026-11-07 it was let pass
+      # (continue-on-error), the run said success, and v0.1.0-alpha.15 waited unsigned with nothing to
+      # show why but its log. The branch is named, so nothing is asked of the repository but the start.
       - name: Start the signing of the release
-        if: steps.version.outputs.version != ''
-        continue-on-error: true
+        if: steps.version.outputs.version != '' || inputs.sign != ''
         env:
           GH_TOKEN: ${{ secrets.SIGNING_DISPATCH_TOKEN }}
           VERSION: ${{ steps.version.outputs.version }}
+          SIGN: ${{ inputs.sign }}
         run: |
           set -eu
+          TAG=${SIGN:-v${VERSION}}
           if [ -z "${GH_TOKEN}" ]; then
-            echo "no SIGNING_DISPATCH_TOKEN: os-xgs-npu-release-signing signs and publishes v${VERSION} at its next look, within six hours"
+            echo "::warning::no SIGNING_DISPATCH_TOKEN: os-xgs-npu-release-signing signs and publishes ${TAG} at its next look, within six hours"
             exit 0
           fi
-          gh workflow run sign.yml -R AbdelmonemAwad/os-xgs-npu-release-signing -f tag="v${VERSION}"
-          echo "os-xgs-npu-release-signing is signing v${VERSION}; it publishes the release once its files are up"
+          if ! gh workflow run sign.yml -R AbdelmonemAwad/os-xgs-npu-release-signing --ref main \
+              -f repository=os-xgs-npu -f tag="${TAG}"; then
+            echo "::error::the signing of ${TAG} was not started: SIGNING_DISPATCH_TOKEN cannot start sign.yml in os-xgs-npu-release-signing - it must be a token with that repository alone and Actions: Read and write. ${TAG} stays a draft until the signing repository's look, within six hours."
+            exit 1
+          fi
+          echo "os-xgs-npu-release-signing is signing ${TAG}; it publishes the release once its files are up"
