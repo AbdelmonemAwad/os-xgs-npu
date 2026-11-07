@@ -19,10 +19,10 @@ to a new image, and the checks fail on one without them.
 |---|---|---|
 | [screens/](screens/) | The web interface, page by page, in English and in Arabic | 81 |
 | [hardware/](hardware/) | Photographs and drawings of the appliances, one folder each | 41 |
-| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 741 |
+| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 746 |
 | [readme/](readme/) | The README's banner and status board, drawn by tools/readme-art.py | 6 |
 
-908 images in all.
+913 images in all.
 
 ## The web interface
 
@@ -1108,6 +1108,18 @@ The page: [release-check-2026-11-03.md](../measurements/release-check-2026-11-03
 | [97-first-3300-w2-l0.png](measurements/release-check-2026-11-03/97-first-3300-w2-l0.png) | The first XGS 3300 after the install, 11:19-11:25: feeder.py 44b17f7e, npu-run.sh 1aaed7e5 and octep 4adb8488 in place before the boot, feeder.py with two threads, looks at +12, +32 and +54 s, the link answering | [release-check-2026-11-03.md](../measurements/release-check-2026-11-03.md) |
 | [98-first-3300-w2-l9-a.png](measurements/release-check-2026-11-03/98-first-3300-w2-l9-a.png) | The first XGS 3300, 11:27-11:32: npu-run.sh on the box - the console's mark, a stopped getty (exit 69), the coprocessor's sshd stopped, a continuation prompt cleared by the Ctrl-C (the console's log shows "> ^C" and then "~#"), and the look of feeder.py that met one; the password prompt could not be made | [release-check-2026-11-03.md](../measurements/release-check-2026-11-03.md) |
 | [99-first-3300-w2-l6-plain-stop-1.png](measurements/release-check-2026-11-03/99-first-3300-w2-l6-plain-stop-1.png) | The first XGS 3300, 11:33: #768's plain stop - found silent at 19 s and again at 31 s, octep told at 33 s, taken up in place in 170 s | [release-check-2026-11-03.md](../measurements/release-check-2026-11-03.md) |
+
+### measurements/release-check-alpha15-1-2026-11-07/ (5)
+
+The page: [release-check-alpha15-1-2026-11-07.md](../measurements/release-check-alpha15-1-2026-11-07.md).
+
+| image | what it shows | used on |
+|---|---|---|
+| [01-first-3300-user-path-0dc9bb2a.png](measurements/release-check-alpha15-1-2026-11-07/01-first-3300-user-path-0dc9bb2a.png) | The first XGS 3300, vendor version 23: from v0.1.0-alpha.15 to the candidate through XGS: Updates, the bar's steps to its end, a restart, verify.sh 9 passed and 0 failed | [release-check-alpha15-1-2026-11-07.md](../measurements/release-check-alpha15-1-2026-11-07.md) |
+| [02-second-3300-user-path-0dc9bb2a.png](measurements/release-check-alpha15-1-2026-11-07/02-second-3300-user-path-0dc9bb2a.png) | The second XGS 3300, vendor version 22: the update to the candidate, its driver rebuilt, a restart, verify.sh 9 passed and 0 failed | [release-check-alpha15-1-2026-11-07.md](../measurements/release-check-alpha15-1-2026-11-07.md) |
+| [03-136-user-path-0dc9bb2a.png](measurements/release-check-alpha15-1-2026-11-07/03-136-user-path-0dc9bb2a.png) | The XGS 136, vendor version 21: the update to the candidate, the driver it built the one running, a restart, verify.sh 14 passed and 0 failed with 14 front ports | [release-check-alpha15-1-2026-11-07.md](../measurements/release-check-alpha15-1-2026-11-07.md) |
+| [04-soak-2h-0dc9bb2a.png](measurements/release-check-alpha15-1-2026-11-07/04-soak-2h-0dc9bb2a.png) | Two hours on 0dc9bb2a: 1215 passes and none failed on the three paths, the hourly medians, and each appliance's driver counters and kernel memory at its first and last look | [release-check-alpha15-1-2026-11-07.md](../measurements/release-check-alpha15-1-2026-11-07.md) |
+| [05-three-take-the-release.png](measurements/release-check-alpha15-1-2026-11-07/05-three-take-the-release.png) | The three appliances taking v0.1.0-alpha.15.1 from the releases channel: the release's commit, its signature checked with the release key, the archive's size and SHA-256 the signed ones, and verify.sh after it | [release-check-alpha15-1-2026-11-07.md](../measurements/release-check-alpha15-1-2026-11-07.md) |
 
 ### measurements/reload-136-2026-10-20/ (2)
 
