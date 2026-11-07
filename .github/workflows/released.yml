@@ -1,0 +1,107 @@
+#-
+# SPDX-License-Identifier: BSD-2-Clause
+# Copyright (c) 2026 Abdelmonem Awad <eg2@live.com>
+#
+name: released
+
+# What follows a release once it is published. release.yml makes the release a draft, and the owner's
+# private signing repository publishes it once its three files are up (RELEASING.md, step 5) - with
+# that repository's own token, which starts this, as a release published with this repository's own
+# token never would. Until 2026-11-07 these steps were release.yml's own, right after it published.
+
+on:
+  release:
+    types: [ published ]
+
+permissions:
+  contents: read
+
+jobs:
+  released:
+    name: what follows a release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: read
+      actions: write      # to start website.yml
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Its version
+        id: version
+        env:
+          TAG: ${{ github.event.release.tag_name }}
+        run: |
+          set -eu
+          case "${TAG}" in
+            v[0-9]*) echo "version=${TAG#v}" >> "$GITHUB_OUTPUT"; echo "released ${TAG}" ;;
+            *) echo "version=" >> "$GITHUB_OUTPUT"; echo "${TAG} is not a version's tag: nothing follows" ;;
+          esac
+
+      # The site's home page gives the newest release, read from the tags (website/build.py). Its build
+      # of a push reads the tags when it starts: for 0.1.0-alpha.14 it read them five seconds before the
+      # release was made, and the home page said 0.1.0-alpha.13 until a later push built the site again,
+      # an hour and 43 minutes after (until 2026-11-06). website.yml on main, started here, reads the
+      # tags once the release is out. A failure here never undoes the release.
+      - name: Rebuild site for new release
+        if: steps.version.outputs.version != ''
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run website.yml --ref main
+
+      # Each issue a pull request in this release says it fixes - a line "Fix for #N", or GitHub's own
+      # "Fixes #N" - is told, once, that the fix is out (tools/release-notice.py); an error in it never
+      # undoes the release.
+      - name: Tell the issues it fixes
+        if: steps.version.outputs.version != ''
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: python3 tools/release-notice.py "${VERSION}"
+
+      # "A release is due" (release-due.yml) is answered by the release itself, so it is closed here.
+      # Until 2026-11-06 it stayed open until release-due.yml's next look - its own, scheduled for
+      # 06:41, started by GitHub hours later - or until someone started that workflow by hand.
+      - name: Close "A release is due"
+        if: steps.version.outputs.version != ''
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -eu
+          title="A release is due"
+          existing=$(TITLE="${title}" gh issue list --state open --author app/github-actions --search "in:title \"${title}\"" --json number,title --jq 'map(select(.title == env.TITLE)) | .[0].number // empty')
+          if [ -n "${existing}" ]; then
+            gh issue close "${existing}" --comment "Released as [${VERSION}](../releases/tag/v${VERSION})."
+          else
+            echo "no open \"${title}\" issue"
+          fi
+
+      # A main release has its ready-made images built at once, by xgs-image-builder's own workflow;
+      # a small release - its number has a fourth part, 0.1.0-alpha.5.6 - gets none (the owner's
+      # word, 2026-10-24). That workflow is another repository's, which this run's own token cannot
+      # start: IMAGES_DISPATCH_TOKEN is a fine-grained token with Actions read and write on
+      # xgs-image-builder alone. Without it, the builder's own look every six hours finds the release.
+      - name: Start the ready-made images of a main release
+        if: steps.version.outputs.version != ''
+        env:
+          GH_TOKEN: ${{ secrets.IMAGES_DISPATCH_TOKEN }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -eu
+          case "${VERSION}" in
+            *-*.*.*) echo "v${VERSION} is a small release: no ready-made images"; exit 0 ;;
+          esac
+          if [ -z "${GH_TOKEN}" ]; then
+            echo "no IMAGES_DISPATCH_TOKEN: xgs-image-builder builds the images of v${VERSION} at its next look, within six hours"
+            exit 0
+          fi
+          gh workflow run release-images.yml -R AbdelmonemAwad/xgs-image-builder \
+            -f project_tag="v${VERSION}" -f again=no
+          echo "xgs-image-builder is building the ready-made images of v${VERSION}"

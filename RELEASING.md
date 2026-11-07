@@ -53,15 +53,21 @@ done, and the number stays alpha until the owner says otherwise.
 3. Open a pull request titled `Release 0.1.0-alpha.1.1` with `CHANGELOG.md` and nothing else.
 4. Merge it once its checks pass. On that push the release workflow (`.github/workflows/release.yml`)
    finds a version in `CHANGELOG.md` that has no tag yet, tags the merge commit `v0.1.0-alpha.1.1` and
-   publishes the release with that version's section as its notes.
-5. It is signed. The release workflow starts the owner's private signing repository,
-   `AbdelmonemAwad/os-xgs-npu-release-signing`, as soon as the release is published - given
+   makes the release a draft, with that version's section as its notes.
+5. It is signed and published. The release workflow starts the owner's private signing repository,
+   `AbdelmonemAwad/os-xgs-npu-release-signing`, as soon as the draft is made - given
    `SIGNING_DISPATCH_TOKEN` here, a fine-grained token with Actions read and write on that repository
-   alone; without it, that repository's own look every six hours finds the release. The key and the
-   token that puts the files up are that repository's secrets, set from the owner's signing tool; the
-   signature is checked there with the public keys `main` holds before anything goes up, and what goes
-   up is read back and compared. The owner can sign on the owner's own machine instead, with the same tool;
-   this repository's CI never signs. Three files go up with the release:
+   alone; without it, that repository's own look every six hours finds the draft. It signs the release,
+   adds the three files below to the draft and then publishes it, marked the latest: this repository's
+   releases are immutable, and a published one takes no file more, so a release is signed before it is
+   published or never (v0.1.0-alpha.14, published before, could not be). A release whose signing fails
+   stays a draft, which no appliance and no visitor sees. The key and the token that puts the files up
+   and publishes are that repository's secrets, set from the owner's signing tool; the signature is
+   checked there with the public keys `main` holds before anything goes up, and what goes up is read
+   back and compared. The owner can sign on the owner's own machine instead, with the same tool; this
+   repository's CI never signs. Once the release is published, `.github/workflows/released.yml` does
+   what follows it: the site built again, the issues it fixes told, "A release is due" closed, the
+   ready-made images started. The three files:
    - `os-xgs-npu-<tag>.tar.gz`: `git archive --format=tar.gz --prefix=os-xgs-npu-<tag>/ <tag>`, made from
      a clone whose tag is the commit GitHub's own tag names (`git ls-remote origin refs/tags/<tag>`);
    - `release.json`: the manifest - `format` 1, `repository`, `tag`, `commit` (40 hex digits), `date`
@@ -70,7 +76,8 @@ done, and the number stays alpha until the owner says otherwise.
    - `release.json.sig`: the manifest's Ed25519 signature,
      `openssl pkeyutl -sign -inkey <key> -rawin -in release.json -out release.json.sig`.
 
-   `gh release upload <tag> <the three files>` puts them up. The public keys an appliance accepts are
+   `gh release upload <tag> <the three files>` puts them up on the draft, and `gh release edit <tag>
+   --draft=false --latest` publishes it. The public keys an appliance accepts are
    in `src/opnsense/scripts/xgs/release-keys/`, each named by the start of its fingerprint (the SHA-256
    of the key's DER form): `13ed7f86a4a7669bdaee666d01894443e151da4051c1f500cb6406d7888fd33b` since
    2026-11-07.
@@ -82,7 +89,7 @@ until its three files are up, and installs only the archive its signed manifest 
 fix is: in a release signed with a key the appliances already hold.
 
 Each issue a pull request in the release says it fixes is told so, once, with a link to the release
-([tools/release-notice.py](tools/release-notice.py), run by the same workflow). A pull request says it
+([tools/release-notice.py](tools/release-notice.py), run by `released.yml` once it is published). A pull request says it
 in a line of its own, `Fix for #N` - several as `Fix for #N, #M` - which GitHub does not take as an
 order to close, so the issue stays open until its reporter says the fix works; GitHub's `Fixes #N` is
 heard too, and closes it on merge. An issue only mentioned in passing is not told.
