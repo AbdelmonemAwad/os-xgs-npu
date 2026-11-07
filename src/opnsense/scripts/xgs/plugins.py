@@ -914,6 +914,28 @@ def watch(name, started, hist):
     return 'check', None, '', None, None
 
 
+# The step a failed update stopped at, as its self-update's message names it: the runner sees the files
+# an update leaves twice a second, and a step over in less - a small archive downloaded, checked against
+# its signature and removed - is not seen. Until 2026-11-07 the bar of an update refused for an archive not
+# the one signed said it stopped at Check for updates (issue 1122, the review's U20).
+STOPPED_AT = (
+    ('is not the one signed', 'download'),
+    ('could not be installed', 'download'),
+    ('has no install', 'unpack'),
+    ('failed with status', 'install'),
+)
+
+
+def stopped_at(message, seen):
+    """The step the message says the update stopped at, or the one seen if that is later; never one
+    before what was seen."""
+    names = [s for s, _ in STEPS]
+    said = next((step for words, step in STOPPED_AT if words in (message or '')), None)
+    if said is None or seen not in names:
+        return seen if seen in names else (said or seen)
+    return said if names.index(said) > names.index(seen) else seen
+
+
 def percent(step, fraction, since, hist):
     """Where on the bar: the step's start, moved toward the next one's by fraction or by time."""
     names = [s for s, _ in STEPS]
@@ -976,6 +998,9 @@ def run(names):
                 status = {'updated': 'done', 'current': 'current'}.get(result.get('status'), 'failed')
                 job.update({'status': status, 'message': result.get('message') or '',
                             'tag': result.get('tag') or ''})
+                if status == 'failed':
+                    job['step'] = stopped_at(job['message'], job.get('step'))
+                    job['percent'] = max(job.get('percent', 0), STEP_AT.get(job['step'], 0))
                 if confirmed and status == 'done' and result.get('sha') != confirmed:
                     job['message'] += ('; it installed commit %s, and GitHub named %s for that release'
                                        % ((result.get('sha') or '?')[:12], confirmed[:12]))
