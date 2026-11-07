@@ -19,10 +19,10 @@ to a new image, and the checks fail on one without them.
 |---|---|---|
 | [screens/](screens/) | The web interface, page by page, in English and in Arabic | 81 |
 | [hardware/](hardware/) | Photographs and drawings of the appliances, one folder each | 41 |
-| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 727 |
+| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 732 |
 | [readme/](readme/) | The README's banner and status board, drawn by tools/readme-art.py | 6 |
 
-894 images in all.
+899 images in all.
 
 ## The web interface
 
@@ -1215,6 +1215,18 @@ The page: [shaper-3300-2026-10-20.md](../measurements/shaper-3300-2026-10-20.md)
 |---|---|---|
 | [01-before.png](measurements/shaper-3300-2026-10-20/01-before.png) | Before: a 100 Mbit/s shaper, the stream in hardware at 8,816 Mbit/s | [shaper-3300-2026-10-20.md](../measurements/shaper-3300-2026-10-20.md) |
 | [02-after.png](measurements/shaper-3300-2026-10-20/02-after.png) | After: the same shaper, the stream with the host at 99.5 Mbit/s | [shaper-3300-2026-10-20.md](../measurements/shaper-3300-2026-10-20.md) |
+
+### measurements/signed-releases-2026-11-07/ (5)
+
+The page: [signed-releases-2026-11-07.md](../measurements/signed-releases-2026-11-07.md).
+
+| image | what it shows | used on |
+|---|---|---|
+| [01-signed-with-another-key-not-offered-first-3300.png](measurements/signed-releases-2026-11-07/01-signed-with-another-key-not-offered-first-3300.png) | First XGS 3300: a release signed with a key the appliance does not hold, not offered | [signed-releases-2026-11-07.md](../measurements/signed-releases-2026-11-07.md) |
+| [02-not-signed-yet-not-offered-first-3300.png](measurements/signed-releases-2026-11-07/02-not-signed-yet-not-offered-first-3300.png) | The newest release not signed yet: not offered | [signed-releases-2026-11-07.md](../measurements/signed-releases-2026-11-07.md) |
+| [03-an-archive-one-byte-changed-refused-first-3300.png](measurements/signed-releases-2026-11-07/03-an-archive-one-byte-changed-refused-first-3300.png) | An archive one byte from the signed one: the update stopped, nothing installed | [signed-releases-2026-11-07.md](../measurements/signed-releases-2026-11-07.md) |
+| [04-the-signed-release-offered-first-3300.png](measurements/signed-releases-2026-11-07/04-the-signed-release-offered-first-3300.png) | The signed release offered | [signed-releases-2026-11-07.md](../measurements/signed-releases-2026-11-07.md) |
+| [05-the-signed-release-installed-its-log-first-3300.png](measurements/signed-releases-2026-11-07/05-the-signed-release-installed-its-log-first-3300.png) | Its update: signed with the key, the same commit on GitHub, the archive the signed one, then the installer | [signed-releases-2026-11-07.md](../measurements/signed-releases-2026-11-07.md) |
 
 ### measurements/soak-ipsec-136-2026-10-20/ (2)
 
