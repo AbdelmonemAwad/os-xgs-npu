@@ -145,3 +145,31 @@ Afterwards os-portguard v1.0.1 was installed again from its tag, and its `self-u
 it had been, by its MD5. The lab's files, places and key were taken away, and main's `plugins.py` was
 put back. Without an appliance, `tools/test-plugin-install.py` runs 20 checks of the same, with
 throwaway keys.
+
+## The releases
+
+The same day nine of them were released, each signed with the release key: os-netreport 1.0.6, os-fanctl
+1.1.7, os-frontpanel 1.0.7, os-linkhealth 1.0.8, os-watchdog 1.0.3, os-kernelfollow 1.0.4, os-blocklists
+1.0.2, os-portguard 1.0.2 and os-fallbackcrypto 1.0.2, published from 11:44 to 12:15 UTC. Each release's
+workflow built its package and made the release a draft; the owner's signing repository signed it and
+published it, its archive, its manifest and the manifest's signature beside the package. opnsense-arabic
+and opnsense-rtl carry the same change and have no release of it yet.
+
+Two faults on the way, both in the release workflows, none in what an appliance runs:
+
+- os-netreport's run started no signing and still said success: `gh workflow run` asked for the signing
+  repository's default branch, which its token may not read. Its signing was started by hand; in all
+  eleven plugins the start now names the branch, and a start that fails fails the run.
+- Seven tags pushed within a minute started seven signings. The signing repository signs one at a time,
+  and GitHub keeps only the newest of the runs waiting, so four releases stayed drafts until one look over
+  the family signed them, at 12:15.
+
+Then each lab appliance took them through XGS: Updates' Plugins tab, Check and Update all: nine plugins in
+65 s on each XGS 3300, eight in 59 s on the XGS 136, which has no front panel. What was installed ran the
+`self-update.py` from before signed releases, so each took its release the old way, once. Afterwards each
+plugin carries the release key, and its new `self-update.py`, asked to check, verifies the published release
+with it.
+
+![The three lab appliances taking the nine releases by Update all: each plugin at its release's commit](../images/measurements/signed-plugin-releases-2026-11-07/10-nine-releases-taken-by-the-three.png)
+
+![Each appliance's new self-update.py of three plugins, asked to check: the release installed, its signature verified with the release key, the one key it carries](../images/measurements/signed-plugin-releases-2026-11-07/11-new-self-update-checks-the-release-key.png)
