@@ -170,19 +170,28 @@ with tempfile.TemporaryDirectory() as d:
           (0, ['  gh could not read #3, so the lines before it were not compared with it']))
 
 # release.yml, which runs changelog.py: the tag goes on the commit --commit gives, a release is made from
-# main alone and one run at a time, and the site is built again once the release is out.
-with open(os.path.join(os.path.dirname(here), '.github', 'workflows', 'release.yml'), encoding='utf-8') as f:
+# main alone and one run at a time - as a draft, since 2026-11-07, which the signing repository signs and
+# publishes (the releases are immutable) - and released.yml builds the site again once it is out.
+workflows = os.path.join(os.path.dirname(here), '.github', 'workflows')
+with open(os.path.join(workflows, 'release.yml'), encoding='utf-8') as f:
     flow = f.read()
+with open(os.path.join(workflows, 'released.yml'), encoding='utf-8') as f:
+    after = f.read()
 check("tag goes on the commit that added its version, not the run's own",
-      ('target=$(python3 tools/changelog.py --commit "${VERSION}")' in flow, '--target "${target}"' in flow,
-       'GITHUB_SHA' in flow), (True, True, False))
+      ('target=$(python3 tools/changelog.py --commit "${VERSION}")' in flow,
+       'git tag "v${VERSION}" "${target}"' in flow, 'GITHUB_SHA' in flow), (True, True, False))
 check('a release is made from main alone, one run at a time',
       (re.search(r"^    if: github\.ref == 'refs/heads/main'$", flow, re.M) is not None,
        re.search(r'^concurrency:\n  group: release\n  cancel-in-progress: false$', flow, re.M) is not None),
       (True, True))
-check('site built again once a release is out',
-      (re.search(r'^\s+run: gh workflow run website\.yml --ref main$', flow, re.M) is not None,
-       re.search(r'^      actions: write\b', flow, re.M) is not None), (True, True))
+check('a release made a draft on its tag, never published here, and its signing started',
+      (re.search(r'gh release create "v\$\{VERSION\}" --verify-tag --draft ', flow) is not None,
+       '--latest' in flow, 'gh workflow run sign.yml -R AbdelmonemAwad/os-xgs-npu-release-signing' in flow),
+      (True, False, True))
+check('site built again once a release is out, on its publication',
+      (re.search(r'^  release:\n    types: \[ published \]$', after, re.M) is not None,
+       re.search(r'^\s+run: gh workflow run website\.yml --ref main$', after, re.M) is not None,
+       re.search(r'^      actions: write\b', after, re.M) is not None), (True, True, True))
 
 print('%d failure(s)' % failures)
 sys.exit(1 if failures else 0)

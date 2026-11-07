@@ -13,7 +13,7 @@ the issue, so an issue stays open until whoever reported it says the fix works -
 version, with a link to the release and the way an appliance takes it. A pull request that only
 mentions an issue in passing tells it nothing.
 
-Run by .github/workflows/release.yml after it has published; an error here never undoes a release.
+Run by .github/workflows/released.yml once the release is published; an error here never undoes a release.
 """
 
 import argparse

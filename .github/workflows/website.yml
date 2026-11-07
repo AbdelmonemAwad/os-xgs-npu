@@ -10,8 +10,8 @@ name: website
 # does not have fails it - so a change to the pages cannot break the site without being seen. On
 # main it is built the same way and deployed to Cloudflare, once the repository has the token to do
 # it with; until then the build is the whole of it. Once a day as well, because the story is in the
-# wiki, and a change there makes no push here. And once more after a release (release.yml): the build
-# of the release's own push reads the tags before the release has made its tag.
+# wiki, and a change there makes no push here. And once more after a release is published (released.yml):
+# the build of the release's own push reads the tags before the release has made its tag.
 
 on:
   pull_request:

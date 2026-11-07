@@ -4,14 +4,21 @@
 #
 name: release
 
-# Publish a release when - and only when - CHANGELOG.md gains a version that has no tag yet.
+# Make a release when - and only when - CHANGELOG.md gains a version that has no tag yet.
 #
 # A release is what every appliance's Updates page offers, so it is never made by a push: it is made
 # by merging a pull request that adds a version section to CHANGELOG.md (tools/changelog.py --release).
-# This finds the newest version there, and if no tag carries it, tags the merge commit and publishes
-# the release with that section as its notes, named by its number alone, and marks it the latest -
-# the number says alpha; a pre-release would leave the repository's page showing only tags. RELEASING.md
-# has when a release is made and how the number is chosen.
+# This finds the newest version there, and if no tag carries it, tags the merge commit and makes the
+# release - that section its notes, named by its number alone - a DRAFT. The owner's private signing
+# repository then signs it: its three files (RELEASING.md, step 5) added to the draft, and the release
+# published and marked the latest - the number says alpha; a pre-release would leave the repository's
+# page showing only tags. Published first and signed after, as until 2026-11-07, it could not be
+# signed at all: this repository's releases are immutable, and a published one takes no file more
+# ("Cannot upload assets to an immutable release", 2026-11-07 00:38 UTC, v0.1.0-alpha.14); and an
+# appliance whose update.py checks the signature offers no release before its files are up. A release
+# whose signing fails stays a draft, which no appliance and no visitor sees. What follows a release -
+# the site, the issues it fixes, "A release is due", the ready-made images - is released.yml's, on the
+# release's publication. RELEASING.md has when a release is made and how the number is chosen.
 
 on:
   push:
@@ -30,16 +37,13 @@ concurrency:
 
 jobs:
   release:
-    name: tag and publish a new version
+    name: tag a new version, its release a draft to sign
     # From main alone. A run by hand on another branch would have published that branch's changelog,
     # tagged at its head (until 2026-11-06).
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     permissions:
       contents: write
-      issues: write
-      pull-requests: read
-      actions: write      # to start website.yml once the release is out
     steps:
       - uses: actions/checkout@v7
         with:
@@ -54,7 +58,7 @@ jobs:
             echo "CHANGELOG.md has no released version"
             echo "version=" >> "$GITHUB_OUTPUT"
           elif git rev-parse -q --verify "refs/tags/v${v}" > /dev/null; then
-            echo "v${v} is tagged already - nothing to publish"
+            echo "v${v} is tagged already - nothing to make"
             echo "version=" >> "$GITHUB_OUTPUT"
           else
             echo "v${v} is new"
@@ -65,7 +69,8 @@ jobs:
       # request, which is this run's own commit when that merge started it. Until 2026-11-06 it went on
       # the commit the run started from, so a run by hand after other merges would have tagged those too,
       # though no section names them and none of their issues is told. No such commit: nothing tagged.
-      - name: Tag the merge commit and publish
+      # The tag is pushed before the draft is made: the signing reads the tag's commit as GitHub names it.
+      - name: Tag the merge commit and make its release a draft
         if: steps.version.outputs.version != ''
         env:
           GH_TOKEN: ${{ github.token }}
@@ -74,15 +79,14 @@ jobs:
           set -eu
           target=$(python3 tools/changelog.py --commit "${VERSION}")
           python3 tools/changelog.py --notes "${VERSION}" > notes.md
-          gh release create "v${VERSION}" --target "${target}" --title "${VERSION}" \
-            --notes-file notes.md --latest
-          echo "published v${VERSION} at ${target}"
+          git tag "v${VERSION}" "${target}"
+          git push origin "refs/tags/v${VERSION}"
+          gh release create "v${VERSION}" --verify-tag --draft --title "${VERSION}" --notes-file notes.md
+          echo "v${VERSION} tagged at ${target}; its release a draft, to be signed and published"
 
-      # The release signed at once (RELEASING.md, step 5): an appliance whose update.py checks the
-      # signature offers no release before its three files are up. The signing repository is another
-      # one, private, whose workflow this run's own token cannot start: SIGNING_DISPATCH_TOKEN is a
-      # fine-grained token with Actions read and write on it alone. Without it, that repository's own
-      # look every six hours finds the release; a failure here never undoes the release.
+      # The signing repository is another one, private, whose workflow this run's own token cannot
+      # start: SIGNING_DISPATCH_TOKEN is a fine-grained token with Actions read and write on it alone.
+      # Without it, that repository's own look every six hours finds the draft.
       - name: Start the signing of the release
         if: steps.version.outputs.version != ''
         continue-on-error: true
@@ -92,76 +96,8 @@ jobs:
         run: |
           set -eu
           if [ -z "${GH_TOKEN}" ]; then
-            echo "no SIGNING_DISPATCH_TOKEN: os-xgs-npu-release-signing signs v${VERSION} at its next look, within six hours"
+            echo "no SIGNING_DISPATCH_TOKEN: os-xgs-npu-release-signing signs and publishes v${VERSION} at its next look, within six hours"
             exit 0
           fi
           gh workflow run sign.yml -R AbdelmonemAwad/os-xgs-npu-release-signing -f tag="v${VERSION}"
-          echo "os-xgs-npu-release-signing is signing v${VERSION}"
-
-      # The site's home page gives the newest release, read from the tags (website/build.py). Its build
-      # of this same push starts beside this run and reads the tags first: for 0.1.0-alpha.14 it read
-      # them five seconds before the release was made, and the home page said 0.1.0-alpha.13 until a
-      # later push built the site again, an hour and 43 minutes after (until 2026-11-06). A release made
-      # with this run's own token starts no workflow, but a workflow_dispatch made with it does:
-      # website.yml on main, which waits for the build under way and then reads the new tag. A failure
-      # here never undoes the release.
-      - name: Rebuild site for new release
-        if: steps.version.outputs.version != ''
-        continue-on-error: true
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: gh workflow run website.yml --ref main
-
-      # Each issue a pull request in this release says it fixes - a line "Fix for #N", or GitHub's own
-      # "Fixes #N" - is told, once, that the fix is out (tools/release-notice.py). It runs here because
-      # a release published with this run's own token starts no other workflow; an error in it never
-      # undoes the release.
-      - name: Tell the issues it fixes
-        if: steps.version.outputs.version != ''
-        continue-on-error: true
-        env:
-          GH_TOKEN: ${{ github.token }}
-          VERSION: ${{ steps.version.outputs.version }}
-        run: python3 tools/release-notice.py "${VERSION}"
-
-      # "A release is due" (release-due.yml) is answered by the release itself, so it is closed here.
-      # Until 2026-11-06 it stayed open until release-due.yml's next look - its own, scheduled for
-      # 06:41, started by GitHub hours later - or until someone started that workflow by hand.
-      - name: Close "A release is due"
-        if: steps.version.outputs.version != ''
-        continue-on-error: true
-        env:
-          GH_TOKEN: ${{ github.token }}
-          VERSION: ${{ steps.version.outputs.version }}
-        run: |
-          set -eu
-          title="A release is due"
-          existing=$(TITLE="${title}" gh issue list --state open --author app/github-actions --search "in:title \"${title}\"" --json number,title --jq 'map(select(.title == env.TITLE)) | .[0].number // empty')
-          if [ -n "${existing}" ]; then
-            gh issue close "${existing}" --comment "Released as [${VERSION}](../releases/tag/v${VERSION})."
-          else
-            echo "no open \"${title}\" issue"
-          fi
-
-      # A main release has its ready-made images built at once, by xgs-image-builder's own workflow;
-      # a small release - its number has a fourth part, 0.1.0-alpha.5.6 - gets none (the owner's
-      # word, 2026-10-24). That workflow is another repository's, which this run's own token cannot
-      # start: IMAGES_DISPATCH_TOKEN is a fine-grained token with Actions read and write on
-      # xgs-image-builder alone. Without it, the builder's own look every six hours finds the release.
-      - name: Start the ready-made images of a main release
-        if: steps.version.outputs.version != ''
-        env:
-          GH_TOKEN: ${{ secrets.IMAGES_DISPATCH_TOKEN }}
-          VERSION: ${{ steps.version.outputs.version }}
-        run: |
-          set -eu
-          case "${VERSION}" in
-            *-*.*.*) echo "v${VERSION} is a small release: no ready-made images"; exit 0 ;;
-          esac
-          if [ -z "${GH_TOKEN}" ]; then
-            echo "no IMAGES_DISPATCH_TOKEN: xgs-image-builder builds the images of v${VERSION} at its next look, within six hours"
-            exit 0
-          fi
-          gh workflow run release-images.yml -R AbdelmonemAwad/xgs-image-builder \
-            -f project_tag="v${VERSION}" -f again=no
-          echo "xgs-image-builder is building the ready-made images of v${VERSION}"
+          echo "os-xgs-npu-release-signing is signing v${VERSION}; it publishes the release once its files are up"
