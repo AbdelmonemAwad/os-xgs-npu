@@ -146,6 +146,11 @@ LOG = os.path.join(STATE, 'apply.log')
 BUILD_LOG = '/var/db/os-xgs-npu/install-build.log'
 BUILDROOT = '/var/db/os-xgs-npu/build'
 BUILD_RUN = "the driver's build is logged in "
+# The plugins' runner's progress (scripts/xgs/plugins.py, PROGRESS): install.sh's last section takes
+# the plugins along by that runner, and the bar names the plugin it is on (plugins_now). The runner
+# itself, found by its command line (plugins_runner): the reboot waits while it runs.
+PLUGINS_PROGRESS = '/var/db/os-xgs-npu/plugins-update.json'
+PLUGINS_RUNNER = 'scripts/xgs/plugins[.]py run'
 # How far back to look for a commit whose checks passed. Unauthenticated, GitHub allows sixty
 # requests an hour from one address, and each commit looked at is one request.
 LOOK_BACK = 5
@@ -555,7 +560,11 @@ def check_releases():
                   'message': "GitHub refused the newest release's manifest (%s)" % error.code}
         write_json(CHECK, result)
         return result
-    except (urllib.error.URLError, OSError, ValueError) as error:
+    except (urllib.error.URLError, OSError, ValueError, http.client.HTTPException,
+            subprocess.SubprocessError) as error:
+        # a download cut short (IncompleteRead) and OpenSSL that did not answer in time, as well as a
+        # connection that failed: the check's own error, said, where until 2026-11-07 the first two
+        # ended it in a traceback with nothing written (the release check's F2)
         result = {'status': 'error', 'checked_at': now, 'source': 'releases',
                   'message': 'could not reach GitHub: %s' % error}
         write_json(CHECK, result)
@@ -577,7 +586,9 @@ def check_releases():
     result['update_available'] = not same and not result.get('newer_than_target')
     try:
         describe(result, have, have_rel)
-    except (urllib.error.URLError, OSError, ValueError, KeyError, TypeError):
+    except Exception:	# what the page shows beside the release only: whatever the API answers - an
+        # object where a list was due included (the release check's F2) - decides nothing, and the
+        # check still answers with the signed release
         result.setdefault('compare', 'unknown')
         result.setdefault('ahead_by', None)
         result['changes'], result['releases_since'] = [], None
@@ -713,6 +724,54 @@ def this_build(log_lines):
     return build[1:]
 
 
+def plugins_now(state):
+    """The plugin this update's last section is on: install.sh's "== the plugins ==" runs
+    plugins.py sync, which queues the plugins' updates and installs for the Plugins tab's runner and
+    waits for them. Its name and its place in the queue, and how many of the queue have ended, from the
+    runner's progress (PLUGINS_PROGRESS); the name None between two, the runner not yet on the next -
+    and None for all when the queue there was started before this update. Until 2026-11-07 the bar
+    stood at 96%, "Finishing", for as long as that took - fifteen minutes on the first XGS 3300 that
+    day, one plugin updating itself - and said nothing of the plugins (the review's U19)."""
+    prog = read_json(PLUGINS_PROGRESS, {})
+    if not isinstance(prog, dict) or (prog.get('started_at') or 0) < (state.get('started_at') or 0):
+        return None
+    return queue_place(prog)
+
+
+def queue_place(prog):
+    """Where the plugins' runner is in its queue, out of its progress: the plugin it is on (None
+    between two), that one's place, the queue's length and how many of it have ended - None when
+    the progress has no queue."""
+    if not isinstance(prog, dict):
+        return None
+    queue = [name for name in prog.get('queue') or [] if isinstance(name, str)]
+    if not queue:
+        return None
+    jobs = prog.get('jobs') if isinstance(prog.get('jobs'), dict) else {}
+    status = {name: (jobs.get(name) or {}).get('status') for name in queue}
+    on = next((name for name in queue if status[name] == 'running'), None)
+    ended = sum(1 for name in queue if status[name] in ('done', 'current', 'failed'))
+    return {'name': on, 'at': queue.index(on) + 1 if on else None, 'of': len(queue), 'ended': ended}
+
+
+def plugins_runner():
+    """The plugins' runner while one runs - the Plugins tab's, or the one an update's sync started,
+    which goes on after the update when a plugin takes longer than the update waits (plugins.py, THE
+    UPDATE WAITS FOR A PLUGIN A WHILE): where it is in its queue, as queue_place says, with running
+    True; None when none runs. The reboot waits for it: a reboot then cuts a plugin's installer, and
+    pkg with it, in the middle. Until 2026-11-07 Reboot now was offered all the while (the review's
+    U18). Found by its command line, not by the process number its progress keeps, which a runner
+    that did not end leaves behind for another process to take."""
+    try:
+        found = subprocess.run(['/bin/pgrep', '-f', PLUGINS_RUNNER], capture_output=True, text=True,
+                               errors='replace', timeout=10)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if found.returncode != 0 or not found.stdout.strip():
+        return None
+    return dict(queue_place(read_json(PLUGINS_PROGRESS, {})) or {}, running=True)
+
+
 def progress(state):
     """How far an update has got, read from what it leaves behind - never estimated from the clock.
 
@@ -779,9 +838,16 @@ def progress(state):
                     percent = max(percent or 0, 95)
     if any(header.startswith(('== loader', '== installed')) for header in headers):
         step, percent, detail = 'finish', max(percent or 0, 96), ''
+    # the plugins taken along, the last section: the plugin it is on named, and the bar a step on for
+    # each that has ended - by what the runner left, as the rest of it is
+    plugin = None
+    if state.get('status') == 'running' and headers and headers[-1].startswith('== the plugins'):
+        plugin = plugins_now(state)
+        if plugin:
+            percent = max(percent or 0, min(99, 96 + 3 * plugin['ended'] // plugin['of']))
     if state.get('status') == 'done':
         step, percent, detail = 'finish', 100, ''
-    return {'step': step, 'percent': percent, 'detail': detail,
+    return {'step': step, 'percent': percent, 'detail': detail, 'plugin': plugin,
             'started_at': state.get('started_at'), 'finished_at': state.get('finished_at')}
 
 
@@ -884,6 +950,7 @@ def status():
         'apply': state,
         'progress': progress(state),
         'pending_reboot': pending,
+        'plugins_running': plugins_runner(),
         'driver_unchanged': since_boot and not driver_changed,
         'boot_steps_changed': steps,
     })

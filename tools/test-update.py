@@ -449,6 +449,74 @@ check('a normal update: done', bar(dict(running, status='done', finished_at=runn
 numbers = [n for n in shown if n is not None]
 check('a normal update: the bar never goes back', numbers, sorted(numbers))
 
+# U19: the plugins taken along, the installer's last section. The bar names the plugin the runner is on,
+# as the Plugins tab does, and moves a step for each that has ended - read from what the runner left, and
+# only from a queue started after this update; nothing of it once the update is done.
+up.PLUGINS_PROGRESS = os.path.join(STATE, 'plugins-update.json')
+AT_PLUGINS = polls[-1][1] + ['== installed ==', '', '== the plugins ==']
+write(up.LOG, AT_PLUGINS)
+write(up.BUILD_LOG, ACCOUNT_BUILT)
+build_dir(10, 10)
+
+
+def queue(started, **status):
+    names = list(status)
+    with open(up.PLUGINS_PROGRESS, 'w', encoding='utf-8') as handle:
+        json.dump({'queue': names, 'started_at': started, 'runner': 4343,
+                   'jobs': {n: {'status': s} for n, s in status.items()}}, handle)
+
+
+def plugin_bar(state):
+    p = up.progress(state) or {}
+    return p.get('step'), p.get('percent'), p.get('plugin')
+
+
+check('the plugins: no runner\'s progress, the bar at the finish', plugin_bar(running), ('finish', 96, None))
+queue(running['started_at'] - 100, **{'os-netreport': 'running'})
+check('... a queue started before this update: not named', plugin_bar(running), ('finish', 96, None))
+queue(running['started_at'] + 60, **{'os-netreport': 'running', 'os-fanctl': 'queued'})
+check('... this update\'s, the first running: named, 1 of 2', plugin_bar(running),
+      ('finish', 96, {'name': 'os-netreport', 'at': 1, 'of': 2, 'ended': 0}))
+queue(running['started_at'] + 60, **{'os-netreport': 'done', 'os-fanctl': 'queued'})
+check('... between the two: none named, a step on for the one ended', plugin_bar(running),
+      ('finish', 97, {'name': None, 'at': None, 'of': 2, 'ended': 1}))
+queue(running['started_at'] + 60, **{'os-netreport': 'done', 'os-fanctl': 'running'})
+check('... the second running: named, 2 of 2', plugin_bar(running),
+      ('finish', 97, {'name': 'os-fanctl', 'at': 2, 'of': 2, 'ended': 1}))
+queue(running['started_at'] + 60, **{'os-netreport': 'done', 'os-fanctl': 'failed'})
+check('... both ended: none named, never 100 before the update says done', plugin_bar(running),
+      ('finish', 99, {'name': None, 'at': None, 'of': 2, 'ended': 2}))
+with open(up.PLUGINS_PROGRESS, 'w', encoding='utf-8') as handle:
+    handle.write('{"queue": ')
+check('... a progress file being written: not read, no fault', plugin_bar(running), ('finish', 96, None))
+queue(running['started_at'] + 60, **{'os-netreport': 'running'})
+write(up.LOG, AT_PLUGINS + ['   os-netreport: updated v1.0.4', '',
+                            '== THE DRIVER WAS NOT REBUILT: everything else is installed =='])
+check('... a section after it: the plugins not named', plugin_bar(running), ('finish', 96, None))
+write(up.LOG, AT_PLUGINS)
+check('... the update done: 100, nothing named', plugin_bar(dict(running, status='done')), ('finish', 100, None))
+check('... the update stopped: nothing named', plugin_bar(dict(stopped))[2], None)
+
+# U18: Reboot now waits while the plugins' runner runs - the runner found by its command line, its place
+# read from its progress; with no runner, nothing held, whatever its progress says.
+check('U18: the runner as plugins.py starts it', re.search(up.PLUGINS_RUNNER,
+      '/usr/local/bin/python3 /usr/local/opnsense/scripts/xgs/plugins.py run os-netreport') is not None, True)
+up.PLUGINS_RUNNER = 'test-update-runner[.]py run'
+queue(running['started_at'] + 60, **{'os-netreport': 'running', 'os-fanctl': 'queued'})
+check('U18: no runner, its progress saying running: nothing held', up.plugins_runner(), None)
+runner = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(60)', 'test-update-runner.py', 'run',
+                           'os-netreport'])
+try:
+    time.sleep(0.5)
+    check('U18: the runner running: held, the plugin it is on named', up.plugins_runner(),
+          {'name': 'os-netreport', 'at': 1, 'of': 2, 'ended': 0, 'running': True})
+    os.remove(up.PLUGINS_PROGRESS)
+    check('U18: ... its progress not there: held all the same', up.plugins_runner(), {'running': True})
+finally:
+    runner.kill()
+    runner.wait()
+check('U18: the runner ended: nothing held', up.plugins_runner(), None)
+
 shutil.rmtree(STATE, ignore_errors=True)
 
 
@@ -686,6 +754,41 @@ r = up.run_check()
 check('U15: a page past the first hundred refused: the check answers with what it read',
       (r.get('status'), r.get('releases_since'), r.get('target', {}).get('tag')),
       ('ok', 1, 'v0.1.0-alpha.150'))
+
+# F2 (the release check's review, 2026-11-07): a check whose answer cannot be read ends in its own error,
+# written for the page - a manifest cut short, OpenSSL that did not answer in time - where it ended in a
+# traceback with nothing written; and what the page shows beside the release - a comparison answered with
+# something else than one - decides nothing, where it ended the check the same way.
+asked = releases(150)
+installed_release(145)
+kept_manifest, kept_get = up.signed_manifest, up.get
+
+
+def raising(error):
+    def manifest(*args, **kwargs):
+        raise error
+    return manifest
+
+
+for what, error in (('a manifest cut short', http.client.IncompleteRead(b'{"form', 300)),
+                    ('OpenSSL that did not answer in time', subprocess.TimeoutExpired(['openssl'], 30))):
+    up.signed_manifest = raising(error)
+    r = up.run_check()
+    check('F2: %s: the check\'s own error' % what,
+          (r.get('status'), r.get('message', '').startswith('could not reach GitHub: ')), ('error', True))
+    check('F2: ... written for the page', up.read_json(up.CHECK, {}).get('status'), 'error')
+up.signed_manifest = kept_manifest
+
+
+def compare_a_list(url, direct=False):
+    return [] if '/compare/' in url else kept_get(url, direct)
+
+
+up.get = compare_a_list
+r = up.run_check()
+check('F2: a comparison answered with a list: the signed release offered all the same',
+      (r.get('status'), r.get('target', {}).get('tag'), r.get('compare')), ('ok', 'v0.1.0-alpha.150', 'unknown'))
+up.get = kept_get
 
 # ---------------------------------------------------------------- signed releases (2026-11-07)
 # What is installed is what the release's owner signed: the check reads the newest release's manifest

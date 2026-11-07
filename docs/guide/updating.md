@@ -49,7 +49,9 @@ Six steps, each lit as it starts and ticked as it ends:
 - **Install** - the plugin, its pages and its boot hooks;
 - **Kernel sources** - the sources of the kernel this appliance runs;
 - **Build the driver** - counted in source files, 9 of 9;
-- **Finish**.
+- **Finish** - and the appliance plugins brought along last: while one is updated or installed, the
+  line under the bar names it, as the Plugins tab does - "Finishing - Updating 1 of 2: os-netreport" -
+  and the bar moves on a step as each one ends.
 
 Only the update's own run is counted. When the page cannot tell how far it has got - the driver's
 build it would read belongs to another run of the installer or of the kernel follower, or the update
@@ -111,6 +113,11 @@ asks for that reboot once.
 
 **Reboot now** asks once, and says what it costs: traffic stops until the appliance is back, a few
 minutes.
+
+It is not offered while a plugin is being updated or installed - by the Plugins tab, or one the
+update brought along that took longer than the update waits for it: a reboot then would cut the
+plugin's installer in the middle. The row names the plugin in its place - "Updating 1 of 1:
+os-netreport" - and **Reboot now** is back once the plugin is done.
 
 ![The reboot asks](../images/screens/update-2026-10-19/14-xgs3300-old-reboot-asks.png)
 
