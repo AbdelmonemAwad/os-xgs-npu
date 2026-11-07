@@ -1022,8 +1022,8 @@ def sitemap(site_dir):
             if len(p.get('alternates') or []) > 2:
                 for lang, href in p['alternates']:
                     lines.append('    <xhtml:link rel="alternate" hreflang=%s href=%s/>' % (quoteattr(lang), quoteattr(href)))
-            # the site's own pictures the page shows (hooks.py, on_page_content): how image search finds
-            # the measurements' photographs and the appliances'
+            # the photographs and screenshots the page shows (hooks.py, on_page_content): how image
+            # search finds the measurements' photographs and the appliances'
             for src in p.get('images') or []:
                 lines.append('    <image:image><image:loc>%s</image:loc></image:image>' % escape(src))
             lines.append('  </url>')
