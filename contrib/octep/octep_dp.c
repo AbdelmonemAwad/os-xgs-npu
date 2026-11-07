@@ -8120,11 +8120,13 @@ octep_sysctl_dp_if_add(SYSCTL_HANDLER_ARGS)
 	if (error != 0 || req->newptr == NULL)
 		return (error);
 	if (val > 0xffff)
-		return (EINVAL);
-	error = octep_dp_if_attach(sc, (uint16_t)val);
+		error = EINVAL;
+	else
+		error = octep_dp_if_attach(sc, (uint16_t)val);
 	/*
 	 * The name and the unit given in dp.if_label and dp.if_unit were for this port only, whichever
-	 * way the attach went.
+	 * way the attach went - a tag refused before it too: until 2026-11-07 that returned first, and
+	 * the next dp.if_add took the stale unit, or was refused for it (the release check's review, K3).
 	 */
 	sc->dp_if_label[0] = '\0';
 	sc->dp_if_unit = OCTEP_DP_IF_PORT_AUTO;
