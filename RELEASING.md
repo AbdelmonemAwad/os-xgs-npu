@@ -54,8 +54,14 @@ done, and the number stays alpha until the owner says otherwise.
 4. Merge it once its checks pass. On that push the release workflow (`.github/workflows/release.yml`)
    finds a version in `CHANGELOG.md` that has no tag yet, tags the merge commit `v0.1.0-alpha.1.1` and
    publishes the release with that version's section as its notes.
-5. Sign it, on the owner's machine - never in CI, and never with a key that is anywhere on GitHub. Three
-   files go up with the release:
+5. It is signed. The release workflow starts the owner's private signing repository,
+   `AbdelmonemAwad/os-xgs-npu-release-signing`, as soon as the release is published - given
+   `SIGNING_DISPATCH_TOKEN` here, a fine-grained token with Actions read and write on that repository
+   alone; without it, that repository's own look every six hours finds the release. The key and the
+   token that puts the files up are that repository's secrets, set from the owner's signing tool; the
+   signature is checked there with the public keys `main` holds before anything goes up, and what goes
+   up is read back and compared. The owner can sign on the owner's own machine instead, with the same tool;
+   this repository's CI never signs. Three files go up with the release:
    - `os-xgs-npu-<tag>.tar.gz`: `git archive --format=tar.gz --prefix=os-xgs-npu-<tag>/ <tag>`, made from
      a clone whose tag is the commit GitHub's own tag names (`git ls-remote origin refs/tags/<tag>`);
    - `release.json`: the manifest - `format` 1, `repository`, `tag`, `commit` (40 hex digits), `date`
