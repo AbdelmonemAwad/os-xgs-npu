@@ -271,15 +271,12 @@ def later(a, b):
 
 def post_modified(post):
     """A news post's last change as seo() takes it for the post's own page: its date - updated, else
-    created - at the start of its day in UTC, or its source's last commit when that is later."""
+    created - at the start of its day in UTC, or the last commit of the file it is made from
+    (dated_by, build.py) when that is later."""
     date = getattr(getattr(post, 'config', None), 'date', None) or {}
     d = date.get('updated') or date.get('created') if hasattr(date, 'get') else None
     day = str(d)[:10] + 'T00:00:00+00:00' if d else None
-    try:
-        src = source_of(post)
-    except AttributeError:
-        src = None
-    return later(day, dates.get(src)) if src else day
+    return later(day, dates.get((getattr(post, 'meta', None) or {}).get('dated_by')))
 
 
 release_dates = {}
@@ -408,6 +405,11 @@ def seo(page, config, lang):
     url = page.canonical_url or (config['site_url'] + page.url)
     path = url[len(SITE):] if url.startswith(SITE) else '/' + page.url
     src = source_of(page)
+    # A news post names build.py, which makes it, as its edit link; it is dated by the file it is made
+    # from (dated_by), and a release's post by its own day alone. Until 2026-11-07 every post took
+    # build.py's last commit: 47 of them said 2026-11-05, the day build.py had last changed.
+    if type(page).__name__ == 'Post':
+        src = page.meta.get('dated_by')
     # A news post's own date (Material gives it as a date, or as {created: ...}), else the source's.
     d = page.meta.get('date')
     if isinstance(d, dict):

@@ -367,7 +367,8 @@ class Site:
             # is the one to index (hooks.py), so the two do not compete under one title.
             entries.append(dict(date=date, slug=slug, title=title, category='Measurements',
                                 summary=' '.join(plain.split()), text=text,
-                                canonical='https://npuforge.org/docs/measurements/%s/' % page.stem))
+                                canonical='https://npuforge.org/docs/measurements/%s/' % page.stem,
+                                dated_by='docs/measurements/' + page.name))
 
         for f in sorted((HERE / 'news').glob('*.md')) if (HERE / 'news').exists() else []:
             raw = f.read_text(encoding='utf-8')
@@ -376,13 +377,18 @@ class Site:
             body = raw.split('\n---', 1)[1].lstrip('\n')
             text = self.rewrite(body, 'site', 'website/news/' + f.name, sp)
             entries.append(dict(date=meta['date'], slug=meta['slug'], title=meta['title'].strip('"'),
-                                category='Project', summary=meta.get('summary', '').strip('"'), text=text))
+                                category='Project', summary=meta.get('summary', '').strip('"'), text=text,
+                                dated_by='website/news/' + f.name))
 
         for e in entries:
-            fm = ('---\ndate: %s\nslug: %s\ncategories:\n  - %s\ndescription: %s\ncomments: true\n%s'
+            # edit_url is build.py, which makes every post; dated_by is the file a post is made from - a
+            # measurement's page, a project post's own - which dates it in the sitemap (hooks.py). A
+            # release's post has none: its day is its date, and CHANGELOG.md changes at every release.
+            fm = ('---\ndate: %s\nslug: %s\ncategories:\n  - %s\ndescription: %s\ncomments: true\n%s%s'
                   'edit_url: %s/edit/main/website/build.py\n---\n\n') % (
                 e['date'], e['slug'], e['category'], json.dumps(e['summary'][:300], ensure_ascii=False),
-                'canonical: %s\n' % e['canonical'] if e.get('canonical') else '', GH)
+                'canonical: %s\n' % e['canonical'] if e.get('canonical') else '',
+                'dated_by: %s\n' % e['dated_by'] if e.get('dated_by') else '', GH)
             (posts / ('%s.md' % e['slug'])).write_text(fm + e['text'], encoding='utf-8', newline='\n')
         self.feed(sorted(entries, key=lambda e: (e['date'], e['slug']), reverse=True)[:40])
 
