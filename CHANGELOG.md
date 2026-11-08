@@ -13,6 +13,31 @@ release on an appliance you can reach before you trust it with a network you dep
 
 Nothing yet.
 
+## 0.1.0-alpha.15.2 - 2026-11-08
+
+The problem reporter and verify.sh. Two owners' XGS 126s reported "they agree" - their port table confirmed - from
+every boot, forty times between them on [issue 812](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/812), which
+was reopened as if a fix had failed; an agreement is now sent once from an appliance, and again only when what it
+confirms changes. Every report's Coprocessor software row says how the driver read that software - one of the three
+vendor versions it knows, or none: one of those owners' coprocessors runs vendor build 20.0.0.222, which the drivers
+have no row for. And verify.sh fails when the coprocessor's fast path stops answering its heartbeat, or the driver
+has taken the coprocessor as gone: on 2026-11-08 a lab XGS 3300's did both, and verify.sh still said nothing failed.
+Before the release the three lab appliances took its candidate the way an owner takes it, from 0.1.0-alpha.15.1,
+and their drivers carried two hours of traffic on all three without a failure; verify.sh's change, merged after
+that, was run on each of the three.
+
+### Improvements and additions
+
+- Reporter: a port check that agrees is said once; how the driver reads the coprocessor's software ([#1143](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1143))
+- verify.sh: a coprocessor taken as gone, or a fast path that stopped answering its heartbeat, fails ([#1144](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1144))
+- Relay: a port check that agrees is noted once for each appliance and binding, and never reopens its issue ([#1142](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1142)) - the problem reports' relay, deployed apart; nothing on an appliance changes with it
+- Site: the sitemaps list each page's photographs and screenshots; the home page, the news and the story pages dated by what they show ([#1140](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1140), [#1141](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1141)) - nothing on an appliance changes with it
+
+### Documentation
+
+- Measurements: the check before 0.1.0-alpha.15.1, 2026-11-07 ([#1138](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1138))
+- Measurements: the plugins' first signed releases, and photographs with their lines whole ([#1139](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1139))
+
 ## 0.1.0-alpha.15.1 - 2026-11-07
 
 What remained after 0.1.0-alpha.15: three findings of [the userland review](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/1072) and [issue 890](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/890)'s; ten of the review made in the release check before 0.1.0-alpha.15; and
