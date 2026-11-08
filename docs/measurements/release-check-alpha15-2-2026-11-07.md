@@ -44,7 +44,8 @@ before the driver had placed its numbering. The second, of the merged `reporter.
 
 The reporter's 71 tests passed; the new ones fail on the reporter before 1143. The branch's reporter was then run beside
 the installed one on all three appliances, each taken for a model not run here with its own port check: reports made
-1, 0, 1, 0, 1 on each, and a look that failed before its queue made the report again at the next boot.
+1, 0, 1, 0, 1 on each, and a look that failed before its queue was saved made the report again at the next look, in
+the same boot.
 
 ## The update as an owner takes it
 
@@ -70,11 +71,11 @@ After the restart, the installed reporter's Coprocessor software row on each:
 Its first look after the restart ran on all three, and the page's list of reports answers on each; reporting is manual
 there, so nothing was sent.
 
-![The first XGS 3300, vendor version 23: from v0.1.0-alpha.15.1 to the candidate through XGS: Updates, the driver rebuilt, a restart, verify.sh 9 passed and 0 failed, the reporter's Coprocessor software row](../images/measurements/release-check-alpha15-2-2026-11-07/01-first-3300-user-path-ac1d51d1.png)
+![The first XGS 3300, vendor version 23: from v0.1.0-alpha.15.1 to the candidate through XGS: Updates, the driver rebuilt, a restart, verify.sh 9 passed and 0 failed](../images/measurements/release-check-alpha15-2-2026-11-07/01-first-3300-user-path-ac1d51d1.png)
 
-![The second XGS 3300, vendor version 22: the update to the candidate, a restart, verify.sh 9 passed and 0 failed, the reporter's Coprocessor software row](../images/measurements/release-check-alpha15-2-2026-11-07/02-second-3300-user-path-ac1d51d1.png)
+![The second XGS 3300, vendor version 22: the update to the candidate, a restart, verify.sh 9 passed and 0 failed](../images/measurements/release-check-alpha15-2-2026-11-07/02-second-3300-user-path-ac1d51d1.png)
 
-![The XGS 136, vendor version 21: the update to the candidate, a restart, verify.sh 14 passed and 0 failed with 14 front ports, the reporter's Coprocessor software row](../images/measurements/release-check-alpha15-2-2026-11-07/03-136-user-path-ac1d51d1.png)
+![The XGS 136, vendor version 21: the update to the candidate, a restart, verify.sh 14 passed and 0 failed with 14 front ports](../images/measurements/release-check-alpha15-2-2026-11-07/03-136-user-path-ac1d51d1.png)
 
 ## Two hours of traffic on all three
 
