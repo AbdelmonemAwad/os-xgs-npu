@@ -152,6 +152,54 @@ EOF
 # TX section further down applies only where that one is. Until 2026-10-29 the ARMADA checks ran
 # everywhere, and an XGS 3300 with all its front ports up was told it had none that worked.
 armada=0
+
+# Whether the coprocessor's fast path answers its heartbeat, and whether the driver has taken the
+# coprocessor as gone - dev.<driver>.0.heartbeat and dev.<driver>.0.gone, the nodes fastpath.py reads.
+# The driver asks the fast path every five seconds and takes it as stopped at dead_ms without an
+# answer; on the OCTEON TX family it then sets gone and reads nothing more from the coprocessor. The
+# ports stay, and carry nothing. Until 2026-11-08 this file did not look: an XGS 3300 whose fast path
+# had stopped, its twelve ports there and dead, was told "9 passed, 0 failed". What is done about it is
+# fastpath.py's, as XGS: Settings, "When the fast path stops" says, and recover.sh by hand. A driver
+# from before these nodes is worth a look, not a failure.
+heartbeat() {
+    d=$1
+    hb=$(sysctl -n "dev.$d.0.heartbeat.state" 2>/dev/null)
+    gone=$(sysctl -n "dev.$d.0.gone" 2>/dev/null)
+    deaths=$(sysctl -n "dev.$d.0.heartbeat.deaths" 2>/dev/null)
+    dead_ms=$(sysctl -n "dev.$d.0.heartbeat.dead_ms" 2>/dev/null)
+    quiet_ms=$(sysctl -n "dev.$d.0.heartbeat.since_answer_ms" 2>/dev/null)
+    gone_at=$(sysctl -n "dev.$d.0.gone_at" 2>/dev/null)
+    case "${quiet_ms}" in *[!0-9]*) quiet_ms="" ;; esac
+    case "${dead_ms}" in *[!0-9]*) dead_ms="" ;; esac
+    case "${deaths}" in *[!0-9]*) deaths="" ;; esac
+    case "${gone_at}" in *[!0-9]*) gone_at="" ;; esac
+    since="${quiet_ms:+no answer for $((quiet_ms / 1000)) s, }taken as stopped at $(( ${dead_ms:-30000} / 1000 )) s; ${deaths:-an unknown number of} stop(s) since the driver loaded"
+    fix="nothing passes the front ports. fastpath.py takes it up again as XGS: Settings, \"When the fast path stops\" says (by default, within minutes); to do it now: sh /usr/local/opnsense/scripts/xgs/recover.sh - if that does not bring it back, restart the appliance"
+    if [ "${gone}" = 1 ]; then
+        case "${gone_at}" in
+            ''|0) when="" ;;
+            *)    when=" ${gone_at} s after the host's boot" ;;
+        esac
+        bad "the driver has taken the coprocessor as gone${when} (dev.$d.0.gone): nothing is read from it or sent to it"
+        [ "${hb}" = dead ] && printf '        the heartbeat: %s\n' "${since}"
+        printf '        %s\n' "${fix}"
+    elif [ "${hb}" = dead ]; then
+        bad "the coprocessor's fast path stopped answering its heartbeat (dev.$d.0.heartbeat.state: dead)"
+        printf '        the heartbeat: %s\n' "${since}"
+        printf '        %s\n' "${fix}"
+    elif [ "${hb}" = alive ]; then
+        ok "the coprocessor's fast path answers its heartbeat"
+    elif [ "${hb}" = late ]; then
+        note "the coprocessor's fast path is late answering its heartbeat${quiet_ms:+ - no answer for $((quiet_ms / 1000)) s} - run this again in a minute"
+    elif [ "${hb}" = waiting ]; then
+        note "the coprocessor's fast path has not answered its heartbeat yet - run this again in a minute"
+    elif [ "${hb}" = off ]; then
+        note "the heartbeat is switched off (dev.$d.0.heartbeat.on), so this cannot tell whether the fast path answers"
+    else
+        note "no dev.$d.0.heartbeat.state - a driver from before the heartbeat, so this cannot tell whether the fast path answers"
+    fi
+}
+
 /usr/sbin/pciconf -l 2>/dev/null |
     grep -qE 'chip=0x708011ab|vendor=0x11ab[[:space:]]+device=0x7080' && armada=1
 
@@ -243,6 +291,7 @@ else
         n=$(ifconfig -l 2>/dev/null | tr ' ' '
 ' | grep -c '^oxp')
         if [ "${n}" -gt 0 ]; then ok "${n} front-port interfaces"; else bad "no oxp interfaces - see the octep messages in the log"; fi
+        heartbeat octep
     else
         note "octep is not loaded; run /usr/local/opnsense/scripts/octep/bringup.sh to see why"
     fi
@@ -265,6 +314,7 @@ if [ "$armada" = 1 ]; then
         '')         note "could not read the doorbell block" ;;
         *)          ok "the endpoint is answering" ;;
     esac
+    heartbeat npuep
 
     # Evidence from the boot, which ages out.
     #

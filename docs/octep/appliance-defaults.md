@@ -161,6 +161,12 @@ and since 2026-11-06 the ten switch ports' frame limit set again behind it (`scr
 the coprocessor's own boot sets them back to 2,048 bytes, and until then they stayed there until the
 host's next boot, while the Ports page still said "confirmed" (measured on the first XGS 3300: all ten
 read `0x1480` after a recovery in place).
+`verify.sh` says it too, since 2026-11-08, on either family: a failure of the chain to the front ports
+when the driver has taken the coprocessor as gone (`dev.octep.0.gone`, `dev.npuep.0.gone`) or the
+heartbeat is dead (`heartbeat.state`), with how long it has not answered, `dead_ms` and the stops since
+the driver loaded (`heartbeat.deaths`), and this setting and `recover.sh` as what to do; "ok" while it
+answers, worth a look while it is late or on a driver without the heartbeat. Until then an XGS 3300
+whose fast path had stopped, its twelve ports there and carrying nothing, was told "9 passed, 0 failed".
 Measured before it was the default, a coprocessor hung on purpose (its fast path and its watchdog
 feeder stopped): every port back and the heartbeat answered 102 s after the hang on the XGS
 136, 190 s on the first XGS 3300, the host never restarted. If that does not bring the fast path back,
