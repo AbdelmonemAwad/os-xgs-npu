@@ -56,7 +56,7 @@ expansion module here - is the theme's, [os-theme-xgs](https://github.com/Abdelm
 coprocessor's among them. The dashboard also takes **XGS Offloaded Flows**, a widget of this project,
 from its widget list.
 
-<details><summary>The same page in Arabic</summary>
+<details markdown="1"><summary>The same page in Arabic</summary>
 
 ![Lobby: Dashboard on the second XGS 3300, in Arabic](../images/screens/ar/00-lobby-dashboard.png)
 
@@ -149,13 +149,13 @@ model's tested status beside it ([the problem reports](../problem-reports.md#the
 
 ![XGS: Overview on the second XGS 3300 as a new install shows it: the question above the panel - nothing leaves this appliance unless you choose, the XGS 3300 a model the project is built and measured on, "Help it get better", and the two answers](../images/screens/en/01-xgs-overview-question.png)
 
-<details><summary>The question in Arabic</summary>
+<details markdown="1"><summary>The question in Arabic</summary>
 
 ![XGS: Overview on the second XGS 3300 in Arabic, the question above the panel, right to left](../images/screens/ar/01-xgs-overview-question.png)
 
 </details>
 
-<details><summary>The same page in Arabic</summary>
+<details markdown="1"><summary>The same page in Arabic</summary>
 
 ![XGS: Overview's Status tab on the second XGS 3300, in Arabic](../images/screens/ar/01-xgs-overview.png)
 
@@ -209,7 +209,7 @@ XGS log, and blocks nothing ([measured](../measurements/anomaly-2026-10-19.md)).
 
 ![XGS: Settings on the second XGS 3300, the Hardware tab: the flow table's size, jumbo frames on the switch ports and the hardware watchdog on, what is done when the fast path stops, and assigning the ports again](../images/screens/en/02c-xgs-settings-hardware.png)
 
-<details><summary>The same page in Arabic</summary>
+<details markdown="1"><summary>The same page in Arabic</summary>
 
 ![XGS: Settings on the second XGS 3300, in Arabic: the Acceleration tab](../images/screens/ar/02-xgs-settings.png)
 
@@ -267,7 +267,7 @@ not available there.
 
 ![XGS: Ports' Counters tab on the second XGS 3300: errors and drops on Port1 to Port8, F1 to F4 and A1 to A4 - frames and bytes received and sent, Port8 with 4 frames too long and F1 with 117 received in error, every other count at 0](../images/screens/en/03c-xgs-ports-counters.png)
 
-<details><summary>The same page in Arabic</summary>
+<details markdown="1"><summary>The same page in Arabic</summary>
 
 ![XGS: Ports on the second XGS 3300, in Arabic](../images/screens/ar/03-xgs-ports.png)
 
@@ -288,7 +288,7 @@ sends and receives. A received light below -11.1 dBm, the weakest a 10GBASE-SR r
 accept, is red - A3 here receives none. The cards name the warmest module and the
 weakest light. The MAC addresses are masked in this photograph.
 
-<details><summary>The same page in Arabic</summary>
+<details markdown="1"><summary>The same page in Arabic</summary>
 
 ![XGS: Transceivers on the second XGS 3300, in Arabic](../images/screens/ar/04-xgs-transceivers.png)
 
@@ -313,7 +313,7 @@ on - and, in grey, the packets of them the coprocessor carried and the driver re
 
 ![XGS: IPsec, Counters on the second XGS 3300: the twelve counters not at zero - 20 associations installed, 300 refused, 18 removed, 13 frames decrypted on arrival (rx_done) and 11 encrypted on the way out (tx_encrypt)](../images/screens/en/05c-xgs-ipsec-counters.png)
 
-<details><summary>The same page in Arabic</summary>
+<details markdown="1"><summary>The same page in Arabic</summary>
 
 ![XGS: IPsec on the second XGS 3300, in Arabic](../images/screens/ar/05-xgs-ipsec.png)
 
@@ -337,7 +337,7 @@ in hardware** - the bytes the coprocessor counted each way, from the opener and 
 once a second ([measured](../measurements/hw-counters-2026-10-19.md)); a connection the coprocessor has not yet named in a
 message says **not counted yet**.
 
-<details><summary>The same page in Arabic</summary>
+<details markdown="1"><summary>The same page in Arabic</summary>
 
 ![XGS: Offloaded Flows on the second XGS 3300, in Arabic](../images/screens/ar/06-xgs-offloaded-flows.png)
 
@@ -398,7 +398,7 @@ installed from here, not from a shell. **Update all** installs nothing new.
 
 ![XGS: Updates' Installer log tab on the second XGS 3300: v0.1.0-alpha.15.2's commit and signature confirmed, the archive downloaded and unpacked, then the steps of its install.sh as it built the driver](../images/screens/en/07e-xgs-updates-installer.png)
 
-<details><summary>The same page in Arabic</summary>
+<details markdown="1"><summary>The same page in Arabic</summary>
 
 ![XGS: Updates on the second XGS 3300, in Arabic](../images/screens/ar/07-xgs-updates.png)
 
@@ -421,7 +421,7 @@ repository it belongs to, through the project's relay - so nobody needs a GitHub
 appliance** off until it is turned on; the table shows exactly what each report sent, and links to its
 issue. See [docs/problem-reports.md](../problem-reports.md).
 
-<details><summary>The same page in Arabic</summary>
+<details markdown="1"><summary>The same page in Arabic</summary>
 
 ![XGS: Problem Reports on the second XGS 3300, in Arabic](../images/screens/ar/08-xgs-problem-reports.png)
 
@@ -437,7 +437,7 @@ filter, the day's two warnings: fan 0 and fan 1 under speed. Since 2026-10-28 th
 says that once a boot, and again only when what it says changes: it runs every five minutes, and
 its six lines each time made 960 in a day.
 
-<details><summary>The same page in Arabic</summary>
+<details markdown="1"><summary>The same page in Arabic</summary>
 
 ![XGS: Log File on the second XGS 3300, in Arabic](../images/screens/ar/09-xgs-log-file.png)
 
@@ -456,7 +456,7 @@ without one shows under every severity filter. Lines written before that date ke
 
 ![XGS: Coprocessor Console on the second XGS 3300: the logger's start, then the coprocessor's lines - its 10G link up and down, its BGX lanes' receive adaptation completed - each with the host's date and its writer, the severity empty](../images/screens/en/09e-xgs-coprocessor-console.png)
 
-<details><summary>The same page in Arabic</summary>
+<details markdown="1"><summary>The same page in Arabic</summary>
 
 ![XGS: Coprocessor Console on the second XGS 3300, in Arabic](../images/screens/ar/09e-xgs-coprocessor-console.png)
 
@@ -475,7 +475,7 @@ Informational shows them all.
 
 ![XGS: Coprocessor Log on the second XGS 3300: at the Warning filter over the last day, 35 lines of the coprocessor's kernel - its BGX lanes' receive adaptation completed - each with the host's date, its severity and its writer](../images/screens/en/09f-xgs-coprocessor-log.png)
 
-<details><summary>The same page in Arabic</summary>
+<details markdown="1"><summary>The same page in Arabic</summary>
 
 ![XGS: Coprocessor Log on the second XGS 3300, in Arabic](../images/screens/ar/09f-xgs-coprocessor-log.png)
 
@@ -495,7 +495,7 @@ CHANGELOG.md has them, from the newest, each change linked to its pull request a
 installed here marked. The same facts as the README, the site's Legal and Contact pages, the security
 policy and the changelog, nothing more.
 
-<details><summary>Contact and Disclaimer</summary>
+<details markdown="1"><summary>Contact and Disclaimer</summary>
 
 ![XGS: About, its Contact tab, on the second XGS 3300: where a question, something wrong on the appliance, a security problem and a rights holder go](../images/screens/en/09c-xgs-about-contact.png)
 
@@ -503,7 +503,7 @@ policy and the changelog, nothing more.
 
 </details>
 
-<details><summary>The same page in Arabic</summary>
+<details markdown="1"><summary>The same page in Arabic</summary>
 
 ![XGS: About on the second XGS 3300, in Arabic](../images/screens/ar/09b-xgs-about.png)
 
@@ -524,7 +524,7 @@ on a schedule, in English or Arabic, through the mail settings OPNsense already 
 button previews a schedule's report and the plane sends it now. **Settings** and **History** are its
 other tabs. No schedule is set on this appliance.
 
-<details><summary>The same page in Arabic</summary>
+<details markdown="1"><summary>The same page in Arabic</summary>
 
 ![XGS: Network Report on the second XGS 3300, in Arabic](../images/screens/ar/10-network-report.png)
 
@@ -542,7 +542,7 @@ chosen time, and the fans with their speed. On the XGS 3300 the fans are read an
 hardware, which the cards say: the board gives the host no register to set them. **Settings** and
 **Hardware** are its other tabs.
 
-<details><summary>The same page in Arabic</summary>
+<details markdown="1"><summary>The same page in Arabic</summary>
 
 ![XGS: Fan Control on the second XGS 3300, in Arabic](../images/screens/ar/11-fan-control.png)
 
@@ -561,7 +561,7 @@ without a panel, like the XGS 136, the image builder's **No front panel** leaves
 
 ![XGS: Front Panel's Preview tab on the second XGS 3300: the seven screens as the 20x2 panel draws them - name and address, internet, throughput, processor, memory and uptime, temperature, port health and a message](../images/screens/en/12b-front-panel-preview.png)
 
-<details><summary>The same page in Arabic</summary>
+<details markdown="1"><summary>The same page in Arabic</summary>
 
 ![XGS: Front Panel on the second XGS 3300, in Arabic](../images/screens/ar/12-front-panel.png)
 
@@ -582,7 +582,7 @@ other tabs.
 
 ![XGS: Link Health's Front panel tab on the second XGS 3300: the copper block, the SFP cages on the switch, the SFP+ cages on the coprocessor and the management port, those with a link lit, under a warning that the arrangement has not been checked against the metal yet](../images/screens/en/13b-link-health-front-panel.png)
 
-<details><summary>The same page in Arabic</summary>
+<details markdown="1"><summary>The same page in Arabic</summary>
 
 ![XGS: Link Health on the second XGS 3300, in Arabic](../images/screens/ar/13-link-health.png)
 
@@ -600,7 +600,7 @@ reset. On an XGS appliance os-xgs-npu arms the timer itself, so the plugin stand
 it, which the line under the cards says. **Last restart** is its other tab. Under System: Hardware
 Watchdog without os-xgs-npu.
 
-<details><summary>The same page in Arabic</summary>
+<details markdown="1"><summary>The same page in Arabic</summary>
 
 ![XGS: Hardware Watchdog on the second XGS 3300, in Arabic](../images/screens/ar/14-hardware-watchdog.png)
 
@@ -615,7 +615,7 @@ out-of-tree kernel modules registered with it for the kernel the next boot takes
 modules are left to os-xgs-npu's follower and only shown. **Settings** and **Follow now** are its
 other tabs. Under System: Kernel Follower without os-xgs-npu.
 
-<details><summary>The same page in Arabic</summary>
+<details markdown="1"><summary>The same page in Arabic</summary>
 
 ![XGS: Kernel Follower on the second XGS 3300, in Arabic](../images/screens/ar/15-kernel-follower.png)
 
@@ -630,7 +630,7 @@ country and JA4 block lists in one page. On a Sophos XGS a connection to an addr
 listed is cut, and taken out of the coprocessor with its state. **DNS**, **JA4** and **Settings** are
 its other tabs. Under Firewall: Block Lists without os-xgs-npu.
 
-<details><summary>The same page in Arabic</summary>
+<details markdown="1"><summary>The same page in Arabic</summary>
 
 ![XGS: Block Lists on the second XGS 3300, in Arabic](../images/screens/ar/16-block-lists.png)
 
@@ -645,7 +645,7 @@ firewall by their MAC address, and the devices it has seen to choose from (**Dev
 photographed: it lists their hardware addresses); **Settings** is its third tab. Under Firewall: Port
 Guard without os-xgs-npu.
 
-<details><summary>The same page in Arabic</summary>
+<details markdown="1"><summary>The same page in Arabic</summary>
 
 ![XGS: Port Guard on the second XGS 3300, in Arabic](../images/screens/ar/17-port-guard.png)
 
@@ -660,7 +660,7 @@ the kernel's crypto drivers encrypts IPsec on the host - AES-NI, OpenSSL's, or b
 the coprocessor encrypts the associations it has taken, whatever is chosen here, and the page says so.
 Under VPN: IPsec: Fallback Crypto without os-xgs-npu.
 
-<details><summary>The same page in Arabic</summary>
+<details markdown="1"><summary>The same page in Arabic</summary>
 
 ![XGS: Fallback Crypto on the second XGS 3300, in Arabic](../images/screens/ar/18-fallback-crypto.png)
 
