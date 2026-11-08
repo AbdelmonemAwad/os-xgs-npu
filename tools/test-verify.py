@@ -6,7 +6,9 @@ temporary directory: the summary blames the front ports only when the chain to t
 failure of anything else - the CPU temperature - is called what it is (issue 957, where a 3100 with
 twelve working ports was told it had none). And what it says of this project's installation - the
 release installed, the last update, the installer's files against their digests - which until
-2026-11-06 it did not say at all (issue 911; the review's U13).
+2026-11-06 it did not say at all (issue 911; the review's U13). And whether the coprocessor's fast path
+answers its heartbeat, or the driver has taken the coprocessor as gone - a failure of the chain, which
+until 2026-11-08 it did not look at.
 
     python3 tools/test-verify.py"""
 import hashlib
@@ -28,7 +30,9 @@ STUBS = {
     'opnsense-version': 'echo "OPNsense 26.7.8_1 (amd64)"',
     'kenv': 'exit 0',
     'dmesg': 'exit 0',
-    'pciconf': 'echo "none0@pci0:3:0:0: class=0x0b4000 rev=0x00 hdr=0x00 vendor=0x177d device=0xa300"',
+    'pciconf': ('[ "${FAKE_ARMADA}" = 1 ] && { echo "none0@pci0:2:0:0: class=0x058000 rev=0x00 hdr=0x00 '
+                'vendor=0x11ab device=0x7080"; exit 0; }; '
+                'echo "none0@pci0:3:0:0: class=0x0b4000 rev=0x00 hdr=0x00 vendor=0x177d device=0xa300"'),
     # as the kernel answers: the driver's module is pci/octep (DRIVER_MODULE), asked for with -m
     'kldstat': '[ "$2" = -m ] && [ "$3" = pci/octep ] && [ "${FAKE_OCTEP_LOADED}" = 1 ] && exit 0; exit 1',
     'ifconfig': ('[ "$1" = -l ] || exit 1; ports=""; [ "${FAKE_PORTS}" = 1 ] && '
@@ -37,7 +41,14 @@ STUBS = {
     'sysctl': ('[ "$1" = -n ] && [ "$2" = kern.boottime ] && [ -n "${FAKE_BOOTED}" ] '
                '&& { echo "{ sec = ${FAKE_BOOTED}, usec = 0 } Fri Nov  6 08:00:00 2026"; exit 0; }; '
                '[ "$1" = -n ] && [ "$2" = dev.cpu.0.temperature ] && [ "${FAKE_TEMP}" = 1 ] '
-               '&& { echo 46.0C; exit 0; }; exit 1'),
+               '&& { echo 46.0C; exit 0; }; '
+               # the heartbeat and the gone flag, either driver's, as the case sets them; unset is a node
+               # the driver does not have
+               '[ "$1" = -n ] || exit 1; v=""; case "$2" in dev.octep.0.*|dev.npuep.0.*) case "${2#dev.*.0.}" in '
+               'heartbeat.state) v="${FAKE_HB_STATE}" ;; heartbeat.deaths) v="${FAKE_HB_DEATHS}" ;; '
+               'heartbeat.dead_ms) v="${FAKE_HB_DEAD_MS}" ;; heartbeat.since_answer_ms) v="${FAKE_HB_SINCE}" ;; '
+               'gone) v="${FAKE_GONE}" ;; gone_at) v="${FAKE_GONE_AT}" ;; esac ;; esac; '
+               '[ -n "$v" ] && { echo "$v"; exit 0; }; exit 1'),
     'php': 'echo amdtemp',
     # the kernel in /boot read as kernel-follow.sh reads it; the test's stand-in kernel is a text file
     'strings': 'cat "$2" 2>/dev/null',
@@ -116,6 +127,52 @@ with tempfile.TemporaryDirectory() as tmp:
 
     rc, out = run(tmp, FAKE_TEMP='0', stamp='FreeBSD 15.1-RELEASE-p4 an older kernel')
     check('both failing: the ports come first', (PORTS_FAIL in out, ELSEWHERE in out), (True, False))
+
+    # The heartbeat with the fast path, and the driver's gone (2026-11-08: an XGS 3300 whose fast path had
+    # stopped, its twelve ports there and carrying nothing, was told "9 passed, 0 failed").
+    HB = dict(FAKE_HB_DEAD_MS='30000', FAKE_HB_DEATHS='0', FAKE_HB_SINCE='1200', FAKE_GONE='0', FAKE_GONE_AT='0')
+    rc, out = run(tmp, FAKE_HB_STATE='alive', **HB)
+    check('the fast path answering: said, and the chain intact',
+          ("ok    the coprocessor's fast path answers its heartbeat" in out, rc,
+           out.rstrip().endswith('The chain is intact.')), (True, 0, True))
+
+    dead = dict(HB, FAKE_HB_STATE='dead', FAKE_HB_DEATHS='1', FAKE_HB_SINCE='412000')
+    rc, out = run(tmp, **dead)
+    check('the fast path dead: a failure of the chain', (rc, PORTS_FAIL in out), (1, True))
+    check('... named, with since when',
+          ("FAIL  the coprocessor's fast path stopped answering its heartbeat (dev.octep.0.heartbeat.state: dead)"
+           in out, '        the heartbeat: no answer for 412 s, taken as stopped at 30 s; 1 stop(s) since the '
+           'driver loaded' in out), (True, True))
+    check('... and what to do, the remedy the project gives',
+          ('XGS: Settings, "When the fast path stops"' in out, 'scripts/xgs/recover.sh' in out), (True, True))
+
+    rc, out = run(tmp, **dict(dead, FAKE_GONE='1', FAKE_GONE_AT='5321'))
+    check('the coprocessor taken as gone: a failure of the chain', (rc, PORTS_FAIL in out), (1, True))
+    check('... named once, with when, the heartbeat beside it',
+          ("FAIL  the driver has taken the coprocessor as gone 5321 s after the host's boot (dev.octep.0.gone)"
+           in out, out.count('  FAIL  '), '        the heartbeat: no answer for 412 s' in out), (True, 1, True))
+    check('... and what to do', 'scripts/xgs/recover.sh' in out, True)
+
+    rc, out = run(tmp, **dict(HB, FAKE_HB_STATE='alive', FAKE_GONE='1'))
+    check('gone with the heartbeat not dead: still a failure', (rc, 'FAIL  the driver has taken the coprocessor '
+          'as gone (dev.octep.0.gone)' in out), (1, True))
+
+    rc, out = run(tmp, **dict(HB, FAKE_HB_STATE='late', FAKE_HB_SINCE='17000'))
+    check('the fast path late: worth a look, not a failure',
+          ("note  the coprocessor's fast path is late answering its heartbeat - no answer for 17 s" in out, rc),
+          (True, 0))
+
+    rc, out = run(tmp)
+    check('no heartbeat node (an older driver): worth a look, not a failure',
+          ('note  no dev.octep.0.heartbeat.state - a driver from before the heartbeat' in out, rc,
+           out.rstrip().endswith('The chain is intact.')), (True, 0, True))
+
+    rc, out = run(tmp, FAKE_ARMADA='1', **dead)
+    check('the ARMADA family: the same check, its own nodes',
+          "FAIL  the coprocessor's fast path stopped answering its heartbeat (dev.npuep.0.heartbeat.state: dead)"
+          in out, True)
+    rc, out = run(tmp, FAKE_ARMADA='1', **dict(HB, FAKE_HB_STATE='alive'))
+    check('the ARMADA family answering: said', "ok    the coprocessor's fast path answers its heartbeat" in out, True)
 
     # After an update the kernel follower built octep.ko for the kernel now in /boot: nothing is broken,
     # the reboot loads it (until 2026-11-06 this said there were no working front ports).

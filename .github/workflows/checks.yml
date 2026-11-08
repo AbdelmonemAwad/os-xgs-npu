@@ -339,7 +339,9 @@ jobs:
 
       # install/verify.sh on a made-up XGS 3300: its summary blames the front ports only when the chain
       # to them fails (issue 957). And what it says of the installation - the release installed, the
-      # last update, the installer's files against their digests (issue 911). tools/test-verify.py.
+      # last update, the installer's files against their digests (issue 911). And the heartbeat with the
+      # fast path and the driver's gone, on either family: alive, dead, gone, late, the node missing.
+      # tools/test-verify.py.
       - name: The verify summary
         run: python3 tools/test-verify.py
 
