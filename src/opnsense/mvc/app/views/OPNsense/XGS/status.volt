@@ -339,6 +339,26 @@
             return '<div class="alert alert-warning" role="alert" style="margin: 15px 15px 0;">' + text + '</div>';
         }
 
+        /* What the Hardware offloading card's Off means. Both settings are off after an install
+           (XGS.xml: offload and flow_auto default 0), and until both are on no connection runs in
+           hardware: what the coprocessor can do for a connection waits for them. Said in a sentence,
+           because a grey card does not say it. Each paragraph takes its direction from its own
+           text (dir="auto"): a sentence not yet translated keeps its full stop at its end on a
+           right-to-left page. */
+        function offload_note(off, g) {
+            const offOn = off && off.offload_bit_requested === true;
+            const autoOn = g && g.flow_auto === '1';
+            if (offOn && autoOn) {
+                return '';
+            }
+            const text = '<p dir="auto"><b>' + "{{ lang._('Connections run on this firewall') }}" + '</b></p><p dir="auto">' +
+                (offOn ?
+                    "{{ lang._('Hardware offloading is on, but Accelerate connections automatically is off, so no connection is put in hardware.') }}" :
+                    "{{ lang._('Hardware offloading is off: the coprocessor passes every frame to this firewall and runs no connection itself.') }}") +
+                '</p><p dir="auto"><a href="/ui/xgs/settings#xgs-acceleration">' + "{{ lang._('Both are on the Acceleration tab of XGS: Settings.') }}" + '</a></p>';
+            return '<div class="alert alert-info" role="alert" style="margin: 15px 15px 0;">' + text + '</div>';
+        }
+
         function render(st, ports, ipsec, settings) {
             $('#xgs_ids').html(ids_note(st && st.intrusion_detection));
             /* the board's health whether or not the driver attached: its fans and supplies are not the
@@ -352,12 +372,13 @@
                     "{{ lang._('not attached') }}",
                     st && st.message ? st.message : "{{ lang._('the coprocessor driver is not attached') }}") +
                     appliance_card(st && st.appliance));
-                $('#xgs_link, #xgs_limits, #xgs_rpc, #xgs_raw').empty();
+                $('#xgs_link, #xgs_limits, #xgs_rpc, #xgs_raw, #xgs_offload').empty();
                 return;
             }
             const b = st.board || {}, dr = st.driver || {}, hs = st.handshake || {},
                 rpc = st.rpc || {}, nwa = st.netagent || {}, off = st.offload || {},
                 g = (settings && settings.xgs && settings.xgs.general) || {};
+            $('#xgs_offload').html(offload_note(off, g));
             const family = b.family === 'octeontx' ? 'OCTEON TX' : (b.family === 'armada' ? 'ARMADA' : val(b.family));
             const linked = String(hs.state || '').indexOf('completed') === 0 || dr.ready === 1;
             const plist = (ports && ports.ports) || [];
@@ -378,7 +399,8 @@
             cards += appliance_card(st.appliance);
             cards += card(offOn ? 'ok' : 'off', 'fa-bolt', "{{ lang._('Hardware offloading') }}",
                 offOn ? "{{ lang._('On') }}" : "{{ lang._('Off') }}",
-                g.flow_auto === '1' ? "{{ lang._('connections accelerated automatically') }}" : "{{ lang._('no automatic acceleration') }}");
+                /* with offloading off nothing is accelerated, whatever the flow maker's setting says */
+                offOn && g.flow_auto === '1' ? "{{ lang._('connections accelerated automatically') }}" : "{{ lang._('no automatic acceleration') }}");
             cards += card(ipsecOn ? 'ok' : 'off', 'fa-lock', "{{ lang._('IPsec engine') }}",
                 ipsecOn ? sas + ' ' + "{{ lang._('associations') }}" : "{{ lang._('Off') }}",
                 ipsecOn ? "{{ lang._('in the coprocessor') }}" : "{{ lang._('the host encrypts') }}");
@@ -858,6 +880,7 @@
     <div id="status" class="tab-pane active table-responsive">
         <div id="xgs_ask"></div>
         <div id="xgs_ids"></div>
+        <div id="xgs_offload"></div>
         <div id="xgs_panel"></div>
         <div class="xgs-cards" id="xgs_cards"></div>
         <table class="table table-striped table-condensed">

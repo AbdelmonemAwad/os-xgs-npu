@@ -69,7 +69,10 @@ from its widget list.
 The first page of the **XGS** section. At the top, the front panel drawn in the chassis's order - the
 two cages, Port1 to Port8, two more cages, the expansion module's A4 to A1 - each with its link as a
 light, and its name, assignment, medium and MAC address when the pointer rests on it. Then a card each for the coprocessor and its link, hardware offloading, the IPsec engine, the
-front ports, the switch chip, and the cause of the last restart as the chipset recorded it. Under them
+front ports, the switch chip, and the cause of the last restart as the chipset recorded it. While
+**Hardware offloading** or **Accelerate connections automatically** is off - both are, after an install -
+a notice above the cards says that every connection runs on the firewall itself, and links to the
+Acceleration tab of XGS: Settings, where the two are. Under them
 **Coprocessor link** - with, since 2026-10-20, the coprocessor's own Linux: how long it has been up,
 its load on its cores and its memory, read every five minutes by `scripts/xgs/health.py` (on the
 second XGS 3300 that day: twenty cores at a load of 19, which its fast path keeps busy, and 163 of
