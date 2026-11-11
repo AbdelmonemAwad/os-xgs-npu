@@ -89,3 +89,9 @@ after its first data, so what Suricata sees depends on how it runs:
 
 For Suricata to see every frame of every connection, turn XGS: Settings "Accelerate connections
 automatically" off: the host then carries everything, at the host's speed.
+
+*XGS 136, added 2026-11-11.* Where every frame goes through Suricata in IPS mode, it reads the four netmap
+rings of an XGS 136 port only when npuep gives each frame its receive queue as the flow id:
+`dev.npuep.0.giu.rx_flowid` at 1 and `dev.netmap.generic_rings` at 4 in System: Settings: Tunables, then
+Intrusion Detection restarted. Eight UDP flows through IPS went from 232 and 265 to 283 and 334 Mbit/s, with
+the CPUs then the limit; one flow gains nothing ([the measurement](../measurements/flowid-136-2026-11-11.md)).
