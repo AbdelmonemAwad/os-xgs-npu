@@ -19,10 +19,10 @@ to a new image, and the checks fail on one without them.
 |---|---|---|
 | [screens/](screens/) | The web interface, page by page, in English and in Arabic | 108 |
 | [hardware/](hardware/) | Photographs and drawings of the appliances, one folder each | 41 |
-| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 753 |
+| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 762 |
 | [readme/](readme/) | The README's banner and status board, drawn by tools/readme-art.py | 6 |
 
-947 images in all.
+956 images in all.
 
 ## The web interface
 
@@ -504,6 +504,22 @@ The page: [flow-dscp6-2026-10-24.md](../measurements/flow-dscp6-2026-10-24.md).
 | [02-3300-override-ipv4-then-ipv6.png](measurements/flow-dscp6-2026-10-24/02-3300-override-ipv4-then-ipv6.png) | The override by hand on one path and one build: IPv4 0xb8 both ways, IPv6 0x00 both ways at 46 and at 10 | [flow-dscp6-2026-10-24.md](../measurements/flow-dscp6-2026-10-24.md) |
 | [03-136-ipv6-mark-in-hardware.png](measurements/flow-dscp6-2026-10-24/03-136-ipv6-mark-in-hardware.png) | IPv6 through the XGS 136: no rule, no mark; EF on the host path; EF kept with the host as the driver has it; EF and AF41 made in hardware with the mark, and lost | [flow-dscp6-2026-10-24.md](../measurements/flow-dscp6-2026-10-24.md) |
 | [04-both-final-builds.png](measurements/flow-dscp6-2026-10-24/04-both-final-builds.png) | The modules as merged: IPv6 with EF kept with the host on both, 0xb8; the XGS 136's instrument, in hardware, 0x00 | [flow-dscp6-2026-10-24.md](../measurements/flow-dscp6-2026-10-24.md) |
+
+### measurements/flowid-136-2026-11-11/ (9)
+
+The page: [flowid-136-2026-11-11.md](../measurements/flowid-136-2026-11-11.md).
+
+| image | what it shows | used on |
+|---|---|---|
+| [01-ips-udp8-flowid0.png](measurements/flowid-136-2026-11-11/01-ips-udp8-flowid0.png) | IPS, eight UDP flows, the setting at 0: 232 Mbit/s received, 62 % dropped at the ring | [flowid-136-2026-11-11.md](../measurements/flowid-136-2026-11-11.md) |
+| [02-ips-udp8-flowid1.png](measurements/flowid-136-2026-11-11/02-ips-udp8-flowid1.png) | IPS, eight UDP flows, the setting at 1: 283 Mbit/s received, 26 % dropped at the ring, the CPUs 95 % busy | [flowid-136-2026-11-11.md](../measurements/flowid-136-2026-11-11.md) |
+| [03-ips-tcp8-flowid0.png](measurements/flowid-136-2026-11-11/03-ips-tcp8-flowid0.png) | IPS, eight TCP streams, the setting at 0: 935 Mbit/s | [flowid-136-2026-11-11.md](../measurements/flowid-136-2026-11-11.md) |
+| [04-ips-tcp8-flowid1.png](measurements/flowid-136-2026-11-11/04-ips-tcp8-flowid1.png) | IPS, eight TCP streams, the setting at 1: 936 Mbit/s | [flowid-136-2026-11-11.md](../measurements/flowid-136-2026-11-11.md) |
+| [05-ips-udp1-flowid1.png](measurements/flowid-136-2026-11-11/05-ips-udp1-flowid1.png) | IPS, one UDP flow, the setting at 1: every frame in one queue, 227 Mbit/s | [flowid-136-2026-11-11.md](../measurements/flowid-136-2026-11-11.md) |
+| [06-plain-tcp8-flowid0.png](measurements/flowid-136-2026-11-11/06-plain-tcp8-flowid0.png) | No IPS, eight TCP streams, the setting at 0: 938 Mbit/s | [flowid-136-2026-11-11.md](../measurements/flowid-136-2026-11-11.md) |
+| [07-plain-tcp8-flowid1.png](measurements/flowid-136-2026-11-11/07-plain-tcp8-flowid1.png) | No IPS, eight TCP streams, the setting at 1: 949 Mbit/s | [flowid-136-2026-11-11.md](../measurements/flowid-136-2026-11-11.md) |
+| [08-plain-udp8-flowid0.png](measurements/flowid-136-2026-11-11/08-plain-udp8-flowid0.png) | No IPS, eight UDP flows, the setting at 0: 358 Mbit/s, the CPUs 58 % busy | [flowid-136-2026-11-11.md](../measurements/flowid-136-2026-11-11.md) |
+| [09-plain-udp8-flowid1.png](measurements/flowid-136-2026-11-11/09-plain-udp8-flowid1.png) | No IPS, eight UDP flows, the setting at 1: 387 Mbit/s, the CPUs 48 % busy | [flowid-136-2026-11-11.md](../measurements/flowid-136-2026-11-11.md) |
 
 ### measurements/frontports-2026-10-25/ (5)
 

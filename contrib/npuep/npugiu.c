@@ -680,6 +680,7 @@ struct npugiu_softc {
 
 	int			 link;		/* as the device last reported it */
 	int			 loopback;	/* as we last set it */
+	int			 rx_flowid;	/* giu.rx_flowid: the receive queue as the flow id */
 	uint64_t		 link_changes;
 	uint64_t		 commands, answers, notifications, drops;
 	uint64_t		 keepalives, late, multipart, overruns;
@@ -1990,6 +1991,18 @@ npugiu_rx_queue(struct npugiu_softc *sc, int q, int budget, struct mbuf **head,
 		n = npugiu_port_of_tag(sc, port);
 		m->m_pkthdr.rcvif = (n >= 0) ? sc->port[n].ifp : NULL;
 		m->m_nextpkt = NULL;
+		/*
+		 * The receive queue the coprocessor chose is its hash of the connection (both
+		 * directions of one land in one queue, several spread over the four), so it can stand
+		 * as the frame's flow id for whatever spreads work by one - netmap's emulated adapter
+		 * with dev.netmap.generic_rings above 1 picks its ring by it, and a forwarded frame
+		 * then leaves on the transmit queue of the same number (npugiu_transmit). Off by
+		 * default (giu.rx_flowid).
+		 */
+		if (sc->rx_flowid != 0) {
+			m->m_pkthdr.flowid = (uint32_t)q;
+			M_HASHTYPE_SET(m, M_HASHTYPE_OPAQUE);
+		}
 		if (n < 0) {
 			/* counted by its kind (#748), and kept before it is freed: see untag_seq */
 			npugiu_untag_count(sc, port, src + NPUGIU_TAG_LEN, src + NPUGIU_HDR_LEN,
@@ -4296,6 +4309,8 @@ npugiu_add_sysctls(struct npugiu_softc *sc)
 	SYSCTL_ADD_PROC(ctx, child, OID_AUTO, "loopback",
 	    CTLTYPE_INT | CTLFLAG_RW | CTLFLAG_MPSAFE, sc, 0, npugiu_sysctl_loopback, "I",
 	    "send transmitted frames straight back up the receive path");
+	SYSCTL_ADD_INT(ctx, child, OID_AUTO, "rx_flowid", CTLFLAG_RW, &sc->rx_flowid, 0,
+	    "1: a received frame carries its receive queue as its flow id (default 0)");
 
 	SYSCTL_ADD_PROC(ctx, child, OID_AUTO, "poll_ms",
 	    CTLTYPE_INT | CTLFLAG_RW | CTLFLAG_MPSAFE, sc, 0, npugiu_sysctl_poll_ms, "I",
