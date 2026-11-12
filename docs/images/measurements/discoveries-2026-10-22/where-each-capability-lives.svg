@@ -54,7 +54,7 @@
   <text class="item" x="306" y="246">bridged flows, VLAN interfaces</text>
   <text class="item" x="306" y="266">heartbeat, mirrored packets</text>
   <text class="item" x="306" y="286">IPsec state sync, counters cleared</text>
-  <text class="item" x="306" y="306">ChaCha20, GMAC, CTR untried</text>
+  <text class="item" x="306" y="306">ChaCha20 refused; GMAC, CTR untried</text>
   <text class="item" x="306" y="326">public-key operations</text>
   <text class="item" x="306" y="346">packet dump, injection</text>
   <text class="n" x="306" y="374" style="fill:#cfd8dc">QoS commands: declared,</text>
@@ -100,7 +100,7 @@
   <rect x="778" y="356" width="140" height="74" rx="6" fill="#5d4037"/>
   <text class="item" x="786" y="376">the agent's polling</text>
   <text class="item" x="786" y="394">mode, VLANs, bridges</text>
-  <text class="item" x="786" y="412">- never tried</text>
+  <text class="item" x="786" y="412">- refused when sent</text>
 
   <path class="line" d="M928,240 L966,240" marker-end="url(#a)" marker-start="url(#a)"/>
 

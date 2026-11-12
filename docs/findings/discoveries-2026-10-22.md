@@ -1,4 +1,4 @@
-<!-- reviewed: 2026-10-24 -->
+<!-- reviewed: 2026-11-11 -->
 # What the hardware can do that was not known - the discoveries of 2026-10-22
 
 > [!IMPORTANT]
@@ -41,31 +41,35 @@ second XGS 3300 and on the XGS 136, read only.
 | 2 | [The window handed back](#the-window-handed-back) | fast path | ~~source~~ **measured** | ~~source~~ **measured** | ~~the take-back's TCP state not used~~ **given to pf at a take-back since 2026-10-22** |
 | 3 | [A connection dropped by its verdict](#a-connection-dropped-by-its-verdict) | fast path | ~~source~~ **measured** | ~~source~~ **measured** | ~~verdict always "forward"~~ **a cut drops the connection on the coprocessor since 2026-10-23** ("Cut in hardware") |
 | 4 | [Inspection, then hardware](#inspection-then-hardware) | fast path | ~~source~~ **measured** | ~~source~~ **measured** | ~~none - the frames go to a virtual function OPNsense does not make~~ **XGS 3300: made 2026-10-23, Suricata inspects a connection in hardware and the hardware carries the rest - off by default**; ~~the XGS 136 next~~ **XGS 136: made the same evening, the same way, the link full**; **a setting, "Inspect, then hardware", with OPNsense's own Intrusion Detection, the same evening** |
-| 5 | [Live users](#live-users) | fast path | ~~source~~ **measured** | ~~source~~ **measured** | none - **a logout takes the user's connections out of hardware on both, measured 2026-10-23; ~~not used yet~~ the Captive Portal's clients in hardware since 2026-10-24** |
-| 6 | [A priority bit and a meter for each connection](#a-priority-bit-and-a-meter-for-each-connection) | fast path | ~~source~~ **measured**: held, no effect seen | source | zero; an instrument since 2026-10-24 |
+| 5 | [Live users](#live-users) | fast path | ~~source~~ **measured** | ~~source~~ **measured** | ~~none~~ **an opt-in** - **a logout takes the user's connections out of hardware on both, measured 2026-10-23; ~~not used yet~~ the Captive Portal's clients in hardware since 2026-10-24** (XGS: Settings "Captive Portal clients in hardware", off by default) |
+| 6 | [A priority bit and a meter for each connection](#a-priority-bit-and-a-meter-for-each-connection) | fast path | ~~source~~ **measured**: held, no effect seen | source | zero; an instrument since 2026-10-24, **octep's alone (`dp.conn_qos`): npuep has the words' layout and no writer** |
 | 7 | [The QoS commands](#the-qos-commands) | fast path | ~~source~~ **measured**: not dispatched | source | none; ~~expected refused~~ refused, all seven |
 | 8 | [DSCP rewritten for each flow](#dscp-rewritten-for-each-flow) | fast path | ~~source~~ **measured** | ~~source~~ **measured** | ~~zero~~ **pf's DSCP mark kept on a connection in hardware since 2026-10-24**; before, it was lost |
 | 9 | [Bridged flows](#bridged-flows) | fast path | ~~source~~ **measured** | ~~source~~ **measured** | ~~routed flows only~~ **a connection a bridge carries is made a bridged flow since 2026-10-24, its frames left as they are**; before, it was made as routed - out of the WAN when the bridge had no address ([723](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/723)) |
 | 10 | [VLAN interfaces](#vlan-interfaces) | fast path | ~~source~~ **measured** | ~~source~~ **measured** | ~~none made~~ **a connection routed by a VLAN subinterface made in hardware since 2026-10-24, the coprocessor writing its tag**; before, every VLAN's frames crossed the host |
-| 11 | [A heartbeat with the fast path](#a-heartbeat-with-the-fast-path) | fast path | ~~source~~ **measured** | ~~source~~ **measured**, dropped - the beat taken is its answer | ~~counted, not sent~~ **sent since 2026-10-22, answered on the XGS 3300; on the XGS 136 since 2026-10-23** |
-| 12 | [Mirrored packets](#mirrored-packets) | fast path | ~~source~~ **measured** | ~~source~~ **measured** | ~~counted only~~ **shown to the port's packet capture since 2026-10-25** (XGS: Settings "Copies for packet capture", off by default) |
-| 13 | [Counters cleared](#counters-cleared) | fast path | ~~source~~ **measured** | ~~source~~ **measured** | ~~read only~~ **cleared by the tools' `-z` since 2026-10-25** |
-| 14 | [IPsec state kept in step](#ipsec-state-kept-in-step) | fast path | ~~source~~ **measured** | ~~source~~ **measured** | none - **not needed by the design, measured 2026-10-25**; on the way: vendor version 23 refused every association (#759, fixed) and its counts read 0 (#761) |
-| 15 | [Ciphers nobody has tried](#ciphers-nobody-has-tried) | IPsec engine | ~~source~~ **measured** | ~~source~~ **measured** | GCM and CBC with HMAC - **SHA-384 among them measured on all three versions, 2026-10-25; ChaCha20 refused by the datapath** |
+| 11 | [A heartbeat with the fast path](#a-heartbeat-with-the-fast-path) | fast path | ~~source~~ **measured** | ~~source~~ **measured**, dropped - the beat taken is its answer | ~~counted, not sent~~ **sent since 2026-10-22, answered on the XGS 3300; on the XGS 136 since 2026-10-23**; **when it stops, by default since 2026-10-26, the coprocessor taken up again in place, the appliance restarted only if that fails** |
+| 12 | [Mirrored packets](#mirrored-packets) | fast path | ~~source~~ **measured** | ~~source~~ **measured** | ~~counted only~~ **shown to the port's packet capture since 2026-10-25** (XGS: Settings "Copies for packet capture", off by default); **every frame of a 500 Mbit/s stream on 2026-11-11's boot** ([measured](../measurements/capture-10g-2026-11-11.md)) |
+| 13 | [Counters cleared](#counters-cleared) | fast path | ~~source~~ **measured** | ~~source~~ **measured** | ~~read only~~ **cleared by the tools' `-z` since 2026-10-25**, **and by the Clear button of XGS: Overview's Datapath counters tab, the same day** |
+| 14 | [IPsec state kept in step](#ipsec-state-kept-in-step) | fast path | ~~source~~ **measured** | ~~source~~ **measured** | none - **not needed by the design, measured 2026-10-25**; on the way: vendor version 23 refused every association (#759, fixed) and its counts read 0 (#761); **sent only by hand: octep's RPC probe has all three, npuep's raw command any** |
+| 15 | [Ciphers nobody has tried](#ciphers-nobody-has-tried) | IPsec engine | ~~source~~ **measured** | ~~source~~ **measured** | GCM and CBC with HMAC - **SHA-384 among them measured on all three versions, 2026-10-25; ChaCha20 refused by the datapath**; **both drivers take SHA-1, SHA-256, SHA-384 and SHA-512; neither takes ChaCha20, the measurement's code not kept** |
 | 16 | [Public-key operations](#public-key-operations) | coprocessor's engine | source, **read further 2026-10-25** | source, **read further 2026-10-25** | none - **the intrusion-prevention stage's, with no request format in the source; not built** |
 | 17 | [A packet dump in the fast path](#a-packet-dump-in-the-fast-path) | fast path | ~~source~~ **measured** | ~~source~~ **measured** | ~~named, not used~~ **the bit that sends 12's copies, used since 2026-10-25** |
 | 18 | [Frames injected from the host](#frames-injected-from-the-host) | fast path | source, **read further 2026-10-25** | source, **read further 2026-10-25** | not used - **the intrusion-prevention stage's way back into a flow; nothing here needs it; not built** |
-| 19 | [The TCAM: 254 of 256 entries are the vendor's](#the-tcam-254-of-256-entries-are-the-vendors) | switch | **read** | not read | - |
+| 19 | [The TCAM: 254 of 256 entries are the vendor's](#the-tcam-254-of-256-entries-are-the-vendors) | switch | ~~**read**~~ **measured** | not read | - **a rule of one's own fits entry 3, for unicast frames, measured 2026-11-11** ([measured](../measurements/switch-3300-2026-11-11.md)); not used |
 | 20 | [Queue scheduling up to strict priority](#queue-scheduling-up-to-strict-priority) | switch | ~~**read**~~ **measured**: every frame from the coprocessor in queue 0 | ~~not read~~ **read**, the same | not used - **orders nothing: measured 2026-10-25** |
-| 21 | [Two front ports never switch to each other in the chip](#two-front-ports-never-switch-to-each-other-in-the-chip) | switch | ~~**read**~~ **measured**: none crossed; routed, the host's rules decide | ~~likely~~ **measured**, the same | - **nothing to build: measured 2026-10-25** |
-| 22 | [Dragonfly: deep packet inspection and threat detection](#dragonfly-deep-packet-inspection-and-threat-detection) | coprocessor | ~~**read**, running~~ **measured**: on, inspects; exports seen nowhere; a tunnel's traffic lost | **read**, absent | not enabled - **not to be: measured 2026-10-25** |
-| 23 | [A transmit rate limit for each front port](#a-transmit-rate-limit-for-each-front-port) | coprocessor | ~~**read**, on~~ **measured**: refused at boot, the message goes no further | **read**, off | ~~port speed sent as the link's~~ never sent; does nothing when sent |
-| 24 | [The coprocessor's own watchdog, memory reports, clock and randomness](#the-coprocessors-own-watchdog-memory-reports-clock-and-randomness) | coprocessor | ~~**read**~~ **measured**: fed every 5 s, 60 s; unfed, the host froze too; EDAC 0 | **read**: the same feeder, no EDAC | not used - **the host's watchdog brings the appliance back ([768](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/768))** |
+| 21 | [Two front ports never switch to each other in the chip](#two-front-ports-never-switch-to-each-other-in-the-chip) | switch | ~~**read**~~ **measured**: none crossed; routed, the host's rules decide; **measured 2026-11-10: two ports switch to each other once their VLAN maps name each other and TCAM mode is off** | ~~likely~~ **measured**, the same; **its chip switches two ports too, 2026-11-11** ([measured](../measurements/switch-136-2026-11-11.md)) | - ~~**nothing to build: measured 2026-10-25**~~ **not used: what the chip switches, the firewall's rules never see** ([2026-11-10](../measurements/switch-3300-2026-11-10.md); [938 Mbit/s, the host seeing none, 2026-11-11](../measurements/switch-3300-2026-11-11.md)) |
+| 22 | [Dragonfly: deep packet inspection and threat detection](#dragonfly-deep-packet-inspection-and-threat-detection) | coprocessor | ~~**read**, running~~ **measured**: on, inspects; exports seen nowhere; a tunnel's traffic lost | **read**, absent | not enabled - **not to be: measured 2026-10-25**; **only a lab sysctl sets its bit, octep's `rpc.lif_df`** |
+| 23 | [A transmit rate limit for each front port](#a-transmit-rate-limit-for-each-front-port) | coprocessor | ~~**read**, on~~ **measured**: refused at boot, the message goes no further | **read**, off | ~~port speed sent as the link's~~ never sent; does nothing when sent; **the switch chip's own egress limit works, 480/N Mbit/s, measured 2026-11-11 on both models** ([XGS 3300](../measurements/switch-3300-2026-11-11.md), [XGS 136](../measurements/switch-136-2026-11-11.md)) |
+| 24 | [The coprocessor's own watchdog, memory reports, clock and randomness](#the-coprocessors-own-watchdog-memory-reports-clock-and-randomness) | coprocessor | ~~**read**~~ **measured**: fed every 5 s, 60 s; unfed, the host froze too; EDAC 0 | **read**: the same feeder, no EDAC | ~~not used~~ **used on both: XGS: Overview shows the watchdog, its feeder and EDAC since 2026-10-25, and the host looks after the feeder from every boot since 2026-10-27** - **the host's watchdog brings the appliance back ([768](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/768))** |
 | 25 | [The network agent's polling mode](#the-network-agents-polling-mode) | network agent | ~~source~~ **measured**: refused | ~~source~~ **measured**: refused | never sent - **not implemented by any agent here, measured 2026-10-25** |
-| 26 | [VLANs, bridges and address entries through the agent](#vlans-bridges-and-address-entries-through-the-agent) | network agent | source | source | never sent |
-| 27 | [A logger for the coprocessor's console](#a-logger-for-the-coprocessors-console) | board package | ~~source~~ **measured** | ~~source~~ **measured** | ~~none~~ **`console_log.py` from every boot since 2026-10-25, in the support bundle** |
+| 26 | [VLANs, bridges and address entries through the agent](#vlans-bridges-and-address-entries-through-the-agent) | network agent | ~~source~~ **measured**: no handler, status 1 | source | ~~never sent~~ **sent by hand, measured 2026-11-10: not acted on** ([measured](../measurements/switch-3300-2026-11-10.md)); **a VLAN loaded into the chip's own table by hand works, 2026-11-11** ([measured](../measurements/switch-3300-2026-11-11.md)) |
+| 27 | [A logger for the coprocessor's console](#a-logger-for-the-coprocessors-console) | board package | ~~source~~ **measured** | ~~source~~ **measured** | ~~none~~ **`console_log.py` from every boot since 2026-10-25, in the support bundle**, **and on its own page, XGS: Coprocessor Console** |
 | 28 | [The XGS 3300's management link, built and not used](#the-xgs-3300s-management-link-built-and-not-used) | host | ~~measured once~~ **measured** | - (in use) | ~~console used instead~~ **the way to the coprocessor since 2026-10-23** |
-| 29 | [The fail-to-wire relay's watchdog](#the-fail-to-wire-relays-watchdog) | board | source | - | relay read, not driven |
+| 29 | [The fail-to-wire relay's watchdog](#the-fail-to-wire-relays-watchdog) | board | ~~source~~ **measured** | - (no CPLD, no relay) | ~~relay read, not driven~~ **not used by the plugin; read and driven by the vendor's open tool, measured 2026-11-11: armed with its watchdog left to expire, it bypassed in 3.8 s and cut the WAN for 9 s while the host saw the link up** |
+
+Rows 1 to 3 and 8 to 10 act only on a connection in hardware, and a connection is put there only
+when XGS: Settings **Hardware offloading** and **Accelerate connections automatically** are both on -
+both off by default (`offload` and `flow_auto`, `src/opnsense/mvc/app/models/OPNsense/XGS/XGS.xml:46-52`).
 
 ## The fast path
 
@@ -176,7 +180,9 @@ number - set by `CONN_MODIFY_FP`, whose handler is present. It is the hook for p
 ([os-trafficpriority](https://github.com/AbdelmonemAwad/os-trafficpriority)). **Measured 2026-10-24**: the
 fast path takes the words and holds them, read back exactly, but two connections sharing a congested
 port kept their shares with the bit on one; what it would decide is not reachable with this firmware
-([measured](../measurements/port-qos-2026-10-24.md)).
+([measured](../measurements/port-qos-2026-10-24.md)). The instrument is octep's alone, `dp.conn_qos`
+(`contrib/octep/octep_dp.c:9045`); npuep has the words' layout (`contrib/npuep/npuep.h:283-285`)
+and nothing that writes them.
 
 ### The QoS commands
 
@@ -235,8 +241,11 @@ seen late, then taken as stopped at 30 seconds, then answering again, each said 
 counters, so ~~the heartbeat is off by default there~~ since 2026-10-23 its answer there is the beat
 being taken off the host's queue by the fast path's own process ([measured](../measurements/heartbeat-2026-10-22.md#the-answer-on-this-family-the-beat-taken)). ~~It says so; it
 does not act on it yet.~~ The same evening it was acted on: a problem report of its own, the Overview's
-Fast path line, and - when the owner chooses so - the appliance restarted after 2, 5 or 10 minutes
-without an answer ([measured](../measurements/heartbeat-2026-10-22.md#what-is-done-when-it-stops)). As it was written that morning:
+Fast path line, and - ~~when the owner chooses so -~~ the appliance restarted after 2, 5 or 10 minutes
+without an answer ([measured](../measurements/heartbeat-2026-10-22.md#what-is-done-when-it-stops)),
+**then the owner's choice. Since 2026-10-26 the default takes the coprocessor up again in place, the
+host running, and restarts the appliance only if that fails (corrected 2026-11-11;
+`src/opnsense/scripts/xgs/fastpath.py:22-27`).** As it was written that morning:
 
 **source.** The vendor's host module sends a heartbeat message to the fast path every five seconds
 and expects it echoed; with none for 60 seconds it warns, at 120 it declares the fast path dead. os-xgs-npu
@@ -255,7 +264,8 @@ nothing else, so tcpdump on either port of a connection in hardware sees it both
 host had forwarded it - on the XGS 136 and the first XGS 3300 every frame, to 1 Gbit/s; on the second
 XGS 3300, over vendor version 22, only part of them, which part changing from one boot to the next;
 forwarding unchanged
-([measured](../measurements/mirror-2026-10-25.md)). Whether an Intrusion Detection in IDS mode sees
+([measured](../measurements/mirror-2026-10-25.md)) - **and on a later boot of that board, 2026-11-11,
+every frame of a 500 Mbit/s stream ([measured](../measurements/capture-10g-2026-11-11.md))**. Whether an Intrusion Detection in IDS mode sees
 them was not tried.
 
 ### Counters cleared
@@ -266,7 +276,10 @@ start a reading from zero: the fast-path counters went from sums of 4,443, 12,34
 what the next two seconds brought - a clear is taken on the workers' own time, within a second. Their
 numbers are the version's - 46 to 48 on vendor version 21, which has no direct-forwarding clear, 47 to 50 on
 22, 48 to 51 on 23 - and showed that vendor version 21 and 22 number every command from 46 on differently,
-which the drivers now follow ([measured](../measurements/counters-clear-2026-10-25.md)).
+which the drivers now follow ([measured](../measurements/counters-clear-2026-10-25.md)). Since the
+same day XGS: Overview's Datapath counters tab has a Clear button that does the same
+(`src/opnsense/mvc/app/views/OPNsense/XGS/status.volt:937`;
+`src/opnsense/mvc/app/controllers/OPNsense/XGS/Api/OffloadController.php:63-68`).
 
 ### IPsec state kept in step
 
@@ -279,18 +292,28 @@ nothing seen; `SA_REPLAY_UPDATE` took the association it was asked about out of 
 XGS 3300s; `SA_HOST_STAT_SYNC` answered rc 0. On the way it showed that vendor version 23's coprocessor had
 refused every association - its `SA_ADD` is 200 bytes (#759, fixed in #760) - and that its
 `SA_GET_STATS` reads 0, as the XGS 136's does (#761)
-([measured](../measurements/ipsec-step-2026-10-25.md)).
+([measured](../measurements/ipsec-step-2026-10-25.md)). They are sent by hand only, as they were for
+that measurement: octep's RPC probe builds all three as `rpc.cmd` 33 to 35, behind `rpc.allow_write`
+(`contrib/octep/octep_rpc.c:977-1000`, from `SA_REPLAY_UPDATE` on), and npuep's `rpc_channel.command`
+sends any command by its number (`contrib/npuep/npurpc.c:1770`).
 
 ### Ciphers nobody has tried
 
 ~~**source.**~~ **measured on all three vendor versions on 2026-10-25.** The engine's cipher list names ChaCha20, AES with no encryption (GMAC), counter mode and
 3DES besides what was measured; ~~SHA-384 was not run~~. SHA-384 now has: AES-CBC with HMAC-SHA-384,
-each engine against a kernel, every packet through. ChaCha20-Poly1305, given to both drivers as an
-experiment laid out as GCM is, was taken by every engine's `SA_ADD` and then dropped by every
+each engine against a kernel, every packet through. ChaCha20-Poly1305, ~~given to both drivers as an
+experiment~~ **given to both drivers for that measurement only, an experiment whose code was not kept,**
+laid out as GCM is, was taken by every engine's `SA_ADD` and then dropped by every
 datapath (`CRYPTO_DROP_SADB_PRE_ERR`), so it stays with the kernel. GMAC and counter mode are not
 among the proposals OPNsense's page offers, and 3DES is not among what the vendor's host offloads;
 none was tried ([measured](../measurements/cipher-2026-10-25.md)). GCM with an 8- or 12-byte ICV and transport mode
 are settled ([gcm-12-and-transport-are-not-ours](gcm-12-and-transport-are-not-ours.md)).
+
+**Corrected 2026-11-11: neither driver offloads ChaCha20.** Both take GCM-16, and AES-CBC with an
+HMAC - SHA-1, SHA-256, SHA-384 or SHA-512 - and no other cipher (`contrib/octep/octep_ipsec.c:476-517`;
+`contrib/npuep/npuipsec.c:210-236`). SHA-512 was measured before on both families
+([the XGS 3300, 2026-10-12](a-block-cipher-at-two-thirds.md); [the XGS 136, 2026-10-14](a-block-cipher-on-the-armada.md)).
+ChaCha20 is left only as a value of octep's raw RPC probe, `rpc.sa_cipher` (`contrib/octep/octep_rpc.c:3366`).
 
 ### Public-key operations
 
@@ -328,12 +351,16 @@ Not built.
 
 ### The TCAM: 254 of 256 entries are the vendor's
 
-**read.** The 88E6193X has a TCAM of 256 rules that match a frame's first 48 bytes and can replace
+~~**read.**~~ **measured.** The 88E6193X has a TCAM of 256 rules that match a frame's first 48 bytes and can replace
 where it goes, its queue or its DSCP. On the XGS 3300 it is on for the ten front ports and **254 of
 its 256 entries are already the vendor's**: broadcast and multicast, each port's frames and each of
 the appliance's own addresses sent to port 0 - the coprocessor - and a last entry that drops
-whatever else arrives. Entries 3 and 255 are free. So the TCAM is not free to use for a plugin's own
-rules.
+whatever else arrives. Entries 3 and 255 are free. ~~So the TCAM is not free to use for a plugin's own
+rules.~~ **Measured 2026-11-11 (corrected): entry 3 takes a rule of one's own** - a rule loaded there
+dropped the unicast frames it named and left the rest, and broadcast frames it never saw, entry 0
+taking them first; and entry 254, the last, drops every normal frame no earlier entry took, so a
+unicast frame for another machine on a front port is dropped in the chip, not sent to the
+coprocessor ([measured](../measurements/switch-3300-2026-11-11.md)). Not used.
 
 ![The XGS 3300's switch read through the coprocessor: the TCAM on for ports 1 to 10, 254 of 256 entries in use, entries 0, 1 and 254 decoded, every port's queues weighted](../images/measurements/discoveries-2026-10-22/01-xgs3300-switch-tcam.png)
 
@@ -352,8 +379,10 @@ did not win under it. The three versions' firmwares leave the switch alike. Not 
 ### Two front ports never switch to each other in the chip
 
 **read.** Because the vendor's TCAM sends every front port's frames to the coprocessor, two devices
-on two front ports never reach each other inside the switch - their frames always pass the
-coprocessor. ~~Whether the host's rules then see them is to be measured.~~
+on two front ports ~~never reach each other inside the switch - their frames always pass the
+coprocessor~~ **do not reach each other inside the switch as it is set - their frames pass the
+coprocessor; the chip itself can switch them (measured 2026-11-10, below)**. ~~Whether the host's
+rules then see them is to be measured.~~
 
 **Measured 2026-10-25, on vendor version 22 and vendor version 21** ([frontports-2026-10-25](../measurements/frontports-2026-10-25.md)):
 a frame addressed to the device on the other port went in at one switch port and out of the other
@@ -361,6 +390,18 @@ none of ten times, on the second XGS 3300 and on the XGS 136 alike. Routed betwe
 traffic meets the host's rules: a block rule refused every new connection while the one already
 running went on on its pf state, as on any pf firewall, and killing that state stopped it and took it
 out of hardware. The TCAM is on for the front ports on all three versions.
+
+**Measured 2026-11-10, on the second XGS 3300 (vendor version 22): two front ports can switch to
+each other in the chip.** Its 88E6193X switched ports 6 and 8 to each other once each port's VLAN
+map (port register 0x06) named the other and TCAM mode (port register 0x0d, bits 1:0) was off on
+both. ARP requests from the device on port 6 reached the device on port 8 - none of three before,
+all three after - and it held when the device on port 6 took its link down for 6 s and up again,
+the port losing its carrier. The registers were put back after, and none crossed again. Traffic
+switched this way never reaches the coprocessor or the host, so the firewall's rules do not see it
+([measured](../measurements/switch-3300-2026-11-10.md)). Not used, ~~and not tried on the XGS 136~~.
+**Measured 2026-11-11 with traffic**: two ports switched this way carried 938 Mbit/s while the XGS
+3300's host took in no frame of it and pf held no state ([measured](../measurements/switch-3300-2026-11-11.md)),
+and the XGS 136's chip switched two of its ports the same way ([measured](../measurements/switch-136-2026-11-11.md)).
 
 ## The coprocessor, read on the appliances
 
@@ -380,6 +421,8 @@ broadcasts and counted sent, and none reached the host's interfaces or rings, th
 interfaces, the other board or the PC: where they go was not found. And a port with it on loses the
 traffic of a tunnel that arrives there - decrypted, through Dragonfly, then nothing - while plain
 traffic passes. So it stays off, as the vendor's own software leaves it; the XGS 136's vendor version 21 has none.
+Only a lab sysctl of octep's sets the bit, `rpc.lif_df` (`contrib/octep/octep_rpc.c:3228`), sent with
+a `LIF_ADD_UPDATE` that `rpc.allow_write` must let through; the plugin never sets it.
 
 ![The XGS 3300's coprocessor log: Dragonfly starting with nDPI and its rules, its settings directory, its flow settings, and the transmit rate limit set for each front port](../images/measurements/discoveries-2026-10-22/02-xgs3300-coprocessor-log.png)
 
@@ -411,6 +454,14 @@ os-xgs-npu arms by default, restarted the appliance 220 s after the feeding stop
 alike. A host that freezes there is a fault of its own
 ([768](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/768)).
 
+**Used since then, on both families.** XGS: Overview shows the coprocessor's watchdog, what feeds it
+and how often, and its EDAC counts since 2026-10-25
+(`src/opnsense/scripts/xgs/coprocessor.py:121-129`, `src/opnsense/mvc/app/views/OPNsense/XGS/status.volt:661-669`).
+And since 2026-10-27 the host looks after the feeder from every boot: every 20 s it asks the
+coprocessor whether its feeder runs, and puts it right when it has stopped, before the watchdog
+resets the coprocessor (`src/etc/rc.syshook.d/start/69-xgs-feeder`;
+`src/opnsense/scripts/xgs/feeder.py:7-25`; `install/install.sh:419-428`).
+
 ## The vendor's stack and board package
 
 ### The network agent's polling mode
@@ -429,8 +480,17 @@ there.
 ### VLANs, bridges and address entries through the agent
 
 **source.** The agent's commands for VLANs, bridges and static address entries inside the switch, and
-the port attributes for the frame types a port accepts, learning and flooding, are declared and never
-sent.
+the port attributes for the frame types a port accepts, learning and flooding, are declared and ~~never
+sent~~ **were never sent before 2026-11-10**.
+
+**Measured 2026-11-10, on the second XGS 3300 (vendor version 22)**: `VLAN_DELETE` (op 0x07) of VLAN
+4094, which nothing uses, and `BRIDGE_DELETE` (op 0x11) of bridge 0 were sent to its network agent
+by hand, through octep's raw request sysctls, `nwa.op` to `nwa.request` (`contrib/octep/octep_nwa.c:1222-1243`).
+Each was answered with status 1 and no payload - what every operation with no handler answers
+([netagent.md](../npuep/netagent.md)) - and the ports went on as before ([measured](../measurements/switch-3300-2026-11-10.md)).
+So this agent does not act on them; 21 switched two ports through the chip's own registers instead,
+and on 2026-11-11 a VLAN loaded by hand into the chip's own VLAN table carried 934 Mbit/s between two
+ports, with the table deciding per VLAN ([measured](../measurements/switch-3300-2026-11-11.md)).
 
 ### A logger for the coprocessor's console
 
@@ -443,6 +503,8 @@ are lost ([454](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/454)).
 it, under the console's lock and standing aside for `npu-run.sh`; the support bundle carries it. It
 kept the coprocessor's port messages nothing else on the host had, and through a coprocessor reset
 that freezes the XGS 3300's host it kept the start of the coprocessor's boot in two runs of five.
+Since the same day it has a page of its own, XGS: Coprocessor Console
+(`src/opnsense/mvc/app/models/OPNsense/XGS/Menu/Menu.xml:44`).
 
 ### The XGS 3300's management link, built and not used
 
@@ -457,9 +519,16 @@ Transceivers page's read in 1.80 instead of 36.19
 
 ### The fail-to-wire relay's watchdog
 
-**source.** The board's description names a watchdog and a trigger for the fail-to-wire relay - a
-relay that closes by itself when the host stops. The relay is read and not
-driven: driving it can cut the traffic through the appliance.
+~~**source.**~~ **measured.** The board's description names a watchdog and a trigger for the fail-to-wire relay - a
+relay that closes by itself when the host stops. ~~The relay is read and not
+driven: driving it can cut the traffic through the appliance.~~ **The plugin neither reads nor drives
+it. Measured 2026-11-11 on the second XGS 3300 with the vendor's own open tool, `xgs-ftw` from its GPL
+board package ([the measurement](../measurements/relay-3300-2026-11-11.md)):** Port1 and Port2 are its
+one pair, found unarmed. Armed, with its watchdog set to 3 s and never reset, the relay bypassed 3.8 s
+later and the WAN on Port2 was cut for 9 s while the host saw the port's link up - so only the board's
+CPLD says when the relay bypasses. Writing the values found back did not release it; the tool's
+`-d` did, and one bit of the CPLD's register stayed set. A bypass joins the two ports' cables with no
+firewall between them, so on a firewall it stays the owner's decision.
 
 ## Beyond the scope
 
@@ -469,9 +538,9 @@ build it.
 
 | | what | why it is beyond the scope |
 |---|---|---|
-| | VLANs, bridges and address entries inside the switch through the agent | the vendor's host module never sends them |
+| | VLANs, bridges and address entries inside the switch through the agent | the vendor's host module never sends them; **sent by hand the agent refuses them ([2026-11-10](../measurements/switch-3300-2026-11-10.md)), and a VLAN loaded into the chip's own table by hand works ([2026-11-11](../measurements/switch-3300-2026-11-11.md))** |
 | | ciphers the engine names and nobody uses here | not what the vendor's firmware offers for these appliances |
-| | the rate limit on the XGS 136 | off in the vendor's own configuration |
+| | the rate limit on the XGS 136 | off in the vendor's own configuration; **the switch chip's own egress limit works there, 100 Mbit/s asked gave 96.0 ([2026-11-11](../measurements/switch-136-2026-11-11.md))** |
 | | the PTP clock, the RNG, the eMMC's RPMB | no use in a firewall found |
 
 The full working list, with every file and line read, is kept locally beside the sources it cites.

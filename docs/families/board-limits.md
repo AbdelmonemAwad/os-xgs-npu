@@ -70,7 +70,9 @@ On the XGS 136 the switch in front of the coprocessor drops multicast until it i
 IPv6 could not find a neighbour on a routed port; the driver now opens multicast on every port whose
 interface has joined a group (the agent's `ALLMULTI`), which every interface with an IPv6 address has
 ([the finding](../findings/the-switch-drops-multicast-on-the-armada.md)). The 136's IPv6 flows are
-built and installed and have not had traffic through them yet.
+built and installed, and carry traffic: routed IPv6 TCP ran in hardware at 921 Mbit/s with the CPUs 7 %
+busy on 2026-11-11, on a test build with its new settings at 0
+([measured](../measurements/receive-path-limits-2026-11-11.md)).
 
 ## Setting them by hand
 
