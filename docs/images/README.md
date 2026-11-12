@@ -19,10 +19,10 @@ to a new image, and the checks fail on one without them.
 |---|---|---|
 | [screens/](screens/) | The web interface, page by page, in English and in Arabic | 108 |
 | [hardware/](hardware/) | Photographs and drawings of the appliances, one folder each | 41 |
-| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 762 |
+| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 772 |
 | [readme/](readme/) | The README's banner and status board, drawn by tools/readme-art.py | 6 |
 
-956 images in all.
+966 images in all.
 
 ## The web interface
 
@@ -844,6 +844,23 @@ The page: [narrow-path-2026-10-21.md](../measurements/narrow-path-2026-10-21.md)
 | [02-the-fixed-driver.png](measurements/narrow-path-2026-10-21/02-the-fixed-driver.png) | The XGS 136 on the fixed driver, npuep.ko 29b665c7: the same move, 915 Mbit/s through the narrow path, tx_own_df 258,592, tx_needfrag 0, the sender ended | [narrow-path-2026-10-21.md](../measurements/narrow-path-2026-10-21.md) |
 | [03-the-3300-before.png](measurements/narrow-path-2026-10-21/03-the-3300-before.png) | The second XGS 3300 on its driver before, octep.ko f7eede10: the tunnel moved to 10.99.67.x, nothing arrives, out_needfrag 15,873,474 and 819,077 more a second later, the sender at 93.8 % of a CPU and still there after kill -9 | [narrow-path-2026-10-21.md](../measurements/narrow-path-2026-10-21.md) |
 | [04-the-3300-fixed.png](measurements/narrow-path-2026-10-21/04-the-3300-fixed.png) | The second XGS 3300 on the fixed driver, octep.ko 4c8b4162: the same move, 914 Mbit/s, out_own_df 129,436, out_needfrag 0, the sender ended | [narrow-path-2026-10-21.md](../measurements/narrow-path-2026-10-21.md) |
+
+### measurements/native-netmap-136-2026-11-11/ (10)
+
+The page: [native-netmap-136-2026-11-11.md](../measurements/native-netmap-136-2026-11-11.md).
+
+| image | what it shows | used on |
+|---|---|---|
+| [01-udp8-first.png](measurements/native-netmap-136-2026-11-11/01-udp8-first.png) | Eight UDP flows through Suricata on the four rings: 311 Mbit/s received, 16 % dropped at the rings, the CPUs 92 % busy | [native-netmap-136-2026-11-11.md](../measurements/native-netmap-136-2026-11-11.md) |
+| [02-udp8-second.png](measurements/native-netmap-136-2026-11-11/02-udp8-second.png) | The same, a second run: 322 Mbit/s, 15 % dropped | [native-netmap-136-2026-11-11.md](../measurements/native-netmap-136-2026-11-11.md) |
+| [03-tcp8.png](measurements/native-netmap-136-2026-11-11/03-tcp8.png) | Eight TCP streams: 936 Mbit/s, nothing dropped, the CPUs 38 % busy | [native-netmap-136-2026-11-11.md](../measurements/native-netmap-136-2026-11-11.md) |
+| [04-tcp1.png](measurements/native-netmap-136-2026-11-11/04-tcp1.png) | One TCP stream: every frame in one ring | [native-netmap-136-2026-11-11.md](../measurements/native-netmap-136-2026-11-11.md) |
+| [05-mtu9000-buffers-2048-refused.png](measurements/native-netmap-136-2026-11-11/05-mtu9000-buffers-2048-refused.png) | Port8 at MTU 9000 with netmap's buffers of 2,048 bytes: the open refused, Suricata not running | [native-netmap-136-2026-11-11.md](../measurements/native-netmap-136-2026-11-11.md) |
+| [06-mtu9000-buffers-9216.png](measurements/native-netmap-136-2026-11-11/06-mtu9000-buffers-9216.png) | With buffers of 9,216 bytes: pings of 8,972 bytes 5 of 5 through Suricata, eight TCP streams at 935 Mbit/s | [native-netmap-136-2026-11-11.md](../measurements/native-netmap-136-2026-11-11.md) |
+| [07-restart-under-load.png](measurements/native-netmap-136-2026-11-11/07-restart-under-load.png) | Intrusion Detection restarted twice under the eight UDP flows: two dips, nothing in the kernel's log, the host up | [native-netmap-136-2026-11-11.md](../measurements/native-netmap-136-2026-11-11.md) |
+| [08-reload-under-suricata.png](measurements/native-netmap-136-2026-11-11/08-reload-under-suricata.png) | The driver reloaded with Suricata on its rings: the host up, the driver back with new rings, which Suricata does not read | [native-netmap-136-2026-11-11.md](../measurements/native-netmap-136-2026-11-11.md) |
+| [09-release-reload-under-suricata.png](measurements/native-netmap-136-2026-11-11/09-release-reload-under-suricata.png) | The same reload with the release's module and netmap's emulated adapter: Suricata's log 637,848 lines in 20 seconds, the CPUs 67 % busy | [native-netmap-136-2026-11-11.md](../measurements/native-netmap-136-2026-11-11.md) |
+| [10-soak-10-minutes.png](measurements/native-netmap-136-2026-11-11/10-soak-10-minutes.png) | Ten minutes of eight TCP streams through Suricata on the four rings, every frame through the host: 927 Mbit/s, the rings' frames before and after, none dropped, the kernel memory the same (the run's log) | [native-netmap-136-2026-11-11.md](../measurements/native-netmap-136-2026-11-11.md) |
 
 ### measurements/npuep-unload-panics-2026-11-03/ (15)
 

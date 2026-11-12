@@ -87,6 +87,12 @@
 #include <dev/pci/pcivar.h>
 #include <sys/rman.h>
 
+/* The native adapter, hw.npuep.netmap; after machine/bus.h, which its map helpers use. */
+#include <net/netmap.h>
+#include <sys/selinfo.h>
+#include <vm/vm.h>
+#include <dev/netmap/netmap_kern.h>
+
 #include "npuep.h"
 #include "npugiu.h"
 #include "npuips.h"
@@ -343,6 +349,70 @@ TUNABLE_INT("hw.npuep.giu.rx_msix", &npugiu_rx_msix);
  */
 static int npugiu_ips_vf = 0;
 TUNABLE_INT("hw.npuep.ips_vf", &npugiu_ips_vf);
+
+/*
+ * NETMAP, NATIVE, an experiment. Suricata in IPS mode and Zenarmor open the front ports through
+ * netmap, and with nothing here netmap gives them its emulated adapter: every frame built into an
+ * mbuf by the receive path, handed to if_input, taken off it by netmap and queued on a list of fixed
+ * length, and copied once more into the reader's ring - and dropped, counted in the port's input
+ * drops, when that list is full. hw.npuep.netmap=1 at the loader gives each port an adapter of its
+ * own instead: as many receive and transmit rings as there are GIU receive queues (giu.queues),
+ * hw.npuep.netmap_slots slots each.
+ *
+ * As many rings as queues, and a frame into the ring of the queue it arrived on: the coprocessor
+ * picks that queue by a hash of the connection, both directions of one landing in the same queue,
+ * so one connection stays in one ring and a reader that runs a thread a ring - Suricata does - keeps
+ * a connection, both ways, in one thread. With one ring a port, Suricata ran one thread for it.
+ *
+ * It copies. It cannot do otherwise: the coprocessor puts all fourteen ports on the same few
+ * receive queues and the same buffer pools, so a receive buffer is not any one port's to lend to a
+ * reader, and every frame has the sixty-six bytes in front of it in both directions. What it saves
+ * is the mbuf and the list: a frame for a port in netmap mode goes from the receive buffer straight
+ * into slots of that port's ring, in the receive loop, and its buffer goes back to its pool at once,
+ * as every other frame's does. A frame that finds the ring full is dropped there and counted
+ * (giu.netmap_port.<port>.ring<N>.nm_rx_drop, and the port's input drops as the emulated adapter
+ * counts them).
+ *
+ * Why in the receive loop and not in rxsync. A frame cannot wait in its receive buffer for the reader
+ * to come: the pools are shared, and one port's slow reader would empty them for all fourteen. So it
+ * would have to wait as a copy - an mbuf or a buffer on a per-port list - and be copied again in
+ * rxsync, which is the emulated adapter's cost with a different name. Copied in the loop, it is copied
+ * once. The loop only writes slots the kernel owns, past the ring's tail, and keeps where it got to in
+ * the ring's own state (npugiu_nm_ring.tail); rxsync is the only place that moves the kring's own
+ * indices - the tail up to that, hwcur up to what the reader gave back - so netmap's own checks of a
+ * ring never see one change under them. Both sides take the ring's mtx, which is taken inside sc->mtx
+ * and never the other way, and never two at once; rxsync takes nothing else. netmap_rx_irq, which
+ * wakes the reader and can run a VALE switch's forwarding and so the rxsync itself, is called after
+ * the pass with no lock held at all.
+ *
+ * One frame, one slot. A port whose MTU is above netmap's buffer size - 9000 against the default
+ * 2048 - is refused when a reader opens it (npugiu_nm_config says the largest frame the GIU carries,
+ * so netmap_buf_size_validate asks for buffers as large as the MTU): set dev.netmap.buf_size to 9216
+ * for such a port. A frame is never spread over several slots (no NAF_MOREFRAG): Suricata's IPS
+ * path sends what it read back through the host rings, and netmap hands each slot of a chain to the
+ * stack as a frame of its own, so a jumbo frame's later pieces would reach the stack as frames
+ * Suricata never judged as frames. A frame longer than one buffer - the MTU raised under an open
+ * reader - is dropped and counted (giu.netmap_port.<port>.ring<N>.nm_rx_toolong). The emulated
+ * adapter cannot carry such a port at all: it cuts every frame to a single cluster.
+ *
+ * 0, the default, attaches nothing and netmap uses its emulated adapter, as before.
+ */
+static int npugiu_netmap = 0;
+TUNABLE_INT("hw.npuep.netmap", &npugiu_netmap);
+/*
+ * Slots in each ring, hw.npuep.netmap_slots at the loader: a power of two from 256 to 2048, anything
+ * else taken as the default. Read when the ports attach; a ring's size cannot change under a reader.
+ * 2048 because a ring takes 256 + 16 bytes a slot of netmap's memory and netmap's default ring
+ * object is 36,864 bytes (dev.netmap.ring_size): 2048 slots fit, 4096 do not, and every open would
+ * fail. And each slot holds a buffer: Suricata in IPS mode opens a port's four rings each way and
+ * as many host rings, sixteen rings, 16,384 buffers a port at 1024 slots, against netmap's default
+ * of 163,840 (dev.netmap.buf_num) for every port it opens.
+ */
+static int npugiu_nm_slots = 1024;
+TUNABLE_INT("hw.npuep.netmap_slots", &npugiu_nm_slots);
+#define	NPUGIU_NM_SLOTS		1024
+#define	NPUGIU_NM_SLOTS_MIN	256
+#define	NPUGIU_NM_SLOTS_MAX	2048
 #define	NPUGIU_POLL_MS_MIN	1
 #define	NPUGIU_POLL_MS_MAX	100
 #define	NPUGIU_RX_BUDGET_MIN	4
@@ -412,6 +482,31 @@ struct npugiu_port {
 	u_int			 mod_media[2];
 	int			 index;		/* into npuep_front_ports, for the nwa seam */
 	if_transmit_fn_t	 orig_transmit;	/* the stack's default transmit, wrapped by npugiu_transmit */
+	/*
+	 * The native netmap adapter (hw.npuep.netmap). nm_attached: netmap_attach took it, with
+	 * nm_nrings receive and transmit rings, nm[] the first nm_nrings of them. nm_tx_wait: a bit a
+	 * transmit ring whose txsync found its GIU queue full; the poll wakes that ring's writer once.
+	 * The transmit counts are the port's, kept with atomics: rings on different GIU queues send
+	 * under different locks.
+	 */
+	int			 nm_attached;
+	int			 nm_nrings;
+	struct npugiu_nm_ring {
+		/*
+		 * One receive ring. on: the receive loop copies frames of this ring's queue into it -
+		 * set and cleared by npugiu_nm_register under sc->mtx and mtx, read under sc->mtx.
+		 * tail and cur, under mtx: the next slot the loop fills, and the reader's hwcur as
+		 * rxsync last saw it. The counts are written by the receive loop only, under sc->mtx;
+		 * rx_toolong is among rx_drop: frames longer than one netmap buffer.
+		 */
+		struct mtx	 mtx;
+		int		 on;
+		uint32_t	 tail;
+		uint32_t	 cur;
+		uint64_t	 rx, rx_drop, rx_toolong;
+	}			 nm[NPUGIU_NUM_QS];
+	volatile u_int		 nm_tx_wait;
+	uint64_t		 nm_tx, nm_tx_full, nm_tx_drop;
 };
 
 /*
@@ -491,6 +586,14 @@ struct npugiu_softc {
 	uint64_t		 tx_q[NPUGIU_NUM_QS];
 	uint64_t		 tx_fallback;
 	uint64_t		 rx_port[NPUEP_NFRONT];
+	/* by netmap receive ring: the ports whose ring of that number a pass filled, a bit each */
+	uint32_t		 nm_rx_kick[NPUGIU_NUM_QS];
+	/*
+	 * Wake-ups taken by a pass and not yet done (npugiu_nm_take to the end of npugiu_nm_kick):
+	 * npugiu_nm_register waits for none before a reader's rings may be torn down.
+	 */
+	volatile u_int		 nm_kicks;
+	int			 nm_slots;	/* hw.npuep.netmap_slots as the ports were attached with */
 	uint64_t		 rx_untagged;	/* a tag that matches no front port */
 	/*
 	 * The last of those, kept for giu.rx_untagged_frame: its tag, its 64 bytes of metadata and the
@@ -1094,6 +1197,39 @@ npugiu_drain(struct npugiu_softc *sc)
  */
 
 /*
+ * The sixty-six bytes in front of a frame on its way out: the port identifier, network order, then
+ * the metadata area. The vendor fills that with a descending ramp where it has nothing to put; zeros
+ * are the honest equivalent and do not pretend to carry information. Shared by npugiu_encap and the
+ * netmap transmit, so the two cannot come to differ.
+ */
+static __inline void
+npugiu_tx_hdr(uint8_t *b, uint16_t tag)
+{
+	b[0] = (uint8_t)((tag >> 8) & 0xFF);
+	b[1] = (uint8_t)(tag & 0xFF);
+	memset(b + NPUGIU_TAG_LEN, 0, NPUGIU_META_LEN);
+}
+
+/*
+ * The transmit descriptor for slot push of queue q, whose buffer holds len bytes of frame behind its
+ * header. Written whole; the caller publishes the index after it, with idx_publish's barrier.
+ */
+static __inline void
+npugiu_tx_desc(struct npugiu_softc *sc, int q, uint32_t push, int len)
+{
+	uint8_t *d = desc_at(&sc->tx[q], push);
+	int bi = q * NPUGIU_DATA_Q_LEN + (int)push;
+
+	memset(d, 0, AGNIC_TXD_SIZE);
+	le32enc(d + AGNIC_TXD_FLAGS, AGNIC_TXD_F_MD_MODE | AGNIC_TXD_F_GEN_L4_CSUM_NOT |
+	    AGNIC_TXD_F_GEN_IPV4_CSUM_DIS);
+	d[AGNIC_TXD_PKT_OFFSET] = 0;
+	le16enc(d + AGNIC_TXD_BYTE_CNT, (uint16_t)(len + NPUGIU_HDR_LEN));
+	le64enc(d + AGNIC_TXD_BUFFER_ADDR, (uint64_t)sc->txbuf[bi].paddr);
+	le64enc(d + AGNIC_TXD_COOKIE, (uint64_t)push);	/* an index, never a pointer */
+}
+
+/*
  * Transmit one frame. Called with the lock held.
  *
  * The descriptor is filled completely, then a release barrier, then the index - and that ordering
@@ -1111,7 +1247,7 @@ npugiu_encap(struct npugiu_softc *sc, int q, struct mbuf *m, uint16_t tag)
 	 */
 	struct npugiu_ring *r = &sc->tx[q];
 	uint32_t cons, push;
-	uint8_t *d, *b;
+	uint8_t *b;
 	int len = m->m_pkthdr.len;
 	int bi;
 
@@ -1132,14 +1268,8 @@ npugiu_encap(struct npugiu_softc *sc, int q, struct mbuf *m, uint16_t tag)
 
 	bi = q * NPUGIU_DATA_Q_LEN + (int)push;
 	b = sc->txbuf[bi].vaddr;
-	/* the port identifier, network order, in front of everything */
-	b[0] = (uint8_t)((tag >> 8) & 0xFF);
-	b[1] = (uint8_t)(tag & 0xFF);
-	/*
-	 * The metadata area. The vendor fills it with a descending ramp where it has nothing to
-	 * put; zeros are the honest equivalent and do not pretend to carry information.
-	 */
-	memset(b + NPUGIU_TAG_LEN, 0, NPUGIU_META_LEN);
+	/* the port identifier, network order, in front of everything, then the metadata area */
+	npugiu_tx_hdr(b, tag);
 	/*
 	 * A frame the IPsec output step built for the engine to encrypt: the request rides in the
 	 * metadata the way the vendor's host writes it (mrvl_cst_set_tx_meta in its usfp_firewall
@@ -1161,15 +1291,7 @@ npugiu_encap(struct npugiu_softc *sc, int q, struct mbuf *m, uint16_t tag)
 		}
 	}
 	m_copydata(m, 0, len, (caddr_t)(b + NPUGIU_HDR_LEN));
-
-	d = desc_at(r, push);
-	memset(d, 0, AGNIC_TXD_SIZE);
-	le32enc(d + AGNIC_TXD_FLAGS, AGNIC_TXD_F_MD_MODE | AGNIC_TXD_F_GEN_L4_CSUM_NOT |
-	    AGNIC_TXD_F_GEN_IPV4_CSUM_DIS);
-	d[AGNIC_TXD_PKT_OFFSET] = 0;
-	le16enc(d + AGNIC_TXD_BYTE_CNT, (uint16_t)(len + NPUGIU_HDR_LEN));
-	le64enc(d + AGNIC_TXD_BUFFER_ADDR, (uint64_t)sc->txbuf[bi].paddr);
-	le64enc(d + AGNIC_TXD_COOKIE, (uint64_t)push);	/* an index, never a pointer */
+	npugiu_tx_desc(sc, q, push, len);
 
 	r->shadow = ring_next(r, push);
 	idx_publish(sc, r->prod_slot, r->shadow);
@@ -1418,6 +1540,429 @@ npugiu_port_tag(int port)
 	if (sc == NULL || port < 0 || port >= npuep_nfront || sc->port[port].fp == NULL)
 		return (0);
 	return (sc->port[port].fp->tag);
+}
+
+/*
+ * ---------------------------------------------------------------------------------------
+ * The native netmap adapter (hw.npuep.netmap, see npugiu_netmap above for why it copies, and
+ * where). A receive and a transmit ring for each GIU receive queue; the host stack's rings are
+ * netmap's, as many of them as there are hardware rings (npugiu_nm_attach says why).
+ * ---------------------------------------------------------------------------------------
+ */
+CTASSERT(NPUEP_NFRONT <= 32);	/* sc->nm_rx_kick[] is a bit a port */
+CTASSERT(NPUGIU_NUM_QS <= 32);	/* pt->nm_tx_wait is a bit a ring */
+
+/*
+ * One frame for a port in netmap mode, from the receive loop, for receive ring r - the ring of the
+ * GIU receive queue it came on: copied from behind its sixty-six bytes into the next slot the kernel
+ * owns, or dropped and counted if no slot is free or the frame is longer than one netmap buffer (no
+ * frame is spread over several slots: see the block above hw.npuep.netmap). Published to the reader
+ * by npugiu_nm_rxsync, woken after the pass by npugiu_nm_kick. Under sc->mtx.
+ */
+static void
+npugiu_nm_rx(struct npugiu_softc *sc, struct npugiu_port *pt, int r, const uint8_t *f, int len)
+{
+	struct npugiu_nm_ring *nr = &pt->nm[r];
+	struct netmap_adapter *na = NA(pt->ifp);
+	struct netmap_kring *kring = na->rx_rings[r];
+	struct netmap_ring *ring = kring->ring;
+	u_int const lim = kring->nkr_num_slots - 1;
+	u_int const bufsz = NETMAP_BUF_SIZE(na);
+	struct netmap_slot *slot;
+	void *addr;
+
+	mtx_assert(&sc->mtx, MA_OWNED);
+
+	mtx_lock(&nr->mtx);
+	if (len <= 0 || bufsz == 0)
+		goto drop;
+	if ((u_int)len > bufsz) {
+		nr->rx_toolong++;		/* never spread over several slots */
+		goto drop;
+	}
+	/* Free: from the tail up to the slot before the reader's hwcur, which stays empty. */
+	if (nm_next(nr->tail, lim) == nr->cur)
+		goto drop;			/* the reader has not given back a slot */
+	slot = &ring->slot[nr->tail];
+	addr = NMB(na, slot);
+	/* A buffer index the reader broke. The tail has not moved: nothing is published. */
+	if (addr == NETMAP_BUF_BASE(na))
+		goto drop;
+	memcpy(addr, f, (size_t)len);
+	slot->len = (uint16_t)len;
+	slot->flags = 0;
+	nr->tail = nm_next(nr->tail, lim);
+	mtx_unlock(&nr->mtx);
+	nr->rx++;
+	sc->nm_rx_kick[r] |= 1u << pt->index;
+	return;
+drop:
+	mtx_unlock(&nr->mtx);
+	nr->rx_drop++;
+	if_inc_counter(pt->ifp, IFCOUNTER_IQDROPS, 1);
+	sc->nm_rx_kick[r] |= 1u << pt->index;	/* and the reader woken, in case it sleeps on a full ring */
+}
+
+/*
+ * rxsync: the only place a receive kring's indices move. The slots the reader gave back are the
+ * kernel's again (hwcur to head - nothing to refill, the loop copies into whatever buffer a slot
+ * holds when it fills it), and the frames the loop copied in since are the reader's (the tail to
+ * the ring's own tail). Takes the ring's mtx and nothing else; netmap runs one sync a kring at a
+ * time, so the rings of a port sync side by side.
+ */
+static int
+npugiu_nm_rxsync(struct netmap_kring *kring, int flags __unused)
+{
+	struct netmap_adapter *na = kring->na;
+	struct npugiu_port *pt = if_getsoftc(na->ifp);
+	struct npugiu_nm_ring *nr;
+	u_int const lim = kring->nkr_num_slots - 1;
+	u_int const head = kring->rhead;
+
+	if (head > lim || kring->ring_id >= (u_int)pt->nm_nrings)
+		return (netmap_ring_reinit(kring));
+	nr = &pt->nm[kring->ring_id];
+
+	mtx_lock(&nr->mtx);
+	kring->nr_hwcur = head;
+	nr->cur = head;
+	kring->nr_hwtail = nr->tail;
+	kring->nr_kflags &= ~NKR_PENDINTR;
+	mtx_unlock(&nr->mtx);
+	return (0);
+}
+
+/*
+ * txsync: each frame from hwcur to head copied into a transmit buffer of a GIU queue, behind the
+ * same sixty-six bytes npugiu_encap writes, and the queue's producer index published once for all
+ * of them - the doorbell, as npugiu_encap rings it for one. Ring i always sends on queue i over the
+ * queues the stack sends on (giu.txq), so one ring's frames keep their order; two rings that share
+ * a queue share its lock, as two CPUs sending on it do.
+ *
+ * A frame is its slots up to the first without NS_MOREFRAG, gathered into one transmit buffer. One
+ * that does not fit a buffer (giu.buf_size less the header), that has a slot with a broken buffer
+ * index or longer than a netmap buffer, or that is shorter than an Ethernet header is not sent: its
+ * slots are consumed and it is counted (nm_tx_drop, giu.tx_toolong, the port's output errors). A
+ * frame whose last slot the reader has not handed over yet - NS_MOREFRAG on the slot before head -
+ * is left where it starts, for the next txsync; so is everything after a full queue. Each slot's
+ * len and flags are read once, as the copy uses them: the reader shares the ring, and the bound has
+ * to hold for the bytes that are actually copied.
+ *
+ * Nothing to reclaim afterwards: a slot is copied out before this returns, so every slot up to
+ * where it stopped is free again at once, and the GIU's own buffers are reclaimed the way the
+ * normal transmit reclaims them - by the device's consumer index, read here once a call. A full
+ * queue is counted in nm_tx_full, and the poll wakes the ring's writer (nm_tx_wait) rather than
+ * leave it asleep on a ring nothing would drain. Under the queue's own lock, as npugiu_transmit
+ * sends; never sc->mtx.
+ */
+static int
+npugiu_nm_txsync(struct netmap_kring *kring, int flags __unused)
+{
+	struct netmap_adapter *na = kring->na;
+	if_t ifp = na->ifp;
+	struct npugiu_port *pt = if_getsoftc(ifp);
+	struct npugiu_softc *sc = pt->sc;
+	struct netmap_ring *ring = kring->ring;
+	u_int const lim = kring->nkr_num_slots - 1;
+	u_int const head = kring->rhead;
+	u_int const bufsz = NETMAP_BUF_SIZE(na);
+	u_int const room = (u_int)(sc->buf_size - NPUGIU_HDR_LEN);
+	u_int nm_i = kring->nr_hwcur;
+	struct npugiu_ring *r;
+	uint64_t bytes = 0;
+	uint32_t cons, push;
+	int q, n = 0, bad = 0;
+
+	if (nm_i != head) {
+		q = (int)(kring->ring_id % (u_int)imax(1, sc->txq_n));
+		r = &sc->tx[q];
+		mtx_lock(&sc->txmtx[q]);
+		if (sc->datapath && idx_remote(sc, r->cons_slot, r->len, &cons)) {
+			push = r->shadow;
+			while (nm_i != head) {
+				u_int i = nm_i, off = 0;
+				int ok = 1, last;
+				uint8_t *b;
+
+				if (ring_next(r, push) == cons) {
+					atomic_add_64(&pt->nm_tx_full, 1);
+					atomic_add_64(&sc->tx_full, 1);
+					atomic_set_int(&pt->nm_tx_wait, 1u << kring->ring_id);
+					break;
+				}
+				b = sc->txbuf[q * NPUGIU_DATA_Q_LEN + (int)push].vaddr;
+				do {
+					struct netmap_slot *slot = &ring->slot[i];
+					u_int len = slot->len;
+					uint16_t fl = slot->flags;
+					void *addr = NMB(na, slot);
+
+					slot->flags = fl & ~(NS_REPORT | NS_BUF_CHANGED);
+					if (addr == NETMAP_BUF_BASE(na) || len > bufsz || len > room - off)
+						ok = 0;	/* and the rest of the frame only walked */
+					if (ok) {
+						memcpy(b + NPUGIU_HDR_LEN + off, addr, len);
+						off += len;
+					}
+					last = (fl & NS_MOREFRAG) == 0;
+					i = nm_next(i, lim);
+				} while (!last && i != head);
+				if (!last)
+					break;		/* not handed over whole yet */
+				nm_i = i;		/* its slots are consumed, sent or not */
+				if (!ok || off < ETHER_HDR_LEN) {
+					atomic_add_64(&pt->nm_tx_drop, 1);
+					atomic_add_64(&sc->tx_toolong, 1);
+					bad++;
+					continue;
+				}
+				npugiu_tx_hdr(b, pt->fp->tag);
+				npugiu_tx_desc(sc, q, push, (int)off);
+				push = ring_next(r, push);
+				bytes += off;
+				n++;
+			}
+			if (n > 0) {
+				r->shadow = push;
+				idx_publish(sc, r->prod_slot, push);
+				sc->tx_q[q] += (uint64_t)n;
+			}
+		}
+		mtx_unlock(&sc->txmtx[q]);
+	}
+	kring->nr_hwcur = nm_i;
+	kring->nr_hwtail = nm_prev(nm_i, lim);
+
+	if (n > 0) {
+		atomic_add_64(&pt->nm_tx, (uint64_t)n);
+		atomic_add_64(&sc->tx_packets, (uint64_t)n);
+		atomic_add_64(&sc->tx_bytes, bytes);
+		if_inc_counter(ifp, IFCOUNTER_OPACKETS, n);
+		if_inc_counter(ifp, IFCOUNTER_OBYTES, (int64_t)bytes);
+	}
+	if (bad > 0)
+		if_inc_counter(ifp, IFCOUNTER_OERRORS, bad);
+	return (0);
+}
+
+/*
+ * In and out of netmap mode, with traffic flowing. Called by netmap under its own lock, which
+ * sleeps, so this may too - but nothing of the datapath has to stop: the receive loop decides per
+ * frame, under sc->mtx, whether a frame goes to its ring, and the transmit side needs no switch at
+ * all (nm_set_native_flags swaps the port's if_transmit for netmap's, so the stack's frames go to
+ * the host rings, and back).
+ *
+ * Called once for every open and close of a set of the port's rings - Suricata opens each ring of
+ * npupN, and the host rings of npupN^, apart - with onoff saying what that open or close wants, not
+ * what each ring is. So what decides, ring by ring, is the receive kring's own mode, as
+ * netmap_reset commits it from what netmap asked of the ring: netmap_reset first, with no lock of
+ * ours held, since it wakes the ring's readers and a VALE switch's wake runs rxsync; then the
+ * rings' flags, under sc->mtx so no pass is half-way through a frame for the port, and each ring's
+ * mtx so rxsync sees its indices whole. The indices are taken from the kring only on its way in;
+ * on the way out the kring is netmap's to free once this returns, and after its flag is clear the
+ * loop no longer touches it. A ring not open stays off and its queue's frames for the port take
+ * the stack's path, as a hardware ring left out of netmap mode does in any driver.
+ */
+static int
+npugiu_nm_register(struct netmap_adapter *na, int onoff)
+{
+	struct npugiu_port *pt = if_getsoftc(na->ifp);
+	struct npugiu_softc *sc = pt->sc;
+	struct netmap_kring *k;
+	uint32_t bit = 1u << pt->index, off = 0;
+	int i, waited;
+
+	if (onoff)
+		nm_set_native_flags(na);	/* netmap's own: only for the first reader */
+	/*
+	 * Only the rings whose mode changes: netmap_reset sets a ring that comes on from its reader's
+	 * head and turns it on; a ring another reader keeps open is left as it is, its slots and its
+	 * indices with it. A ring going off is only marked so.
+	 */
+	for (i = 0; i < pt->nm_nrings; i++) {
+		k = na->tx_rings[i];
+		if (nm_kring_pending_on(k))
+			(void)netmap_reset(na, NR_TX, (u_int)i, 0);
+		else if (nm_kring_pending_off(k))
+			k->nr_mode = NKR_NETMAP_OFF;
+		k = na->rx_rings[i];
+		if (nm_kring_pending_on(k))
+			(void)netmap_reset(na, NR_RX, (u_int)i, 0);
+		else if (nm_kring_pending_off(k))
+			k->nr_mode = NKR_NETMAP_OFF;
+	}
+
+	GIU_LOCK(sc);
+	for (i = 0; i < pt->nm_nrings; i++) {
+		struct netmap_kring *rxk = na->rx_rings[i];
+		struct npugiu_nm_ring *nr = &pt->nm[i];
+		int on;
+
+		mtx_lock(&nr->mtx);
+		on = nm_native_on(na) && rxk->nr_mode == NKR_NETMAP_ON;
+		if (on && !nr->on) {
+			nr->tail = rxk->nr_hwtail;
+			nr->cur = rxk->nr_hwcur;
+		}
+		if (!on) {
+			/* a wake-up the loop left for this ring and nobody took yet is dropped */
+			sc->nm_rx_kick[i] &= ~bit;
+			off |= 1u << i;
+		}
+		nr->on = on;
+		mtx_unlock(&nr->mtx);
+	}
+	GIU_UNLOCK(sc);
+	if (off != 0)
+		atomic_clear_int(&pt->nm_tx_wait, off);
+
+	/*
+	 * A wake-up already taken by a pass (npugiu_nm_take) may still be inside netmap_rx_irq or
+	 * netmap_tx_irq for these rings: wait it out before netmap tears the rings down - which it may
+	 * do as soon as this returns, the last reader gone. The two passes take and kick within
+	 * microseconds; a second at most, and then said.
+	 */
+	if (!onoff) {
+		for (waited = 0; atomic_load_acq_int(&sc->nm_kicks) != 0 && waited < hz; waited++)
+			pause("npunmk", 1);
+		if (atomic_load_acq_int(&sc->nm_kicks) != 0)
+			device_printf(sc->fac.dev, "giu: %s: a netmap wake-up still running after a "
+			    "second as the rings close\n", if_name(na->ifp));
+		nm_clear_native_flags(na);	/* netmap's own: only for the last reader */
+	}
+	return (0);
+}
+
+/*
+ * What netmap asks each time a reader opens the port with nobody else on it: the counts attached
+ * with, and the largest frame one receive descriptor carries - the GIU buffer less its sixty-six
+ * bytes. netmap_buf_size_validate, which runs after this, then takes a port only if its MTU fits that
+ * and netmap's buffers are as large as the MTU, and refuses it otherwise: there is no NAF_MOREFRAG,
+ * so a frame is never spread over several slots (see the block above hw.npuep.netmap).
+ */
+static int
+npugiu_nm_config(struct netmap_adapter *na, struct nm_config_info *info)
+{
+	struct npugiu_port *pt = if_getsoftc(na->ifp);
+
+	info->num_tx_rings = (unsigned)pt->nm_nrings;
+	info->num_rx_rings = (unsigned)pt->nm_nrings;
+	info->num_tx_descs = (unsigned)pt->sc->nm_slots;
+	info->num_rx_descs = (unsigned)pt->sc->nm_slots;
+	info->rx_buf_maxsize = (unsigned)(pt->sc->buf_size - NPUGIU_HDR_LEN);
+	return (0);
+}
+
+/*
+ * Wake the readers whose rings a pass filled, and the writers a full queue stopped, ring by ring.
+ * With no lock held: netmap_rx_irq runs the ring's notify, which for a port on a VALE switch is
+ * that switch's forwarding and this port's rxsync.
+ */
+static void
+npugiu_nm_kick(struct npugiu_softc *sc, const uint32_t *rx)
+{
+	u_int work, wait;
+	int i, r;
+
+	for (i = 0; i < npuep_nfront; i++) {
+		struct npugiu_port *pt = &sc->port[i];
+
+		if (!pt->nm_attached || pt->ifp == NULL)
+			continue;
+		for (r = 0; r < pt->nm_nrings; r++)
+			if ((rx[r] & (1u << i)) != 0)
+				(void)netmap_rx_irq(pt->ifp, (u_int)r, &work);
+		wait = atomic_readandclear_int(&pt->nm_tx_wait);
+		for (r = 0; wait != 0 && r < pt->nm_nrings; r++)
+			if ((wait & (1u << r)) != 0)
+				(void)netmap_tx_irq(pt->ifp, (u_int)r);
+	}
+	atomic_subtract_rel_int(&sc->nm_kicks, 1);	/* taken by npugiu_nm_take */
+}
+
+/*
+ * Whether a pass has anything for npugiu_nm_kick: the receive rings it filled moved into kick (a
+ * port bitmap a ring, NPUGIU_NUM_QS of them) and cleared, and whether a writer waits. Under sc->mtx.
+ */
+static int
+npugiu_nm_take(struct npugiu_softc *sc, uint32_t *kick)
+{
+	int i, any = 0;
+
+	if (!npugiu_netmap)
+		return (0);
+	for (i = 0; i < NPUGIU_NUM_QS; i++) {
+		kick[i] = sc->nm_rx_kick[i];
+		sc->nm_rx_kick[i] = 0;
+		if (kick[i] != 0)
+			any = 1;
+	}
+	for (i = 0; !any && i < npuep_nfront; i++)
+		if (atomic_load_acq_int(&sc->port[i].nm_tx_wait) != 0)
+			any = 1;
+	if (any)
+		atomic_add_int(&sc->nm_kicks, 1);	/* done at the end of npugiu_nm_kick */
+	return (any);
+}
+
+/*
+ * The adapter, for one port, after ether_ifattach and with no lock held - netmap_attach allocates.
+ * A port it fails for is left to the emulated adapter, as with hw.npuep.netmap=0.
+ *
+ * Rings: one a GIU receive queue (giu.queues, decided before the ports attach), so a frame's queue
+ * names its ring. Host rings: as many again, each way, for the first reader; netmap puts them back
+ * to one when the last reader closes, and a reader asks for its own number as it opens the port
+ * (Suricata in IPS mode does, with the host-rings option of the name it opens). netmap_transmit
+ * picks a host receive ring by the frame's flow id, so frames the stack forwards to the port, whose
+ * mbufs carry none, all go to host ring 0.
+ */
+static void
+npugiu_nm_attach(struct npugiu_port *pt)
+{
+	struct npugiu_softc *sc = pt->sc;
+	struct netmap_adapter na;
+	int err, i, n;
+
+	if (sc->nm_slots == 0) {
+		sc->nm_slots = npugiu_nm_slots;
+		if (sc->nm_slots < NPUGIU_NM_SLOTS_MIN || sc->nm_slots > NPUGIU_NM_SLOTS_MAX ||
+		    !powerof2(sc->nm_slots)) {
+			device_printf(sc->fac.dev, "giu: hw.npuep.netmap_slots %d is not a power of two "
+			    "from %d to %d - %d\n", npugiu_nm_slots, NPUGIU_NM_SLOTS_MIN,
+			    NPUGIU_NM_SLOTS_MAX, NPUGIU_NM_SLOTS);
+			sc->nm_slots = NPUGIU_NM_SLOTS;
+		}
+	}
+	n = imax(1, imin(sc->nqs, NPUGIU_NUM_QS));
+	for (i = 0; i < n; i++)
+		mtx_init(&pt->nm[i].mtx, "npugiu netmap", NULL, MTX_DEF);
+	pt->nm_nrings = n;
+
+	bzero(&na, sizeof(na));
+	na.ifp = pt->ifp;
+	/* One frame a slot: no NAF_MOREFRAG (see the block above hw.npuep.netmap). */
+	na.na_flags = 0;
+	na.num_tx_desc = (u_int)sc->nm_slots;
+	na.num_rx_desc = (u_int)sc->nm_slots;
+	na.num_tx_rings = (u_int)n;
+	na.num_rx_rings = (u_int)n;
+	na.num_host_tx_rings = (u_int)n;
+	na.num_host_rx_rings = (u_int)n;
+	na.rx_buf_maxsize = (u_int)(sc->buf_size - NPUGIU_HDR_LEN);	/* as npugiu_nm_config says it */
+	na.nm_register = npugiu_nm_register;
+	na.nm_txsync = npugiu_nm_txsync;
+	na.nm_rxsync = npugiu_nm_rxsync;
+	na.nm_config = npugiu_nm_config;
+	err = netmap_attach(&na);
+	if (err != 0) {
+		device_printf(sc->fac.dev, "giu: %s: netmap_attach failed (%d) - emulated netmap\n",
+		    if_name(pt->ifp), err);
+		pt->nm_nrings = 0;
+		for (i = 0; i < n; i++)
+			mtx_destroy(&pt->nm[i].mtx);
+		return;
+	}
+	pt->nm_attached = 1;
 }
 
 /*
@@ -1672,6 +2217,8 @@ npugiu_rx_queue(struct npugiu_softc *sc, int q, int budget, struct mbuf **head,
 		const uint8_t *src;
 		uint16_t port;
 		uint32_t saw;
+		struct npugiu_port *nmp;	/* its port, if that port's frames go to a netmap ring */
+		int nmr = 0;			/* and that ring: the one of this receive queue */
 		struct npuep_pf_tuple ct;	/* a FIN's or a RST's, for npuflow_closing_hold */
 		int closing = 0;
 		int hold = 0;			/* why its buffer is held back a pass, see late_why */
@@ -1938,6 +2485,31 @@ npugiu_rx_queue(struct npugiu_softc *sc, int q, int budget, struct mbuf **head,
 		}
 
 		/*
+		 * A port in netmap mode (hw.npuep.netmap): the frame is copied straight into its
+		 * receive ring, no mbuf, and counted below as any frame of the port is. Not a frame
+		 * the engine decrypted - npuipsec_rx terminates those, and a reader would be handed an
+		 * ESP header over plaintext - and not, yet, a FIN or a RST of a connection the flow
+		 * code holds back for pf (issue #679): such a frame takes the mbuf path, and only if
+		 * npuflow_closing_hold does not keep it does it come to the ring after all, below.
+		 * The tag 254 control messages and frames on no port have no port here, and the
+		 * inspector's function returned above; all three keep their paths. The ring is the
+		 * one of the queue the frame came on, the coprocessor's choice by the connection: a
+		 * connection, both its directions, stays in one ring. A ring nobody has open leaves
+		 * its frames to the stack, as a hardware ring left out of netmap mode does.
+		 */
+		n = npugiu_port_of_tag(sc, port);
+		nmp = NULL;
+		if (n >= 0 && sc->port[n].nm_nrings > 0 && (saw & 0xffffu) == 0) {
+			nmr = q % sc->port[n].nm_nrings;
+			if (sc->port[n].nm[nmr].on)
+				nmp = &sc->port[n];
+		}
+		if (nmp != NULL && !closing) {
+			npugiu_nm_rx(sc, nmp, nmr, src + NPUGIU_HDR_LEN, len);
+			goto accounted;
+		}
+
+		/*
 		 * Sized for the frame, not for a fixed cluster. m_getcl always returns 2048 bytes,
 		 * and the length check above only bounds the copy by the DMA buffer - which the
 		 * device is free to report as up to sixteen kilobytes, and which the interface
@@ -1986,9 +2558,8 @@ npugiu_rx_queue(struct npugiu_softc *sc, int q, int budget, struct mbuf **head,
 		m->m_pkthdr.len = m->m_len = len;
 		/*
 		 * The tag is the only thing that says which front port this arrived on, and so the
-		 * only thing that can say which host interface it belongs to.
+		 * only thing that can say which host interface it belongs to (n, above).
 		 */
-		n = npugiu_port_of_tag(sc, port);
 		m->m_pkthdr.rcvif = (n >= 0) ? sc->port[n].ifp : NULL;
 		m->m_nextpkt = NULL;
 		/*
@@ -2037,6 +2608,10 @@ npugiu_rx_queue(struct npugiu_softc *sc, int q, int budget, struct mbuf **head,
 			 * held, and handed up by npuflow_closing_task once pf has the fast path's numbers
 			 * to judge it by (issue #679).
 			 */
+		} else if (nmp != NULL) {
+			/* Not held: to the port's netmap ring after all, from the buffer still ours. */
+			m_freem(m);
+			npugiu_nm_rx(sc, nmp, nmr, src + NPUGIU_HDR_LEN, len);
 		} else {
 			if (*head == NULL)
 				*head = m;
@@ -2045,6 +2620,7 @@ npugiu_rx_queue(struct npugiu_softc *sc, int q, int budget, struct mbuf **head,
 			*tail = m;
 		}
 
+accounted:
 		sc->rx_packets++;
 		sc->rx_bytes += len;
 		if (n >= 0) {
@@ -2430,6 +3006,10 @@ npugiu_attach_ifnet(struct npugiu_softc *sc)
 		else if (fp->tag < 8)
 			sc->by_lo[fp->tag] = (int8_t)i;
 		GIU_UNLOCK(sc);
+
+		/* A native netmap adapter, unlocked as the rest is (hw.npuep.netmap, above). */
+		if (npugiu_netmap != 0 && !sc->is_vf)
+			npugiu_nm_attach(pt);
 	}
 	return (0);
 }
@@ -2900,7 +3480,8 @@ npugiu_tick(void *arg)
 	struct npugiu_softc *sc = arg;
 	struct mbuf *head = NULL, *tail = NULL;
 	struct mbuf *ihead = NULL, *itail = NULL;	/* frames the engine decrypted: npuipsec_rx's */
-	int i;
+	uint32_t kick[NPUGIU_NUM_QS];
+	int i, nm;
 
 	mtx_assert(&sc->mtx, MA_OWNED);
 	if (!sc->running)
@@ -2926,11 +3507,14 @@ npugiu_tick(void *arg)
 	 * Hand the frames up with the lock dropped, and only after the next tick is armed so that
 	 * nothing below can lose the timer. Calling into the stack while holding a driver mutex is
 	 * how drivers deadlock. We return with the lock held, which is what a callout started by
-	 * callout_init_mtx requires.
+	 * callout_init_mtx requires. The netmap readers and writers are woken the same way.
 	 */
-	if (head != NULL || ihead != NULL) {
+	nm = npugiu_nm_take(sc, kick);
+	if (head != NULL || ihead != NULL || nm) {
 		GIU_UNLOCK(sc);
 		npugiu_deliver(head, ihead);
+		if (nm)
+			npugiu_nm_kick(sc, kick);
 		GIU_LOCK(sc);
 	}
 }
@@ -2945,7 +3529,8 @@ npugiu_rx_task(void *arg, int pending __unused)
 {
 	struct npugiu_softc *sc = arg;
 	struct mbuf *head = NULL, *tail = NULL, *ihead = NULL, *itail = NULL;
-	int done = 0;
+	uint32_t kick[NPUGIU_NUM_QS];
+	int done = 0, nm;
 
 	GIU_LOCK(sc);
 	if (sc->running && sc->datapath) {
@@ -2953,9 +3538,12 @@ npugiu_rx_task(void *arg, int pending __unused)
 		sc->rx_task_runs++;
 		sc->rx_task_frames += (uint64_t)done;
 	}
+	nm = npugiu_nm_take(sc, kick);
 	GIU_UNLOCK(sc);
 	if (head != NULL || ihead != NULL)
 		npugiu_deliver(head, ihead);
+	if (nm)
+		npugiu_nm_kick(sc, kick);
 	if (done >= sc->rx_budget && sc->rx_tq != NULL)
 		taskqueue_enqueue(sc->rx_tq, &sc->rx_task);
 }
@@ -4450,6 +5038,65 @@ npugiu_add_sysctls(struct npugiu_softc *sc)
 		    "frames received on this receive queue");
 	}
 
+	SYSCTL_ADD_INT(ctx, child, OID_AUTO, "netmap", CTLFLAG_RD, &npugiu_netmap, 0,
+	    "native netmap adapters on the front ports (hw.npuep.netmap at the loader; 0 leaves "
+	    "netmap its emulated adapter)");
+	if (npugiu_netmap != 0) {
+		struct sysctl_oid_list *nl;
+
+		SYSCTL_ADD_INT(ctx, child, OID_AUTO, "netmap_slots", CTLFLAG_RD, &sc->nm_slots, 0,
+		    "slots in each native netmap ring (hw.npuep.netmap_slots at the loader: a power of "
+		    "two from 256 to 8192, default 1024)");
+		node = SYSCTL_ADD_NODE(ctx, child, OID_AUTO, "netmap_port",
+		    CTLFLAG_RD | CTLFLAG_MPSAFE, NULL, "the native netmap adapter's counts, by port");
+		nl = (node != NULL) ? SYSCTL_CHILDREN(node) : NULL;
+		for (i = 0; nl != NULL && i < npuep_nfront; i++) {
+			struct npugiu_port *pt = &sc->port[i];
+			struct sysctl_oid_list *pl;
+			struct sysctl_oid *pn;
+			int r;
+
+			if (!pt->nm_attached)
+				continue;
+			pn = SYSCTL_ADD_NODE(ctx, nl, OID_AUTO, npuep_front_ports[i].label,
+			    CTLFLAG_RD | CTLFLAG_MPSAFE, NULL, "this front port's netmap rings");
+			if (pn == NULL)
+				continue;
+			pl = SYSCTL_CHILDREN(pn);
+			SYSCTL_ADD_INT(ctx, pl, OID_AUTO, "rings", CTLFLAG_RD, &pt->nm_nrings, 0,
+			    "receive and transmit rings, and host rings each way: one a GIU receive queue");
+			for (r = 0; r < pt->nm_nrings; r++) {
+				struct sysctl_oid *rn;
+				struct sysctl_oid_list *rl;
+				char name[16];
+
+				snprintf(name, sizeof(name), "ring%d", r);
+				rn = SYSCTL_ADD_NODE(ctx, pl, OID_AUTO, name, CTLFLAG_RD | CTLFLAG_MPSAFE,
+				    NULL, "this receive ring: the frames of the GIU receive queue of its number");
+				if (rn == NULL)
+					continue;
+				rl = SYSCTL_CHILDREN(rn);
+				SYSCTL_ADD_U64(ctx, rl, OID_AUTO, "nm_rx", CTLFLAG_RD, &pt->nm[r].rx, 0,
+				    "frames copied into the receive ring");
+				SYSCTL_ADD_U64(ctx, rl, OID_AUTO, "nm_rx_drop", CTLFLAG_RD,
+				    &pt->nm[r].rx_drop, 0,
+				    "frames dropped: no free slot, a frame longer than one netmap buffer, or "
+				    "a slot with a broken buffer index (in the input drops too)");
+				SYSCTL_ADD_U64(ctx, rl, OID_AUTO, "nm_rx_toolong", CTLFLAG_RD,
+				    &pt->nm[r].rx_toolong, 0,
+				    "of those, frames longer than one netmap buffer (dev.netmap.buf_size)");
+			}
+			SYSCTL_ADD_U64(ctx, pl, OID_AUTO, "nm_tx", CTLFLAG_RD, &pt->nm_tx, 0,
+			    "frames copied from the transmit rings onto the GIU");
+			SYSCTL_ADD_U64(ctx, pl, OID_AUTO, "nm_tx_full", CTLFLAG_RD, &pt->nm_tx_full, 0,
+			    "transmit syncs that found their GIU queue full and left slots for the next");
+			SYSCTL_ADD_U64(ctx, pl, OID_AUTO, "nm_tx_drop", CTLFLAG_RD, &pt->nm_tx_drop, 0,
+			    "frames not sent: longer than a GIU buffer holds behind its header, shorter "
+			    "than an Ethernet header, or a slot with a broken index or length (in "
+			    "giu.tx_toolong and the output errors too)");
+		}
+	}
+
 	node = SYSCTL_ADD_NODE(ctx, child, OID_AUTO, "rx_port", CTLFLAG_RD | CTLFLAG_MPSAFE, NULL,
 	    "frames received, counted by the port identifier they arrived with");
 	if (node == NULL)
@@ -5310,6 +5957,20 @@ npugiu_detach(void)
 	for (q = 0; q < npuep_nfront; q++) {
 		if (sc->port[q].ifp == NULL)
 			continue;
+		/*
+		 * netmap's adapter before the interface it hangs on. The poll and the doorbell's pass
+		 * are drained, so nothing copies into a ring any more; netmap_detach waits out a sync
+		 * already running and leaves a port still open a zombie that no sync reaches again.
+		 */
+		if (sc->port[q].nm_attached) {
+			int r;
+
+			netmap_detach(sc->port[q].ifp);
+			sc->port[q].nm_attached = 0;
+			for (r = 0; r < sc->port[q].nm_nrings; r++)
+				mtx_destroy(&sc->port[q].nm[r].mtx);
+			sc->port[q].nm_nrings = 0;
+		}
 		ether_ifdetach(sc->port[q].ifp);
 		ifmedia_removeall(&sc->port[q].media);
 		if_free(sc->port[q].ifp);

@@ -95,3 +95,12 @@ rings of an XGS 136 port only when npuep gives each frame its receive queue as t
 `dev.npuep.0.giu.rx_flowid` at 1 and `dev.netmap.generic_rings` at 4 in System: Settings: Tunables, then
 Intrusion Detection restarted. Eight UDP flows through IPS went from 232 and 265 to 283 and 334 Mbit/s, with
 the CPUs then the limit; one flow gains nothing ([the measurement](../measurements/flowid-136-2026-11-11.md)).
+
+*XGS 136, added 2026-11-12.* netmap's emulated adapter, the one Suricata gets on these ports, refuses a port
+whose MTU is above its 2,048-byte buffers, so a port inspected in IPS mode stays at MTU 2,048 or less.
+`hw.npuep.netmap=1` at the loader gives each front port an adapter of its own, four rings each way on the
+XGS 136; with `dev.netmap.buf_size` at 9216 as well, a port at MTU 9000 runs through Suricata with its
+frames whole. Its four rings carry what the emulated adapter carries with the flow id above
+([the measurement](../measurements/native-netmap-136-2026-11-11.md)). After the driver is loaded again -
+the coprocessor taken up again in place - restart Intrusion Detection: Suricata stays on the rings that
+were, and reads none of the new ones.
