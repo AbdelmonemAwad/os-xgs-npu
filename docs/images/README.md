@@ -19,10 +19,10 @@ to a new image, and the checks fail on one without them.
 |---|---|---|
 | [screens/](screens/) | The web interface, page by page, in English and in Arabic | 108 |
 | [hardware/](hardware/) | Photographs and drawings of the appliances, one folder each | 41 |
-| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 772 |
+| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 851 |
 | [readme/](readme/) | The README's banner and status board, drawn by tools/readme-art.py | 6 |
 
-966 images in all.
+1045 images in all.
 
 ## The web interface
 
@@ -248,6 +248,21 @@ The page: [cage-medium-2026-10-19.md](../measurements/cage-medium-2026-10-19.md)
 | [01-cage-medium-before.png](measurements/cage-medium-2026-10-19/01-cage-medium-before.png) | Before: the 136's F1 says 1000baseSX with a 1000BASE-T module in it; the XGS 3300's F1 and F2 say 10Gbase-SR with copper modules | [cage-medium-2026-10-19.md](../measurements/cage-medium-2026-10-19.md) |
 | [02-cage-medium-after.png](measurements/cage-medium-2026-10-19/02-cage-medium-after.png) | After: every cage's port reports its module's medium | [cage-medium-2026-10-19.md](../measurements/cage-medium-2026-10-19.md) |
 | [03-xgs136-module-media.png](measurements/cage-medium-2026-10-19/03-xgs136-module-media.png) | The XGS 136's module_media: what it refuses, a cage told nothing, and put back | [cage-medium-2026-10-19.md](../measurements/cage-medium-2026-10-19.md) |
+
+### measurements/capture-10g-2026-11-11/ (8)
+
+The page: [capture-10g-2026-11-11.md](../measurements/capture-10g-2026-11-11.md).
+
+| image | what it shows | used on |
+|---|---|---|
+| [01-pktmon-counts.png](measurements/capture-10g-2026-11-11/01-pktmon-counts.png) | pktmon at the PC's two cards, filter UDP port 5371, 20:01-20:04 UTC: in each 100 Mbit/s run the bench VM's port sent and Ethernet 9 received the same count, 89,476, 89,361, 89,369 and 89,512; 357,718 in all, no events lost | [capture-10g-2026-11-11.md](../measurements/capture-10g-2026-11-11.md) |
+| [02-copies-off-100.png](measurements/capture-10g-2026-11-11/02-copies-off-100.png) | 100 Mbit/s, the copies off: the cards counted 89,490 frames sent and 89,490 received; tcpdump on the 3300 saw 27,433 frames on each port, and its host took 27,547 from the coprocessor | [capture-10g-2026-11-11.md](../measurements/capture-10g-2026-11-11.md) |
+| [03-copies-on-100.png](measurements/capture-10g-2026-11-11/03-copies-on-100.png) | The copies on, the coprocessor accepting the word 0x17; at 100 Mbit/s the cards counted 89,375 and 89,375; tcpdump saw 88,290 frames on F2 and 88,453 on F1, by its printed lines; the host took 150,328 frames from the coprocessor | [capture-10g-2026-11-11.md](../measurements/capture-10g-2026-11-11.md) |
+| [04-copies-on-100-again.png](measurements/capture-10g-2026-11-11/04-copies-on-100-again.png) | The copies on, 100 Mbit/s a second time: Ethernet 10 sent 89,384 frames and Ethernet 9 received 89,383; tcpdump saw 88,852 and 88,905, by its printed lines; the host took 146,083 frames | [capture-10g-2026-11-11.md](../measurements/capture-10g-2026-11-11.md) |
+| [05-copies-off-100-again.png](measurements/capture-10g-2026-11-11/05-copies-off-100-again.png) | The copies put back off, the word 0x7; at 100 Mbit/s the cards counted 89,526 and 89,526; tcpdump saw 32,773 frames on each port; the host took 32,860 | [capture-10g-2026-11-11.md](../measurements/capture-10g-2026-11-11.md) |
+| [06-teardown-100.png](measurements/capture-10g-2026-11-11/06-teardown-100.png) | The teardown after the 100 Mbit/s runs: no iperf3 server left on the bench VM, the 3300's word 7 as before the test, no tcpdump left, the capture on the cards stopped | [capture-10g-2026-11-11.md](../measurements/capture-10g-2026-11-11.md) |
+| [07-copies-on-500.png](measurements/capture-10g-2026-11-11/07-copies-on-500.png) | 500 Mbit/s with the copies on: the cards counted 447,078 frames sent and 447,078 received; tcpdump on the 3300 captured 447,065 frames on each port and the kernel dropped 0 and 0; the host took 721,188 frames from the coprocessor | [capture-10g-2026-11-11.md](../measurements/capture-10g-2026-11-11.md) |
+| [08-copies-off-500.png](measurements/capture-10g-2026-11-11/08-copies-off-500.png) | 500 Mbit/s with the copies put back off: the cards counted 443,882 and 443,882; tcpdump captured 140,234 frames on each port, the kernel dropped 0 and 0; then the teardown, the word 7 as before the test | [capture-10g-2026-11-11.md](../measurements/capture-10g-2026-11-11.md) |
 
 ### measurements/channel-claim-wait-2026-10-24/ (3)
 
@@ -626,6 +641,31 @@ The page: [inspect-2026-10-23.md](../measurements/inspect-2026-10-23.md).
 | [11-136-inspected-then-hardware.png](measurements/inspect-2026-10-23/11-136-inspected-then-hardware.png) | XGS 136, inspection then hardware: a new TCP stream through Suricata, then forwarded in hardware at 930 Mbit/s; a new UDP stream to the blocked port dropped by Suricata, 199,507 drop events | [inspect-2026-10-23.md](../measurements/inspect-2026-10-23.md) |
 | [12-136-the-ids-service-on-oxips0.png](measurements/inspect-2026-10-23/12-136-the-ids-service-on-oxips0.png) | XGS 136, Inspect, then hardware through OPNsense's Intrusion Detection service: a new TCP stream inspected, alerted on, then carried in hardware at 941 Mbit/s; a new UDP stream blocked by a drop rule | [inspect-2026-10-23.md](../measurements/inspect-2026-10-23.md) |
 | [13-3300-the-ids-service-on-oxips0.png](measurements/inspect-2026-10-23/13-3300-the-ids-service-on-oxips0.png) | XGS 3300, Inspect, then hardware through OPNsense's Intrusion Detection service: a new TCP stream inspected, alerted on, then carried in hardware at 3.98 Gbit/s; a new UDP stream blocked by a drop rule | [inspect-2026-10-23.md](../measurements/inspect-2026-10-23.md) |
+
+### measurements/ips-speed-2026-11-11/ (2)
+
+The page: [ips-speed-2026-11-11.md](../measurements/ips-speed-2026-11-11.md).
+
+| image | what it shows | used on |
+|---|---|---|
+| [01-tcp8-both-modes.png](measurements/ips-speed-2026-11-11/01-tcp8-both-modes.png) | XGS 136, IPS on Port8, eight TCP streams: 934 Mbit/s with the host carrying every frame, CPUs 36 % busy; 948 Mbit/s with Inspect, then hardware, 7,621 frames through the inspector, CPUs 2 % busy | [ips-speed-2026-11-11.md](../measurements/ips-speed-2026-11-11.md) |
+| [02-tls-both-modes.png](measurements/ips-speed-2026-11-11/02-tls-both-modes.png) | Twenty HTTPS requests through the XGS 136 in each mode, all answered; Suricata's statistics held no TLS count yet at either read | [ips-speed-2026-11-11.md](../measurements/ips-speed-2026-11-11.md) |
+
+### measurements/ipsec-directions-2026-11-11/ (9)
+
+The page: [ipsec-directions-2026-11-11.md](../measurements/ipsec-directions-2026-11-11.md).
+
+| image | what it shows | used on |
+|---|---|---|
+| [01-2026-11-10-tunnel-pc-to-136.png](measurements/ipsec-directions-2026-11-11/01-2026-11-10-tunnel-pc-to-136.png) | 2026-11-10, PC to XGS 136 through the tunnel: 923 Mbit/s, its engine decrypting 130,023 packets, its CPUs 8 % busy | [ipsec-directions-2026-11-11.md](../measurements/ipsec-directions-2026-11-11.md) |
+| [02-2026-11-10-tunnel-136-to-pc.png](measurements/ipsec-directions-2026-11-11/02-2026-11-10-tunnel-136-to-pc.png) | 2026-11-10, XGS 136 to PC through the tunnel: 767 Mbit/s, its CPUs 5 % busy | [ipsec-directions-2026-11-11.md](../measurements/ipsec-directions-2026-11-11.md) |
+| [03-2026-11-10-clear-pc-to-136.png](measurements/ipsec-directions-2026-11-11/03-2026-11-10-clear-pc-to-136.png) | 2026-11-10, PC to XGS 136 in clear on the other link, to 10.99.67.x: 853 Mbit/s, its engine unused, its CPUs 26 % busy | [ipsec-directions-2026-11-11.md](../measurements/ipsec-directions-2026-11-11.md) |
+| [04-2026-11-10-clear-136-to-pc.png](measurements/ipsec-directions-2026-11-11/04-2026-11-10-clear-136-to-pc.png) | 2026-11-10, XGS 136 to PC in clear on the other link: 840 Mbit/s, its CPUs 14 % busy | [ipsec-directions-2026-11-11.md](../measurements/ipsec-directions-2026-11-11.md) |
+| [05-tunnel-one-stream-each-way.png](measurements/ipsec-directions-2026-11-11/05-tunnel-one-stream-each-way.png) | 2026-11-11, tunnel up, one stream each way: 771 Mbit/s into the XGS 136, 967 out of it, its CPUs 7 % busy both times | [ipsec-directions-2026-11-11.md](../measurements/ipsec-directions-2026-11-11.md) |
+| [06-four-streams-and-udp.png](measurements/ipsec-directions-2026-11-11/06-four-streams-and-udp.png) | Four streams, 985 and 977 Mbit/s; UDP at 900 Mbit/s through the tunnel, 0.58 % lost into the XGS 136 and 15 % out of it, its engine given every datagram it sent | [ipsec-directions-2026-11-11.md](../measurements/ipsec-directions-2026-11-11.md) |
+| [07-pc-udp-without-tunnel.png](measurements/ipsec-directions-2026-11-11/07-pc-udp-without-tunnel.png) | XGS 3300's host straight to the PC over F1, no tunnel: 14 % of the UDP lost at 900 Mbit/s, 0.61 % at 700 | [ipsec-directions-2026-11-11.md](../measurements/ipsec-directions-2026-11-11.md) |
+| [08-ike-twenty-handshakes.png](measurements/ipsec-directions-2026-11-11/08-ike-twenty-handshakes.png) | Twenty IKE handshakes in a row, XGS 3300 to XGS 136: 0.28 s, AES-GCM-256 with Curve25519, CPUs 3 and 8 % busy across the loop | [ipsec-directions-2026-11-11.md](../measurements/ipsec-directions-2026-11-11.md) |
+| [09-clear-udp-failed.png](measurements/ipsec-directions-2026-11-11/09-clear-udp-failed.png) | Clear UDP comparison failed: iperf3 lost its control connection both ways; in the run from the XGS 136 its engine was given 2,921,797 packets to encrypt | [ipsec-directions-2026-11-11.md](../measurements/ipsec-directions-2026-11-11.md) |
 
 ### measurements/ipsec-step-2026-10-25/ (3)
 
@@ -1023,6 +1063,38 @@ The page: [qsched-2026-10-25.md](../measurements/qsched-2026-10-25.md).
 | [03-sfos22-the-priority-bit-strict.png](measurements/qsched-2026-10-25/03-sfos22-the-priority-bit-strict.png) | The second XGS 3300: strict for all eight, the fast path's priority bit set on the connection to 5001 at second 8 - read back from the entry, and the two at 304 to 310 and 693 to 699 Mbit/s after it as before, three seconds before it apart | [qsched-2026-10-25.md](../measurements/qsched-2026-10-25.md) |
 | [04-three-boards-the-switch-as-left.png](measurements/qsched-2026-10-25/04-three-boards-the-switch-as-left.png) | Each board's switch as its coprocessor's firmware leaves it: on the XGS 3300s, vendor version 22 and 23, and the XGS 136, vendor version 21 - port 0 in DSA mode with its priority from the tag then the IP header, port 8 the same in normal mode, default priority 0, and every port's scheduling weighted | [qsched-2026-10-25.md](../measurements/qsched-2026-10-25.md) |
 
+### measurements/receive-path-limits-2026-11-11/ (25)
+
+The page: [receive-path-limits-2026-11-11.md](../measurements/receive-path-limits-2026-11-11.md).
+
+| image | what it shows | used on |
+|---|---|---|
+| [01-queues-one-stream.png](measurements/receive-path-limits-2026-11-11/01-queues-one-stream.png) | One TCP stream from the PC through the XGS 136 to the second XGS 3300, host mode, the release module: 903 Mbit/s; the host took 1,550,605 frames in q0 and almost none in the others, 775,329 from F1 and 775,314 from Port8 | [receive-path-limits-2026-11-11.md](../measurements/receive-path-limits-2026-11-11.md) |
+| [02-queues-four-streams.png](measurements/receive-path-limits-2026-11-11/02-queues-four-streams.png) | Four streams: 938 Mbit/s; 442,317, 53, 812,296 and 363,484 frames in q0 to q3 | [receive-path-limits-2026-11-11.md](../measurements/receive-path-limits-2026-11-11.md) |
+| [03-queues-one-stream-reverse.png](measurements/receive-path-limits-2026-11-11/03-queues-one-stream-reverse.png) | One stream from the second XGS 3300 to the PC: 930 Mbit/s; 878,578 frames in q0, 79,885 from F1 and 798,745 from Port8 | [receive-path-limits-2026-11-11.md](../measurements/receive-path-limits-2026-11-11.md) |
+| [04-queues-eight-streams-reverse.png](measurements/receive-path-limits-2026-11-11/04-queues-eight-streams-reverse.png) | Eight streams from the second XGS 3300 to the PC: 937 Mbit/s; 358,041, 135,854, 359,412 and 123,633 frames in q0 to q3 | [receive-path-limits-2026-11-11.md](../measurements/receive-path-limits-2026-11-11.md) |
+| [05-netmap-queue-1024-tcp8.png](measurements/receive-path-limits-2026-11-11/05-netmap-queue-1024-tcp8.png) | IPS on Port8, netmap queue of 1,024 slots, eight TCP streams: 935 Mbit/s, 812,115 frames in, 0 dropped, the CPUs 36 % busy | [receive-path-limits-2026-11-11.md](../measurements/receive-path-limits-2026-11-11.md) |
+| [06-netmap-queue-1024-udp.png](measurements/receive-path-limits-2026-11-11/06-netmap-queue-1024-udp.png) | Netmap queue of 1,024 slots, one UDP flow at 800 Mbit/s in 256-byte datagrams: 224 Mbit/s received, 68 % lost, 1,665,304 of 3,414,090 frames dropped at the queue, the CPUs 49 % busy | [receive-path-limits-2026-11-11.md](../measurements/receive-path-limits-2026-11-11.md) |
+| [07-netmap-queue-2048-udp.png](measurements/receive-path-limits-2026-11-11/07-netmap-queue-2048-udp.png) | Netmap queue of 2,048 slots, the same flood: 232 Mbit/s, 67 % lost, 1,532,531 of 3,416,831 dropped, 47 % busy | [receive-path-limits-2026-11-11.md](../measurements/receive-path-limits-2026-11-11.md) |
+| [08-netmap-queue-4096-udp.png](measurements/receive-path-limits-2026-11-11/08-netmap-queue-4096-udp.png) | Netmap queue of 4,096 slots, the same flood: 255 Mbit/s, 63 % lost, 1,535,023 of 3,417,844 dropped, 49 % busy | [receive-path-limits-2026-11-11.md](../measurements/receive-path-limits-2026-11-11.md) |
+| [09-netmap-queue-4096-tcp8.png](measurements/receive-path-limits-2026-11-11/09-netmap-queue-4096-tcp8.png) | Netmap queue of 4,096 slots, eight TCP streams: 825 Mbit/s, 717,407 frames in, 0 dropped, 47 % busy | [receive-path-limits-2026-11-11.md](../measurements/receive-path-limits-2026-11-11.md) |
+| [10-ips-mtu9000-buffers-2048.png](measurements/receive-path-limits-2026-11-11/10-ips-mtu9000-buffers-2048.png) | Port8 at MTU 9,000, netmap's buffers of 2,048 bytes: netmap refuses the port, "netmap buf size (2048) < device MTU (9000)", and Suricata does not run | [receive-path-limits-2026-11-11.md](../measurements/receive-path-limits-2026-11-11.md) |
+| [11-ips-mtu9000-buffers-9216.png](measurements/receive-path-limits-2026-11-11/11-ips-mtu9000-buffers-9216.png) | Buffers of 9,216 bytes, 36,864 of them, 324 MB: Suricata runs on Port8 at MTU 9,000; the refusal line shown is the earlier one's | [receive-path-limits-2026-11-11.md](../measurements/receive-path-limits-2026-11-11.md) |
+| [12-ips-buffers-9216-jumbo-lost.png](measurements/receive-path-limits-2026-11-11/12-ips-buffers-9216-jumbo-lost.png) | With the 9,216-byte buffers: pings of 56 and 1,472 bytes 5 of 5, of 8,972 bytes 0 of 5; eight TCP streams through Suricata at 937 Mbit/s, 0 dropped | [receive-path-limits-2026-11-11.md](../measurements/receive-path-limits-2026-11-11.md) |
+| [13-no-ips-jumbo-crosses.png](measurements/receive-path-limits-2026-11-11/13-no-ips-jumbo-crosses.png) | Without IPS: pings of 8,972 bytes 5 of 5; eight TCP streams at 935 Mbit/s | [receive-path-limits-2026-11-11.md](../measurements/receive-path-limits-2026-11-11.md) |
+| [14-ips-packet-size-9018-jumbo-lost.png](measurements/receive-path-limits-2026-11-11/14-ips-packet-size-9018-jumbo-lost.png) | Suricata's packet size at 9,018 as well: pings of 8,972 bytes still 0 of 5; TCP at 935 Mbit/s | [receive-path-limits-2026-11-11.md](../measurements/receive-path-limits-2026-11-11.md) |
+| [15-kernel-log-cut-to-2048.png](measurements/receive-path-limits-2026-11-11/15-kernel-log-cut-to-2048.png) | The kernel's log: "nm_os_generic_xmit_frame size 2048 < len 9014", seven lines, rate-limited - netmap's emulated transmit cutting each frame to its 2,048-byte cluster | [receive-path-limits-2026-11-11.md](../measurements/receive-path-limits-2026-11-11.md) |
+| [16-csum-forwarded-pc-to-3300.png](measurements/receive-path-limits-2026-11-11/16-csum-forwarded-pc-to-3300.png) | Forwarded from the PC through the XGS 136 to the second XGS 3300, test build de6c6e3e: Port8's offload off, 945 Mbit/s at 31 %; on, 943 Mbit/s at 26 %, 817,243 frames checked by the coprocessor, 0 bad, 0 checksums computed | [receive-path-limits-2026-11-11.md](../measurements/receive-path-limits-2026-11-11.md) |
+| [17-csum-own-send-without.png](measurements/receive-path-limits-2026-11-11/17-csum-own-send-without.png) | The XGS 136's own TCP to the second XGS 3300 without checksum offload, test build efc82f38: 990 Mbit/s, the CPUs 7 % busy | [receive-path-limits-2026-11-11.md](../measurements/receive-path-limits-2026-11-11.md) |
+| [18-csum-own-receive-without.png](measurements/receive-path-limits-2026-11-11/18-csum-own-receive-without.png) | The XGS 136 receiving without checksum offload: 914 Mbit/s, 21 % busy | [receive-path-limits-2026-11-11.md](../measurements/receive-path-limits-2026-11-11.md) |
+| [19-csum-own-send-with.png](measurements/receive-path-limits-2026-11-11/19-csum-own-send-with.png) | The XGS 136 sending with checksum offload, test build de6c6e3e: 990 Mbit/s, 7 % busy, 138,442 checksums computed by the coprocessor | [receive-path-limits-2026-11-11.md](../measurements/receive-path-limits-2026-11-11.md) |
+| [20-csum-own-receive-with.png](measurements/receive-path-limits-2026-11-11/20-csum-own-receive-with.png) | The XGS 136 receiving with checksum offload: 990 Mbit/s, 6 % busy, 138,844 checked, 0 bad | [receive-path-limits-2026-11-11.md](../measurements/receive-path-limits-2026-11-11.md) |
+| [21-five-tuple-tcp-one-queue.png](measurements/receive-path-limits-2026-11-11/21-five-tuple-tcp-one-queue.png) | Test build 493cb635, the five-tuple hash, IPS on four rings, one TCP stream: 852 Mbit/s, 807,184 frames in q2 and 39 in q3, 0 dropped, 37 % busy | [receive-path-limits-2026-11-11.md](../measurements/receive-path-limits-2026-11-11.md) |
+| [22-five-tuple-udp8-three-runs.png](measurements/receive-path-limits-2026-11-11/22-five-tuple-udp8-three-runs.png) | The five-tuple hash, eight UDP flows three times: 259, 310 and 276 Mbit/s received, 16, 12 and 11 % dropped at the ring, the CPUs 95, 93 and 92 % busy | [receive-path-limits-2026-11-11.md](../measurements/receive-path-limits-2026-11-11.md) |
+| [23-vlan-bridge-setting-0-and-1.png](measurements/receive-path-limits-2026-11-11/23-vlan-bridge-setting-0-and-1.png) | A bridge over VLAN 100 on the XGS 136, test build de6c6e3e. Setting 0: 928 Mbit/s, nothing made, the host taking 832,138 and 440,204 frames at 24 % busy. Setting 1: 934 Mbit/s, 9 made, the host taking 247,292 and 133,869 at 8 % | [receive-path-limits-2026-11-11.md](../measurements/receive-path-limits-2026-11-11.md) |
+| [24-vlan-bridge-setting-2-and-reverse.png](measurements/receive-path-limits-2026-11-11/24-vlan-bridge-setting-2-and-reverse.png) | Setting 2: 934 Mbit/s, 9 made, the host taking 177,999 and 97,836 frames at 5 %. Setting 1 from the jail: 920 Mbit/s, 9 made, 335,889 and 334,651 at 21 % | [receive-path-limits-2026-11-11.md](../measurements/receive-path-limits-2026-11-11.md) |
+| [25-vlan-bridge-30-seconds.png](measurements/receive-path-limits-2026-11-11/25-vlan-bridge-30-seconds.png) | Setting 1 for 30 seconds each way: 933 and 922 Mbit/s, 17 made each time, the host taking 1,122,364 and 602,461 frames, then 1,194,172 and 1,191,748 | [receive-path-limits-2026-11-11.md](../measurements/receive-path-limits-2026-11-11.md) |
+
 ### measurements/receive-poll-2026-10-17/ (5)
 
 | image | what it shows | used on |
@@ -1032,6 +1104,16 @@ The page: [qsched-2026-10-25.md](../measurements/qsched-2026-10-25.md).
 | [1ms-1024.png](measurements/receive-poll-2026-10-17/1ms-1024.png) | 1 ms and 1024 frames: 773 Mbit/s | [a-hundred-polls-a-second-on-the-armada.md](../findings/a-hundred-polls-a-second-on-the-armada.md) |
 | [1ms-256.png](measurements/receive-poll-2026-10-17/1ms-256.png) | 1 ms and 256 frames: 704 Mbit/s | [a-hundred-polls-a-second-on-the-armada.md](../findings/a-hundred-polls-a-second-on-the-armada.md) |
 | [1ms-64.png](measurements/receive-poll-2026-10-17/1ms-64.png) | 1 ms and 64 frames: 185 Mbit/s | [a-hundred-polls-a-second-on-the-armada.md](../findings/a-hundred-polls-a-second-on-the-armada.md) |
+
+### measurements/relay-3300-2026-11-11/ (3)
+
+The page: [relay-3300-2026-11-11.md](../measurements/relay-3300-2026-11-11.md).
+
+| image | what it shows | used on |
+|---|---|---|
+| [01-relay-status.png](measurements/relay-3300-2026-11-11/01-relay-status.png) | The read: Port1 and Port2 the only pair, bypass disabled, unarmed, the watchdog disabled, the last trigger a power fault | [relay-3300-2026-11-11.md](../measurements/relay-3300-2026-11-11.md) |
+| [02-relay-failure-path.png](measurements/relay-3300-2026-11-11/02-relay-failure-path.png) | The failure path: armed, the watchdog at 3 s, the relay in bypass 3.8 s later, the WAN gateway silent for 9 s while the link stayed up, released by -d | [relay-3300-2026-11-11.md](../measurements/relay-3300-2026-11-11.md) |
+| [03-relay-after.png](measurements/relay-3300-2026-11-11/03-relay-after.png) | After: the relay as found but bit 0x800, the tool's -u leaving it, the host's WAN as before | [relay-3300-2026-11-11.md](../measurements/relay-3300-2026-11-11.md) |
 
 ### measurements/release-check-2026-11-03/ (110)
 
@@ -1329,6 +1411,53 @@ The page: [status-light-2026-10-27.md](../measurements/status-light-2026-10-27.m
 | [01-136-lit-green-3300-refused.png](measurements/status-light-2026-10-27/01-136-lit-green-3300-refused.png) | The XGS 136, board 201, vendor version 21: the green blinking (0x29) and the red dark before; lit green; read back lit two seconds later. The first XGS 3300, board 202: no controller at 0x40 on that bus, nothing written | [status-light-2026-10-27.md](../measurements/status-light-2026-10-27.md) |
 | [02-136-after-a-restart-the-hook-lit-it.png](measurements/status-light-2026-10-27/02-136-after-a-restart-the-hook-lit-it.png) | The XGS 136 restarted at 17:51:30 after its light was set blinking: the start hook xgs-statusled run 79 s into the boot, the light read lit green (0x01), the tool and the hook installed | [status-light-2026-10-27.md](../measurements/status-light-2026-10-27.md) |
 
+### measurements/switch-136-2026-11-11/ (3)
+
+The page: [switch-136-2026-11-11.md](../measurements/switch-136-2026-11-11.md).
+
+| image | what it shows | used on |
+|---|---|---|
+| [01-mirror-port8-into-port7.png](measurements/switch-136-2026-11-11/01-mirror-port8-into-port7.png) | The mirror tool's read of the chip, no mirror set and three ports' reads not agreeing; then port 8 mirrored both ways into port 7 during a 100 Mbit/s stream: 99.8 Mbit/s received, 85,900 frames into the second XGS 3300's port 6, the registers written back, 130 link-change lines before and after | [switch-136-2026-11-11.md](../measurements/switch-136-2026-11-11.md) |
+| [02-egress-limit-100.png](measurements/switch-136-2026-11-11/02-egress-limit-100.png) | Port 8's egress limited to 100 Mbit/s: 0x8005 written, the stream at 96.0 Mbit/s, 0x8000 written back, 130 link-change lines before and after | [switch-136-2026-11-11.md](../measurements/switch-136-2026-11-11.md) |
+| [03-ports-7-and-8-switched.png](measurements/switch-136-2026-11-11/03-ports-7-and-8-switched.png) | Ports 7 and 8 switched to each other in the chip: 0 broadcast frames at the second XGS 3300's port 6 without the bridge, the 2 ARP requests with it; the maps and TCAM modes written back, 130 link-change lines before and after | [switch-136-2026-11-11.md](../measurements/switch-136-2026-11-11.md) |
+
+### measurements/switch-3300-2026-11-10/ (4)
+
+The page: [switch-3300-2026-11-10.md](../measurements/switch-3300-2026-11-10.md).
+
+| image | what it shows | used on |
+|---|---|---|
+| [01-ports-6-and-8-switched-in-the-chip.png](measurements/switch-3300-2026-11-10/01-ports-6-and-8-switched-in-the-chip.png) | The second XGS 3300's switch, ports 6 and 8 read three times at each step: 0 ARP frames across as found, 3 with port 6's map 0x0101, port 8's 0x0041 and TCAM mode 0, 3 after Port6 lost its carrier, 0 after the put-back, and the 3300 answered on both links | [switch-3300-2026-11-10.md](../measurements/switch-3300-2026-11-10.md) |
+| [02-mirror-port8-into-port6.png](measurements/switch-3300-2026-11-10/02-mirror-port8-into-port6.png) | Port8 mirrored in both directions into port 6 during a 100 Mbit/s stream: port 6 sent 0 frames before, 85,900 frames (67,762,767 bytes) with the mirror, 0 after; the stream at 99.8 to 99.9 Mbit/s throughout | [switch-3300-2026-11-10.md](../measurements/switch-3300-2026-11-10.md) |
+| [03-egress-limit-steps.png](measurements/switch-3300-2026-11-10/03-egress-limit-steps.png) | Port 8's register 0x0a written 0x8000 plus N and read three times: 880 Mbit/s as found, 262 kbit/s at N = 1000, 784 kbit/s at 500, 4.71 Mbit/s at 100, 47.9 at 10, 480 at 1, and 934 with 0x8000 put back | [switch-3300-2026-11-10.md](../measurements/switch-3300-2026-11-10.md) |
+| [04-network-agent-vlan-bridge-delete.png](measurements/switch-3300-2026-11-10/04-network-agent-vlan-bridge-delete.png) | The network agent's answers to VLAN_DELETE of VLAN 4094 and BRIDGE_DELETE of bridge 0: marker 0x14, status 1 (error), reply 8 bytes each; after both, Port8 and Port6 active and the 136 answering 2 of 2 | [switch-3300-2026-11-10.md](../measurements/switch-3300-2026-11-10.md) |
+
+### measurements/switch-3300-2026-11-11/ (19)
+
+The page: [switch-3300-2026-11-11.md](../measurements/switch-3300-2026-11-11.md).
+
+| image | what it shows | used on |
+|---|---|---|
+| [01-bridge-as-found.png](measurements/switch-3300-2026-11-11/01-bridge-as-found.png) | The XGS 136 as two machines, its host on npup8 (10.99.68.x) and a jail on npup7 (10.99.68.x); the 3300's ports 6 and 8 as found, VLAN maps 0x0001 and TCAM mode 0x0001; the jail's pings to the host, 0 of 3 | [switch-3300-2026-11-11.md](../measurements/switch-3300-2026-11-11.md) |
+| [02-bridge-on-tcp.png](measurements/switch-3300-2026-11-11/02-bridge-on-tcp.png) | Ports 6 and 8 switched to each other in the chip, maps 0x0101 and 0x0041 and TCAM mode 0: pings 3 of 3, four TCP streams 938 Mbit/s received; the chip sent 826,307 frames out of port 6 while the 3300's host took in 0 frames on oxp7 and oxp9, with no pf state and its CPUs 0 % busy | [switch-3300-2026-11-11.md](../measurements/switch-3300-2026-11-11.md) |
+| [03-bridge-on-tcp-reverse.png](measurements/switch-3300-2026-11-11/03-bridge-on-tcp-reverse.png) | The same, jail to host: 817 Mbit/s received; the chip sent 791,555 frames out of port 6 and 793,928 out of port 8, the 3300's host 0 frames on oxp7 and oxp9, no pf state, its CPUs 4 % busy | [switch-3300-2026-11-11.md](../measurements/switch-3300-2026-11-11.md) |
+| [04-bridge-off-put-back.png](measurements/switch-3300-2026-11-11/04-bridge-off-put-back.png) | The switching off: maps and TCAM mode back to 0x0001, pings 0 of 3; the 136 put back, its config.xml as before, and the 3300 reaching it on Port6 and Port8, 2 of 2 | [switch-3300-2026-11-11.md](../measurements/switch-3300-2026-11-11.md) |
+| [05-vtu-census-before.png](measurements/switch-3300-2026-11-11/05-vtu-census-before.png) | Before the VLAN runs, read only: ports 6 and 8 with control 0x007f, map 0x0001, control-2 0x2480 and TCAM mode 0x0001; every port on FID 0; no VTU or STU entry | [switch-3300-2026-11-11.md](../measurements/switch-3300-2026-11-11.md) |
+| [06-vtu-vlan300-tcp.png](measurements/switch-3300-2026-11-11/06-vtu-vlan300-tcp.png) | Four TCP streams over VLAN 300, switched by the chip's VLAN table with TCAM mode 0: 934 Mbit/s received; the chip sent 823,115 frames out of port 6 while the 3300's host took in 0 frames on oxp7 and oxp9, with no pf state and its CPUs 0 % busy | [switch-3300-2026-11-11.md](../measurements/switch-3300-2026-11-11.md) |
+| [07-vtu-put-back-first-part.png](measurements/switch-3300-2026-11-11/07-vtu-put-back-first-part.png) | Put back, first part: TCAM mode 0x0001 on ports 6 and 8; VID 300 deleted, FID 300's learned addresses flushed, the ATU FID register back to 0x0000 and the STU entry purged | [switch-3300-2026-11-11.md](../measurements/switch-3300-2026-11-11.md) |
+| [08-vtu-teardown-census-after.png](measurements/switch-3300-2026-11-11/08-vtu-teardown-census-after.png) | After: the 136 without its jail and VLANs, its config.xml as before, nothing kept on the 3300; ports 6 and 8, every port's FID, the VTU and the STU read as before | [switch-3300-2026-11-11.md](../measurements/switch-3300-2026-11-11.md) |
+| [09-tcam-census.png](measurements/switch-3300-2026-11-11/09-tcam-census.png) | The 3300's switch tables, read only: no VTU entry; TCAM entries 0, 1, 2, 4, 5 and 6; 254 of 256 entries in use, 3 and 255 free | [switch-3300-2026-11-11.md](../measurements/switch-3300-2026-11-11.md) |
+| [10-tcam-broadcast-before-load.png](measurements/switch-3300-2026-11-11/10-tcam-broadcast-before-load.png) | 100 frames of EtherType 0x88b5 out of the 136's npup7 into Port6: 501 lines at the 3300's host before the rule, pings 3 of 3; then the rule loaded in entry 3 and read back | [switch-3300-2026-11-11.md](../measurements/switch-3300-2026-11-11.md) |
+| [11-tcam-broadcast-with-flush-after.png](measurements/switch-3300-2026-11-11/11-tcam-broadcast-with-flush-after.png) | With the rule in entry 3, the same frames: still 501 lines; entry 3 flushed and read back free; 501 lines after | [switch-3300-2026-11-11.md](../measurements/switch-3300-2026-11-11.md) |
+| [12-tcam-unicast-before-load.png](measurements/switch-3300-2026-11-11/12-tcam-unicast-before-load.png) | The frames addressed to oxp7's own address: 501 lines before the rule, pings 3 of 3; the rule loaded in entry 3 | [switch-3300-2026-11-11.md](../measurements/switch-3300-2026-11-11.md) |
+| [13-tcam-unicast-with-flush-after.png](measurements/switch-3300-2026-11-11/13-tcam-unicast-with-flush-after.png) | Addressed to oxp7, with the rule in entry 3: 1 line, pings over Port6 3 of 3; entry 3 flushed and free; 501 lines after | [switch-3300-2026-11-11.md](../measurements/switch-3300-2026-11-11.md) |
+| [14-mirror-none-then-both.png](measurements/switch-3300-2026-11-11/14-mirror-none-then-both.png) | Port8 into Port6 during a 100 Mbit/s stream: no mirror, port 6 sent 0 frames; both directions, port 8 took in 43,039 and sent 43,043 and port 6 sent 86,082 frames, the registers back to 0x041f, 0x2480 and 0x301f after | [switch-3300-2026-11-11.md](../measurements/switch-3300-2026-11-11.md) |
+| [15-mirror-ingress-then-egress.png](measurements/switch-3300-2026-11-11/15-mirror-ingress-then-egress.png) | Ingress only: port 8 took in 42,948 frames and port 6 sent 42,948; egress only: port 8 sent 42,952 and port 6 sent 42,952 | [switch-3300-2026-11-11.md](../measurements/switch-3300-2026-11-11.md) |
+| [16-egress-limit-by-mbits.png](measurements/switch-3300-2026-11-11/16-egress-limit-by-mbits.png) | The egress limit asked in Mbit/s: 300 gave 240, 200 gave 160, 100 gave 96.2, 50 gave 48.0, 10 gave 9.95 and 1 gave 784 kbit/s, with 0x8000 read back after each | [switch-3300-2026-11-11.md](../measurements/switch-3300-2026-11-11.md) |
+| [17-egress-limit-top-bits.png](measurements/switch-3300-2026-11-11/17-egress-limit-top-bits.png) | N = 10 under the four values of the register's top two bits, 0x000a, 0x400a, 0x800a and 0xc00a: 931, 47.4, 47.9 and 48.6 Mbit/s | [switch-3300-2026-11-11.md](../measurements/switch-3300-2026-11-11.md) |
+| [18-egress-limit-top-bits-00.png](measurements/switch-3300-2026-11-11/18-egress-limit-top-bits-00.png) | The top bits at 00: 0x0064 (N = 100) 939 Mbit/s, 0x03e8 (1000) 726, 0x0fa0 (4000) 183 | [switch-3300-2026-11-11.md](../measurements/switch-3300-2026-11-11.md) |
+| [19-egress-limit-top-bits-00-more.png](measurements/switch-3300-2026-11-11/19-egress-limit-top-bits-00-more.png) | The top bits at 00: 0x0320 (N = 800) 847 Mbit/s, 0x07d0 (2000) 364; then 0x8000 left on port 8 | [switch-3300-2026-11-11.md](../measurements/switch-3300-2026-11-11.md) |
+
 ### measurements/switch-frame-limit-2026-10-24/ (3)
 
 The page: [switch-frame-limit-2026-10-24.md](../measurements/switch-frame-limit-2026-10-24.md).
@@ -1496,6 +1625,19 @@ The page: [vlan-mtu-2026-11-06.md](../measurements/vlan-mtu-2026-11-06.md).
 | [09-fix-no-vlan-lif.png](measurements/vlan-mtu-2026-11-06/09-fix-no-vlan-lif.png) | First XGS 3300 with the fix: a VLAN id never seen passes 1,514 and 1,518 at a port of 1,500 | [vlan-mtu-2026-11-06.md](../measurements/vlan-mtu-2026-11-06.md) |
 | [10-fix-both-3300s.png](measurements/vlan-mtu-2026-11-06/10-fix-both-3300s.png) | Both XGS 3300s with the fix, ports at 1,500 | [vlan-mtu-2026-11-06.md](../measurements/vlan-mtu-2026-11-06.md) |
 | [11-fix-top-and-bridge.png](measurements/vlan-mtu-2026-11-06/11-fix-top-and-bridge.png) | A vlan over a bridge member takes 1,500 with the fix; raising the member itself is refused on both families | [vlan-mtu-2026-11-06.md](../measurements/vlan-mtu-2026-11-06.md) |
+
+### measurements/wireguard-2026-11-11/ (6)
+
+The page: [wireguard-2026-11-11.md](../measurements/wireguard-2026-11-11.md).
+
+| image | what it shows | used on |
+|---|---|---|
+| [01-tunnel-made.png](measurements/wireguard-2026-11-11/01-tunnel-made.png) | Tunnel made: wglab0 at the two ends of 10.99.230.x, MTU 1420, if_wg not loaded before, two pass rules on each host; 3 of 3 pings through it | [wireguard-2026-11-11.md](../measurements/wireguard-2026-11-11.md) |
+| [02-tunnel-removed.png](measurements/wireguard-2026-11-11/02-tunnel-removed.png) | Tunnel taken away: no interface or rule left, if_wg unloaded, config.xml unchanged on both hosts | [wireguard-2026-11-11.md](../measurements/wireguard-2026-11-11.md) |
+| [03-cipher-on-each-host.png](measurements/wireguard-2026-11-11/03-cipher-on-each-host.png) | openssl on each host, 1,420-byte blocks: ChaCha20-Poly1305 at 5,912 and 7,232 Mbit/s on one core of the XGS 136 and the XGS 3300, AES-256-GCM at 13,944 and 16,418 | [wireguard-2026-11-11.md](../measurements/wireguard-2026-11-11.md) |
+| [04-tunnel-3300-to-136.png](measurements/wireguard-2026-11-11/04-tunnel-3300-to-136.png) | XGS 3300 to XGS 136 through the tunnel: 855 Mbit/s with one stream, the XGS 136's CPUs 81 % busy; 899 with four, 72 % | [wireguard-2026-11-11.md](../measurements/wireguard-2026-11-11.md) |
+| [05-tunnel-136-to-3300.png](measurements/wireguard-2026-11-11/05-tunnel-136-to-3300.png) | XGS 136 to XGS 3300 through the tunnel: 901 Mbit/s with one stream and with four, the XGS 136's CPUs 70 and 72 % busy | [wireguard-2026-11-11.md](../measurements/wireguard-2026-11-11.md) |
+| [06-crossing-udp-51820.png](measurements/wireguard-2026-11-11/06-crossing-udp-51820.png) | UDP to port 51820 across the XGS 3300 at 500 Mbit/s: its entries active in the flow table, none of 446,392 datagrams lost, 219 frames to its host over the run | [wireguard-2026-11-11.md](../measurements/wireguard-2026-11-11.md) |
 
 ### measurements/xgs136-after-boot-2026-10-19/ (8)
 

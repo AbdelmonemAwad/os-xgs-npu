@@ -213,8 +213,9 @@ off until it is turned on: the coprocessor then sends a copy of every frame it f
 arrived at a port and one as it left the other, and each is shown to the packet capture on that port
 - tcpdump, or **Interfaces: Diagnostics: Packet Capture** - and to nothing else. Measured on the
 XGS 136 and both XGS 3300s: every frame copied on the XGS 136 and on an XGS 3300 whose coprocessor
-runs vendor version 23, to 1 Gbit/s; on one running vendor version 22 only part of them, which part changing
-from one boot to the next; and forwarding unchanged
+runs vendor version 23, to 1 Gbit/s; on one running vendor version 22 only part of them on some boots, which
+part changing from one boot to the next, and every frame of a 500 Mbit/s stream on another
+([capture-10g-2026-11-11.md](../measurements/capture-10g-2026-11-11.md)); and forwarding unchanged
 ([mirror-2026-10-25.md](../measurements/mirror-2026-10-25.md)). Turn it on while you look.
 
 ### Problem reports

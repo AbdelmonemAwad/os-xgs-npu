@@ -2,8 +2,14 @@
 # Two front ports: nothing crosses in the switch, and the host's rules decide, 2026-10-25
 
 Discovery 21 of [the discoveries](../findings/discoveries-2026-10-22.md#two-front-ports-never-switch-to-each-other-in-the-chip).
-The vendor's TCAM sends every frame that comes in at a front port behind the switch to the
-coprocessor, so two devices on two of those ports should never reach each other inside the switch.
+The vendor's TCAM ~~sends every frame that comes in at a front port behind the switch to the
+coprocessor~~ **sends broadcast, multicast and frames for the appliance's own addresses to the
+coprocessor, and its last entry, 254, reads as a drop of every other normal frame (read 2026-11-11,
+[the switch on 2026-11-11](switch-3300-2026-11-11.md); this page's count of such frames at the
+coprocessor, below, does not fit that, and was not taken again)**, so two devices on two of those ports
+should never reach each other inside the switch **as the vendor's software leaves it. With two
+registers changed on each port the chip switches them itself, past the firewall
+([2026-11-10](switch-3300-2026-11-10.md), [2026-11-11](switch-3300-2026-11-11.md))**.
 Whether the host's rules then see what passes between them was left to be measured. The XGS 136 and
 the second XGS 3300 are joined by two cables, each from a switch port to a switch port - the 3300's
 Port6 to the 136's Port7, its Port8 to the 136's Port8 - so each board stood for the two devices
@@ -71,8 +77,8 @@ it, so no two of them join the lab's boards.
 
 ## What it means for os-xgs-npu
 
-Nothing to build: two devices on two front ports reach each other only through the board, and what
-passes is what the host's rules and states allow - in hardware too, where a killed state or a ruleset
+~~Nothing to build:~~ Two devices on two front ports reach each other only through the board **as
+the vendor's software leaves the switch**, and what passes is what the host's rules and states allow - in hardware too, where a killed state or a ruleset
 reload takes a connection out. The XGS 3300's fast path drops a frame that is not addressed to the
 port it came in at, rather than giving it to the host every time.
 
