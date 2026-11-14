@@ -366,9 +366,10 @@
             return '<div class="alert alert-warning" role="alert" style="margin: 15px 15px 0;">' + text + '</div>';
         }
 
-        /* What the Hardware offloading card's Off means. Both settings are off after an install
-           (XGS.xml: offload and flow_auto default 0), and until both are on no connection runs in
-           hardware: what the coprocessor can do for a connection waits for them. Said in a sentence,
+        /* What the Hardware offloading card's Off means. Both settings are on in a new install
+           since 2026-11-14 (XGS.xml), and an appliance installed before keeps what it saved; until
+           both are on no connection runs in hardware: what the coprocessor can do for a connection
+           waits for them. Said in a sentence,
            because a grey card does not say it. Each paragraph takes its direction from its own
            text (dir="auto"): a sentence not yet translated keeps its full stop at its end on a
            right-to-left page. */
@@ -386,6 +387,49 @@
             return '<div class="alert alert-info" role="alert" style="margin: 15px 15px 0;">' + text + '</div>';
         }
 
+        /* The fast path's share of the frames that arrived on the front ports, since the driver
+           attached, and each reason the flow maker left a connection with this firewall, as the
+           driver counts it (status.py, fastpath_share): only the counters this family's driver has. */
+        const REASONS = {
+            excluded: "{{ lang._('Never offloaded, as set on XGS: Settings') }}",
+            netmap: "{{ lang._('On a port the Intrusion Detection reads in IPS mode') }}",
+            netmap_cut: "{{ lang._('Inspected, on a port the Intrusion Detection reads in IPS mode') }}",
+            ipv6: "{{ lang._('IPv6 that pf translates') }}",
+            ipsec: "{{ lang._('Covered by an IPsec policy') }}",
+            bridged: "{{ lang._('Bridged, and not a pair the coprocessor can bridge') }}",
+            vlan: "{{ lang._('On a VLAN the coprocessor does not carry') }}",
+            dscp: "{{ lang._('A DSCP mark the coprocessor cannot write') }}",
+            table_full: "{{ lang._('The flow table was full') }}",
+            next_hops_full: "{{ lang._('The next-hop table was full') }}",
+            remake_held: "{{ lang._('Given back soon after it was made, held a while') }}",
+            refused: "{{ lang._('Refused by the coprocessor') }}"
+        };
+        function fastpath_card(fp) {
+            const s = fp && typeof fp.share === 'number' ? fp.share : null;
+            return card('', 'fa-tachometer', "{{ lang._('Fast path share') }}",
+                s === null ? '&mdash;' : (s * 100).toFixed(s > 0 && s < 0.01 ? 2 : 1) + ' %',
+                s === null ? "{{ lang._('nothing counted yet') }}" : "{{ lang._('of the frames since the driver started') }}");
+        }
+        function fastpath_rows(fp) {
+            if (!fp) {
+                return [];
+            }
+            const n = function (v) { return '<bdi dir="ltr">' + Number(v).toLocaleString() + '</bdi>'; };
+            const list = [];
+            if (fp.forwarded_frames !== null && fp.forwarded_frames !== undefined) {
+                list.push(["{{ lang._('Frames the coprocessor forwarded itself') }}", n(fp.forwarded_frames),
+                    typeof fp.share === 'number' ? fp.share : undefined]);
+            }
+            if (fp.host_frames !== null && fp.host_frames !== undefined) {
+                list.push(["{{ lang._('Frames handed to this firewall') }}", n(fp.host_frames)]);
+            }
+            (fp.reasons || []).forEach(function (r) {
+                list.push([(REASONS[r.key] || val(r.key)) + ' <small class="text-muted"><code>' + r.counter + '</code></small>',
+                    n(r.count) + ' ' + (r.unit === 'connections' ? "{{ lang._('connections') }}" : "{{ lang._('attempts') }}")]);
+            });
+            return list;
+        }
+
         function render(st, ports, ipsec, settings) {
             $('#xgs_ids').html(ids_note(st && st.intrusion_detection));
             $('#xgs_ids_mtu').html(mtu_note(st && st.intrusion_detection));
@@ -400,7 +444,8 @@
                     "{{ lang._('not attached') }}",
                     st && st.message ? st.message : "{{ lang._('the coprocessor driver is not attached') }}") +
                     appliance_card(st && st.appliance));
-                $('#xgs_link, #xgs_limits, #xgs_rpc, #xgs_raw, #xgs_offload').empty();
+                $('#xgs_link, #xgs_limits, #xgs_fastpath, #xgs_rpc, #xgs_raw, #xgs_offload').empty();
+                $('#xgs_fastpath_head').hide();
                 return;
             }
             const b = st.board || {}, dr = st.driver || {}, hs = st.handshake || {},
@@ -429,6 +474,7 @@
                 offOn ? "{{ lang._('On') }}" : "{{ lang._('Off') }}",
                 /* with offloading off nothing is accelerated, whatever the flow maker's setting says */
                 offOn && g.flow_auto === '1' ? "{{ lang._('connections accelerated automatically') }}" : "{{ lang._('no automatic acceleration') }}");
+            cards += fastpath_card(st.fastpath);
             cards += card(ipsecOn ? 'ok' : 'off', 'fa-lock', "{{ lang._('IPsec engine') }}",
                 ipsecOn ? sas + ' ' + "{{ lang._('associations') }}" : "{{ lang._('Off') }}",
                 ipsecOn ? "{{ lang._('in the coprocessor') }}" : "{{ lang._('the host encrypts') }}");
@@ -480,6 +526,9 @@
                     num(lim.made_at_most) + ' ' + (lim.made_per === 'second' ? "{{ lang._('a second') }}" : "{{ lang._('a sweep, one sweep a second') }}")],
                 ["{{ lang._('IPv6 connections left with the host') }}", num(lim.ipv6_refused)]
             ].filter(function (r) { return r[1] !== null && r[1] !== undefined; }));
+            const fp_rows = fastpath_rows(st.fastpath);
+            rows($('#xgs_fastpath'), fp_rows);
+            $('#xgs_fastpath_head').toggle(fp_rows.length > 0);
             rows($('#xgs_rpc'), [
                 ["{{ lang._('Control facility ready') }}", badge(rpc.ready === 1, "{{ lang._('yes') }}", "{{ lang._('no') }}")],
                 ["{{ lang._('Port control ready') }}", badge(nwa.ready === 1, "{{ lang._('yes') }}", "{{ lang._('no') }}")],
@@ -934,6 +983,10 @@
                 <tr><th colspan="2"><div class="xgs-head"><b>{{ lang._('This board\'s limits') }}</b></div></th></tr>
             </thead>
             <tbody id="xgs_limits"></tbody>
+            <thead id="xgs_fastpath_head" style="display: none;">
+                <tr><th colspan="2"><div class="xgs-head"><b>{{ lang._('The fast path, and what stayed with this firewall') }}</b></div></th></tr>
+            </thead>
+            <tbody id="xgs_fastpath"></tbody>
             <thead>
                 <tr><th colspan="2"><div class="xgs-head"><b>{{ lang._('Control facility') }}</b></div></th></tr>
             </thead>

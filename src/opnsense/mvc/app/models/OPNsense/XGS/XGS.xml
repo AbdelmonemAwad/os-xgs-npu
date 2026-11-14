@@ -24,32 +24,35 @@
             <offload type="BooleanField">
                 <Required>Y</Required>
                 <!--
-                    Off.
+                    On in a new install since 2026-11-14 (the owner's decision D9), with the flow
+                    maker below; off until then.
 
-                    Three reasons, in the order they were learned. The coprocessor comes up with
-                    fw_cfg 0x2 - TCP_SEQ_CHK alone, no offload - so off is also what the hardware
-                    itself defaults to, and a plugin that silently differed from the hardware
-                    would be the first thing to suspect and the last thing anybody looked at.
+                    The coprocessor comes up with fw_cfg 0x2 - TCP_SEQ_CHK alone, no offload - and
+                    forgets the gate at every boot, so this is written again at every boot
+                    (bringup.sh, 07-npuep-gate). With the gate open, a frame the fast path decides it
+                    can handle does not reach pf; opening it by itself accelerates nothing, because a
+                    frame leaves the host's path only once the driver has put its connection in
+                    hardware, which the flow maker does (docs/findings/the-state-is-the-gate.md).
 
-                    Then: with the gate open, a frame that the fast path decides it can handle
-                    does not reach pf. That is the entire point of it, and it is also the reason
-                    it is not a default. Nothing in this package may quietly take traffic out of
-                    the firewall's path on the strength of having been installed.
+                    It was off for as long as a connection in hardware could escape the Intrusion
+                    Detection: a port Suricata reads through netmap lost the end of every transfer
+                    the flow maker cut to hardware (issue 1148). The netmap gate (dp.netmap_gate,
+                    flow.netmap_gate) now keeps every connection on such a port with the host, so
+                    the default changed with it, and only with it.
 
-                    And: opening the gate by itself accelerates nothing. A frame leaves the
-                    host's path only once the driver has put its connection in hardware, and the
-                    flow maker that does that - dp.auto on the OCTEON TX, flow.auto on the ARMADA -
-                    is off unless set; see docs/findings/the-state-is-the-gate.md and
-                    docs/npuep/offload-plan.md. So the honest default is the one that changes
-                    nothing until there is something to change.
+                    A default is what a new install gets: an installed appliance keeps the value it
+                    saved, and XGS: Overview offers the recommended values to its owner
+                    (Api/SettingsController.php, recommended). Never a migration.
                 -->
-                <Default>0</Default>
+                <Default>1</Default>
             </offload>
-            <!-- The flow maker: dp.auto on the OCTEON TX, flow.auto on the ARMADA. Off, for the
-                 offload gate's reasons: it is what takes a connection out of the firewall's path. -->
+            <!-- The flow maker: dp.auto on the OCTEON TX, flow.auto on the ARMADA. On in a new install
+                 since 2026-11-14, with offload above and for its reasons: it is what takes a
+                 connection out of the firewall's path, and the netmap gate keeps the ports Suricata
+                 reads in IPS mode with the host. -->
             <flow_auto type="BooleanField">
                 <Required>Y</Required>
-                <Default>0</Default>
+                <Default>1</Default>
             </flow_auto>
             <!-- The coprocessor's own counts of what it forwards, given to pf's states and rules
                  (dev.octep.0.dp.hw_to_pf, dev.npuep.0.flow.hw_to_pf) and to the interfaces' counters

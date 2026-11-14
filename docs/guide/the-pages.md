@@ -68,16 +68,21 @@ from its widget list.
 
 The first page of the **XGS** section. At the top, the front panel drawn in the chassis's order - the
 two cages, Port1 to Port8, two more cages, the expansion module's A4 to A1 - each with its link as a
-light, and its name, assignment, medium and MAC address when the pointer rests on it. Then a card each for the coprocessor and its link, hardware offloading, the IPsec engine, the
+light, and its name, assignment, medium and MAC address when the pointer rests on it. Then a card each for the coprocessor and its link, hardware offloading, the fast path's share of
+the frames that arrived on the front ports since the driver started, the IPsec engine, the
 front ports, the switch chip, and the cause of the last restart as the chipset recorded it. While
-**Hardware offloading** or **Accelerate connections automatically** is off - both are, after an install -
-a notice above the cards says that every connection runs on the firewall itself, and links to the
+**Hardware offloading** or **Accelerate connections automatically** is off - both are on in a new
+install since 2026-11-14, and an appliance installed before keeps what it saved - a notice above the cards says that every connection runs on the firewall itself, and links to the
 Acceleration tab of XGS: Settings, where the two are. Under them
 **Coprocessor link** - with, since 2026-10-20, the coprocessor's own Linux: how long it has been up,
 its load on its cores and its memory, read every five minutes by `scripts/xgs/health.py` (on the
 second XGS 3300 that day: twenty cores at a load of 19, which its fast path keeps busy, and 163 of
 3,165 MB available; on the XGS 136 four cores at 3.2 and 1,544 MB available) - **This board's limits** - the connections and next hops the board holds, with a
-bar of how much of each is in use - and the control facility. **Datapath counters**, **Coprocessor**
+bar of how much of each is in use - then **The fast path, and what stayed with this firewall**: the
+frames the coprocessor forwarded itself, the frames it handed the firewall, and each count the driver
+keeps of why the flow maker left a connection with the firewall (a port the Intrusion Detection reads
+in IPS mode, Never offloaded, IPv6 that pf translates, a full table and the others its driver has),
+each with the counter it reads - and the control facility. **Datapath counters**, **Coprocessor**
 and **Technical details** are its other tabs. In the photograph two associations are in the
 engine, and fan 0 is under speed, which the Appliance health card shows in amber.
 

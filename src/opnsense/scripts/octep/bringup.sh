@@ -715,7 +715,7 @@ done > /var/db/os-xgs-npu/labels.new 2>/dev/null && mv /var/db/os-xgs-npu/labels
 # driver rather than trusting that a message arrived.
 if [ -x /usr/local/opnsense/scripts/xgs/offload.sh ] && [ -x /usr/local/bin/php ]; then
 	WANT=$(/usr/local/bin/php -r \
-	    'require_once("config.inc"); echo empty($config["OPNsense"]["XGS"]["general"]["offload"]) ? "off" : "on";' \
+	    'require_once("config.inc"); echo (($config["OPNsense"]["XGS"]["general"]["offload"] ?? "1") === "1") ? "on" : "off";' \
 	    2>/dev/null)
 	case ${WANT} in
 	on|off)
@@ -735,8 +735,8 @@ if [ -x /usr/local/opnsense/scripts/xgs/offload.sh ] && [ -x /usr/local/bin/php 
 		log "never offloaded: $(/usr/local/bin/php /usr/local/opnsense/scripts/xgs/flow_exclude.php 2>/dev/null)"
 	fi
 	# The flow maker, from the same page: dp.auto puts established connections in hardware on its
-	# own. Off unless the owner turned it on there.
-	AUTO=$(/usr/local/bin/php -r 	    'require_once("config.inc"); echo empty($config["OPNsense"]["XGS"]["general"]["flow_auto"]) ? "0" : "1";' 	    2>/dev/null)
+	# own. As saved there, and on where nothing is saved (the model's default since 2026-11-14).
+	AUTO=$(/usr/local/bin/php -r 	    'require_once("config.inc"); echo (($config["OPNsense"]["XGS"]["general"]["flow_auto"] ?? "1") === "1") ? "1" : "0";' 	    2>/dev/null)
 	case ${AUTO} in
 	0|1) sysctl -q dev.octep.0.dp.auto=${AUTO} > /dev/null 2>&1 && log "automatic acceleration ${AUTO}" ;;
 	esac

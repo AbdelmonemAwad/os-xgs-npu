@@ -181,7 +181,7 @@ if ($family !== 'octeontx' && $family !== 'armada') {
 }
 
 /* The offload gate, as it always was. */
-$want = $get('offload', '0') === '1' ? 'on' : 'off';
+$want = $get('offload', '1') === '1' ? 'on' : 'off';
 $gate = json_decode((string)shell_exec('/usr/local/opnsense/scripts/xgs/offload.sh ' . $want . ' 2>/dev/null'), true);
 if (!is_array($gate) || empty($gate['applied'])) {
     $ok = false;
@@ -194,7 +194,7 @@ if (!is_array($gate) || empty($gate['applied'])) {
 
 /* The flow maker, on the running driver. */
 $auto_oid = $family === 'octeontx' ? 'dev.octep.0.dp.auto' : 'dev.npuep.0.flow.auto';
-$auto = $get('flow_auto', '0') === '1' ? '1' : '0';
+$auto = $get('flow_auto', '1') === '1' ? '1' : '0';
 if (sysctl_get($auto_oid) === null) {
     $steps[] = 'automatic acceleration: the driver is not loaded, applied at the next boot';
 } elseif (sysctl_set($auto_oid, $auto)) {

@@ -165,6 +165,72 @@ OCTEP_DP_FIELDS = [
 ]
 
 
+# ---- the fast path's share, and why connections stayed with the host ------------------------------
+
+LIF_LINE = re.compile(r"\bin (\d+) packets (\d+) bytes\s+out (\d+) packets (\d+) bytes")
+
+# Why the flow maker left a connection with this host, as each driver counts it: (key, OCTEON TX
+# sysctl under dev.octep.0, ARMADA sysctl under dev.npuep.0, unit). "connections" counts each one once;
+# "attempts" counts every try, so one connection's frames can count more than once (the drivers' own
+# descriptions say which). A key a driver has no counter for is absent on that family, never zero.
+FASTPATH_REASONS = [
+    ("excluded", "dp.flow_excluded", "flow.excluded", "attempts"),
+    ("netmap", "dp.netmap_refused", "flow.netmap_refused", "connections"),
+    ("netmap_cut", "dp.netmap_cut_refused", "flow.netmap_cut_refused", "connections"),
+    ("ipv6", "dp.flow_v6_refused", "flow.v6_refused", "connections"),
+    ("ipsec", None, "flow.ipsec_refused", "connections"),
+    ("bridged", "dp.flow_bridged_kept", "flow.bridged_kept", "attempts"),
+    ("vlan", None, "flow.vlan_kept", "attempts"),
+    ("dscp", "dp.flow_dscp_kept", "flow.dscp_kept", "attempts"),
+    ("table_full", "dp.auto_full", "flow.flow_full", "attempts"),
+    ("next_hops_full", "dp.nhop_full", None, "attempts"),
+    ("remake_held", None, "flow.remake_held", "connections"),
+    ("refused", "dp.flow_rc_refused", None, "attempts"),
+]
+
+
+def lif_frames(text):
+    """The frames the coprocessor forwarded itself, from lif_counted: what arrived on each port, in
+    packets and bytes, summed (a forwarded frame arrives on one port and leaves by another, so only
+    "in" is summed). None when the driver has no such counter."""
+    if text is None:
+        return None
+    packets = octets = 0
+    for m in LIF_LINE.finditer(text):
+        packets += int(m.group(1))
+        octets += int(m.group(2))
+    return {"packets": packets, "bytes": octets}
+
+
+def fastpath_share(family):
+    """How much of what arrived on the front ports the coprocessor forwarded itself, since the driver
+    attached: its own frames (lif_counted, in) against those it handed this host (the receive rings:
+    dp.rx_done, giu.rx_packets) - so a frame the host takes for itself, or a copy for a packet
+    capture, counts on the host's side and the share is never overstated. And each reason counter
+    the driver has. Read only, as all of this file."""
+    if family == "octeontx":
+        base, hw, host, col = OCTEP, "dp.lif_counted", "dp.rx_done", 1
+    else:
+        base, hw, host, col = NPUEP, "flow.lif_counted", "giu.rx_packets", 2
+    forwarded = lif_frames(sysctl("%s.%s" % (base, hw)))
+    to_host = sysctl_int("%s.%s" % (base, host))
+    out = {"forwarded_frames": None, "forwarded_bytes": None, "host_frames": to_host, "share": None,
+           "reasons": []}
+    if forwarded is not None:
+        out["forwarded_frames"] = forwarded["packets"]
+        out["forwarded_bytes"] = forwarded["bytes"]
+        total = forwarded["packets"] + (to_host or 0)
+        if to_host is not None and total > 0:
+            out["share"] = forwarded["packets"] / total
+    for row in FASTPATH_REASONS:
+        if row[col] is None:
+            continue
+        value = sysctl_int("%s.%s" % (base, row[col]))
+        if value is not None:
+            out["reasons"].append({"key": row[0], "count": value, "unit": row[3], "counter": row[col]})
+    return out
+
+
 def octep_last_command():
     """The last RPC command and how it ended, without the reply body (up to 182 counter words)."""
     raw = sysctl("%s.rpc.last" % OCTEP)
@@ -248,6 +314,7 @@ def octep_report(out):
             counters[key] = {"value": v, "description": descr}
     out["datapath"] = counters
     out["ports"] = ports("oxp", 0, 12)
+    out["fastpath"] = fastpath_share("octeontx")
     # The board's own figures are in the line the driver logs when it reads the platform block;
     # what this host uses of them is the driver's own bounds.
     held = log_match(r"octep0: rpc: the board holds (\d+) connections, (\d+) next hops and (\d+) microflows")
@@ -392,6 +459,7 @@ def npuep_report(out):
             counters[key] = {"value": v, "description": descr}
     out["datapath"] = counters
     out["ports"] = ports("npup", 1, 14)
+    out["fastpath"] = fastpath_share("armada")
     # The board's own figures, read with PLATFORM_READ, and what this host allocated of them.
     out["limits"] = {
         "platform": sysctl("%s.rpc_channel.platform" % NPUEP),
@@ -577,7 +645,7 @@ def intrusion_detection(path=CONFIG):
         "mode": "ids" if capture == "pcap" else "ips",
         "capture": capture,
         "interfaces": names,
-        "offloading": text(xgs, "offload", "0") == "1" and text(xgs, "flow_auto", "0") == "1",
+        "offloading": text(xgs, "offload", "1") == "1" and text(xgs, "flow_auto", "1") == "1",
         "inspect_then_hardware": capture == "netmap" and text(xgs, "inspect_then_hardware", "0") == "1" and running,
     }
     out["uninspected"] = out["on"] and out["offloading"] and not out["inspect_then_hardware"]
