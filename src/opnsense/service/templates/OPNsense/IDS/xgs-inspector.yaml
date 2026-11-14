@@ -19,6 +19,26 @@
  # Midstream, because a connection reaches oxips0 already open: its first frames crossed the host
  # before it was put in hardware.
  #
+ # Bypass, because a connection longer than the inspector's depth (flow.ips_depth / dp.ips_depth) is
+ # cut to hardware after it, and its closing frames come back to the host on the port Suricata reads
+ # with sequence numbers far past what Suricata saw. Suricata's TCP state machine rejects them (out
+ # of window, an ACK past the window: stream-tcp.c, StreamTcpPacket's error path) and in IPS mode
+ # drops them as a stream error, so the last frames never arrive and the connection hangs to its
+ # timeout - issue 1148, reproduced 2026-11-12: 680-1,120 bytes short. With stream.bypass a flow
+ # whose stream reaches stream.reassembly.depth is bypassed in Suricata itself, and a bypassed flow's
+ # frames skip the state machine; tcp.bypassed keeps that for an hour of quiet, while the connection
+ # runs in hardware and Suricata sees nothing of it (the default, 100 s, forgets it first). Measured:
+ # HTTP downloads of 10 and 100 MB complete at ips_depth 1 MiB and 2 MiB. Not a stream whose
+ # protocol Suricata never identifies: its reassembly stops when detection fails, so it never
+ # reaches the depth and is never bypassed (nc, 100 MB, still 680 bytes short). The same holds for
+ # Suricata's own stream inspection of every interface it reads: past the depth it inspects no more
+ # of a stream's data in any case, and with bypass it skips that flow's frames as well.
+ #
+ # drop-invalid: no, only when the owner turns on "Let rejected TCP segments through": the one
+ # setting that gates that drop - StreamTcpPacket's error path is its only use in Suricata 8.0 - and
+ # it fixes the streams bypass cannot (nc 100 MB complete). Suricata still raises the stream events
+ # and its rules still see them; it drops none of those segments itself, on every interface it reads.
+ #
  # Only in IPS mode, and only while oxips0 is on this appliance this boot - the boot hooks and the
  # settings page write /var/run/os-xgs-npu.oxips0 - since Suricata does not start when an interface
  # it is given is missing.
@@ -26,6 +46,13 @@
 {% if not helpers.empty('OPNsense.XGS.general.inspect_then_hardware') and OPNsense.IDS.general.mode|default("") == "netmap" and helpers.absolute_glob('/var/run/os-xgs-npu.oxips0') %}
 # XGS: Settings "Inspect, then hardware": oxips0 inspected as well.
 stream.midstream: true
+stream.bypass: yes
+flow-timeouts.tcp.bypassed: 3600
+{% if not helpers.empty('OPNsense.XGS.general.inspect_pass_invalid') %}
+# XGS: Settings "Let rejected TCP segments through": Suricata drops no segment its TCP state
+# machine rejects.
+stream.drop-invalid: no
+{% endif %}
 netmap.900: interface
 netmap.900.interface: oxips0
 netmap.900.copy-iface: oxips0^

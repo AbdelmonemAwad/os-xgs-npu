@@ -16,7 +16,12 @@
  *                      writes with the gate (and at boot)
  *   inspect_then_hardware  the marker /var/db/os-xgs-npu/inspector-vf (the inspector's function, at
  *                      boot), the running driver's dp.ips_new or flow.ips_new, and the Intrusion
- *                      Detection's configuration through the template overlay OPNsense/IDS/xgs-inspector.yaml
+ *                      Detection's configuration through the template overlay OPNsense/IDS/xgs-inspector.yaml;
+ *                      while on, the running driver's dp.ips_depth or flow.ips_depth a quarter over
+ *                      Suricata's stream depth (xgs_ips_depth)
+ *   inspect_pass_invalid  the same overlay (stream.drop-invalid: no), while inspect_then_hardware is on,
+ *                      and the running driver's dp.netmap_gate_cut or flow.netmap_gate_cut, 1 while it
+ *                      is on and 0 otherwise
  *   count_to_pf        the running driver, dev.octep.0.dp.hw_to_pf or dev.npuep.0.flow.hw_to_pf
  *                      (and at boot)
  *   count_ports        the running driver, dev.octep.0.dp.lif_apply or dev.npuep.0.flow.lif_apply
@@ -87,6 +92,51 @@ function xgs_rows_removed(array $rows, array $unset): array
         }
     }
     return $removed;
+}
+
+/*
+ * Suricata's size string - stream.reassembly.depth as --dump-config prints it, "1mb", "512kb",
+ * "1048576" - in bytes, kb, mb and gb counted in 1024s as util-misc.c's ParseSizeString counts them;
+ * null for anything else.
+ */
+function xgs_suricata_size(?string $s): ?int
+{
+    if ($s === null || !preg_match('/^\s*([0-9]+)\s*(kb|mb|gb)?\s*$/i', $s, $m)) {
+        return null;
+    }
+    $mul = ['' => 1, 'kb' => 1024, 'mb' => 1048576, 'gb' => 1073741824][strtolower($m[2] ?? '')];
+    return (int)$m[1] * $mul;
+}
+
+/*
+ * What the driver's inspector depth (dev.npuep.0.flow.ips_depth, dev.octep.0.dp.ips_depth) is raised
+ * to while "Inspect, then hardware" is on, or null to leave it: $now as the sysctl reads, $depth
+ * Suricata's stream.reassembly.depth as --dump-config prints it.
+ *
+ * The two count different things. Suricata's depth is TCP payload, each direction on its own,
+ * counted from the connection's first sequence number. The driver's is whole frames - Ethernet, IP
+ * and TCP headers with the payload - of both directions together, counted as oxips0 hands them back
+ * (npuips_input, octep_ips_input). With the overlay's stream.bypass, a connection the driver cuts
+ * before Suricata's stream reaches its depth is never bypassed, and its closing frames are dropped
+ * when they come back (issue 1148). A full frame at MSS 1448 is 1514 bytes, 4.6 % over its payload,
+ * and the acknowledgements the other way add 66 bytes every second frame, 2.3 % more; at MSS 536
+ * the two are 12.3 % and 6.2 %. So the driver's depth is at least a quarter over Suricata's, which
+ * covers both. The first frames, before the connection is in hardware, count for Suricata only, so
+ * Suricata is ahead by them. Measured 2026-11-12: HTTP 100 MB complete with ips_depth 1 MiB and 2 MiB
+ * against Suricata's 1 MiB; the first had the pre-hardware frames to thank.
+ *
+ * Left alone: 0, which inspects for good; a depth already at or over the mark, the owner's choice;
+ * a Suricata depth of 0 (no limit: it never bypasses, so nothing to reach) or one this cannot read;
+ * a sysctl that reads as no number (no driver).
+ */
+function xgs_ips_depth(?string $now, ?string $depth): ?string
+{
+    $s = xgs_suricata_size($depth);
+    if ($now === null || !preg_match('/^[0-9]+$/', $now) || $now === '0' || $s === null || $s === 0) {
+        return null;
+    }
+    $want = intdiv($s * 5 + 3, 4);
+    return (int)$now >= $want ? null : (string)$want;
 }
 
 // The tests include this file for the functions above alone.
@@ -234,6 +284,62 @@ $after = @file_get_contents($overlay);
 if ($after !== false && $after !== $before && $ids_on) {
     $backend->configdRun('ids restart');
     $steps[] = 'the Intrusion Detection restarted to read ' . (strpos($after, 'oxips0') !== false ? 'oxips0 as well' : 'only its own interfaces');
+}
+
+/*
+ * The inspector's depth against Suricata's own (xgs_ips_depth, above): only while the overlay has
+ * Suricata read oxips0 with stream.bypass, for the connections made from now on. The running driver
+ * only - it starts at its own 1 MiB at every boot, until the next save.
+ */
+if ($inspect && $have_if && $ids_ips && $after !== false && strpos($after, 'stream.bypass') !== false) {
+    $depth_oid = str_replace('ips_new', 'ips_depth', $new_oid);
+    $dump = [];
+    exec('/usr/local/bin/suricata --dump-config -c /usr/local/etc/suricata/suricata.yaml 2>/dev/null', $dump);
+    $sdepth = null;
+    foreach ($dump as $line) {
+        if (strpos($line, 'stream.reassembly.depth = ') === 0) {
+            $sdepth = trim(substr($line, strlen('stream.reassembly.depth = ')));
+        }
+    }
+    $raise = xgs_ips_depth(sysctl_get($depth_oid), $sdepth);
+    if ($raise !== null) {
+        if (sysctl_set($depth_oid, $raise)) {
+            $steps[] = 'inspect, then hardware: ' . $depth_oid . ' ' . $raise . ', a quarter over Suricata\'s stream depth (' .
+                $sdepth . '), so Suricata reaches its depth and stops following a connection before it is put in hardware';
+        } else {
+            $ok = false;
+            $steps[] = 'inspect, then hardware: the driver refused ' . $depth_oid . '=' . $raise;
+        }
+    }
+}
+
+/*
+ * The cut on a port in netmap mode (flow.netmap_gate_cut, dp.netmap_gate_cut): an inspected
+ * connection that a port Suricata reads in IPS mode carries is put in hardware after the inspected
+ * part only while Suricata lets the segments its TCP state machine rejects through - the overlay's
+ * stream.drop-invalid: no, "Let rejected TCP segments through". Otherwise its last frames come back
+ * through that Suricata past what it saw, are dropped, and the connection hangs (item 16, measured
+ * 2026-11-12 on the XGS 136); stream.bypass alone saves only the streams whose protocol Suricata
+ * identifies. 0, the drivers' default, keeps such a connection inspected for its whole life. The
+ * running driver only, as the depth above: it starts at 0 at every boot, until the next save.
+ */
+$gate_cut_oid = str_replace('ips_new', 'netmap_gate_cut', $new_oid);
+$pass_invalid = $inspect && $get('inspect_pass_invalid', '0') === '1';
+$gate_cut = ($pass_invalid && $after !== false && strpos($after, 'stream.drop-invalid: no') !== false) ? '1' : '0';
+if (sysctl_get($gate_cut_oid) === null) {
+    if ($pass_invalid) {
+        $steps[] = 'let rejected TCP segments through: this driver has no ' . $gate_cut_oid . ', and puts every inspected connection in hardware after the inspected part, as before';
+    }
+} elseif (sysctl_set($gate_cut_oid, $gate_cut)) {
+    if ($inspect) {
+        $steps[] = $gate_cut === '1'
+            ? 'let rejected TCP segments through on: an inspected connection on a port Suricata reads in IPS mode is put in hardware after the inspected part as well'
+            : 'an inspected connection on a port Suricata reads in IPS mode stays inspected for its whole life (' .
+              ($pass_invalid ? 'the Intrusion Detection\'s configuration does not let rejected TCP segments through' : '"Let rejected TCP segments through" is off') . ')';
+    }
+} else {
+    $ok = false;
+    $steps[] = 'let rejected TCP segments through: the driver refused ' . $gate_cut_oid . '=' . $gate_cut;
 }
 
 /* The coprocessor's counts, to pf and to the interfaces: both drivers read them. */

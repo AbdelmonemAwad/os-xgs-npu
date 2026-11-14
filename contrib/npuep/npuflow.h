@@ -159,6 +159,13 @@ struct npuep_flow_cand {
 	int			 mk_tick;
 	int			 hold_until;
 	int			 hold_wait;
+	/*
+	 * Kept with the host by flow.netmap_gate when it was to be made (npuflow_netmap_gate): the front
+	 * port found in netmap mode, its index plus one and 0 for none, and the VLAN on it, 0 for the
+	 * port itself. The sweep asks again whether they still are, and clears it once they are not.
+	 */
+	uint8_t			 nm_port;
+	uint16_t		 nm_vlan;
 	/* What the sweep found out, for the page; nothing is sent in this slice. */
 	uint8_t			 pf_seen;
 	uint8_t			 pf_settled;

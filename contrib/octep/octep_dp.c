@@ -928,6 +928,14 @@ static void	octep_dp_txq_down(struct octep_softc *sc, struct octep_dp_txq *q);
 static void	octep_ips_if_create(struct octep_softc *sc);
 static void	octep_ips_if_destroy(struct octep_softc *sc);
 static void	octep_ips_mark(struct octep_softc *sc, struct octep_conn *c);
+static int	octep_ips_first(struct octep_softc *sc);
+static void	octep_ips_done_req(struct octep_softc *sc, uint32_t idx);
+struct octep_nm_seen;
+static int	octep_netmap_out(struct octep_softc *sc, const struct octep_conn *c,
+		    struct octep_nm_seen *seen);
+static void	octep_netmap_sweep(struct octep_softc *sc);
+static int	octep_netmap_cut_held(struct octep_softc *sc, const struct octep_conn *c,
+		    struct octep_nm_seen *seen);
 static int	octep_sysctl_dp_vlan_lif_table(SYSCTL_HANDLER_ARGS);
 static void	octep_dp_closing_task(void *, int);
 #define	OCTEP_CLOSING_QLEN	256	/* FINs and RSTs held for pf: octep_dp_closing_hold */
@@ -3612,6 +3620,11 @@ octep_conn_alloc(struct octep_softc *sc, const struct octep_pf_state *st,
 		c->ips = 0;
 		c->ips_req = 0;
 		c->ips_bytes = 0;
+		memset(c->nm_dif, 0, sizeof(c->nm_dif));
+		memset(c->nm_vlan, 0, sizeof(c->nm_vlan));
+		c->nm_hand = 0;
+		c->nm_hold = 0;
+		c->ips_was = 0;
 		c->tuple[0] = tup[0];
 		c->tuple[1] = tup[1];
 		c->nat.snat = st->nat_snat;
@@ -4014,8 +4027,10 @@ octep_flow_cand_put(struct octep_softc *sc, const struct octep_pf_tuple *t, uint
 	 */
 	run = same ? e->run + (e->run != UINT32_MAX) : 1;
 	ask = 0;
-	if (!same)
+	if (!same) {
 		e->due = 0;
+		e->nm_dif = 0;		/* dp.netmap_gate's mark was the place's last tuple's */
+	}
 	need = 1u << (sc->dp_fast_make_log2 < 16 ? sc->dp_fast_make_log2 : 16);
 	if (sc->dp_fast_make != 0 && closing == 0 && run >= need && (run & (run - 1)) == 0 &&
 	    (t->proto == IPPROTO_TCP || t->proto == IPPROTO_UDP) &&
@@ -4845,7 +4860,7 @@ octep_conn_probe(struct octep_softc *sc, struct octep_conn *c)
 	struct octep_pf_tuple held[2];
 	uint8_t seq[OCTEP_TCP_SEQ_LEN];
 	uint32_t state = 0, rev = 0, retrans = 0;
-	int err, rerr, hold = 0;
+	int err, rerr, hold = 0, nmo;
 
 	mtx_assert(&sc->mtx, MA_OWNED);
 	err = octep_rpc_conn_read(sc, c->idx, &state, &rev, &retrans);
@@ -4857,8 +4872,17 @@ octep_conn_probe(struct octep_softc *sc, struct octep_conn *c)
 		sc->dp_probe_valid++;
 		return (0);
 	}
+	/*
+	 * Nor one a port of which is in netmap mode now (dp.netmap_gate, octep_netmap_out): a reader
+	 * that started while it was in hardware would see none of it again. It is taken out below as
+	 * any other given back, counted in dp.netmap_given, and its next frames meet the gate.
+	 */
+	nmo = (err == 0 && state == OCTEP_CONN_RECLAIM_PENDING && rev == c->conn_rev &&
+	    octep_netmap_out(sc, c, NULL));
+	if (nmo)
+		sc->dp_netmap_given++;
 	/* A connection whose live user is no longer listed is not revived: its client has gone. */
-	if (err == 0 && state == OCTEP_CONN_RECLAIM_PENDING && rev == c->conn_rev &&
+	if (err == 0 && state == OCTEP_CONN_RECLAIM_PENDING && rev == c->conn_rev && !nmo &&
 	    sc->dp_revive != 0 && retrans >= OCTEP_CONN_MAX_RETRANS && !c->closing &&
 	    (c->luid == 0 || octep_lu_listed(sc, c->luid)) &&
 	    !c->doomed && c->mf[0].state == OCTEP_MF_PROGRAMMED &&
@@ -5806,6 +5830,7 @@ octep_flow_sweep(struct octep_softc *sc)
 		return;
 
 	octep_flow_held_sweep(sc);
+	octep_netmap_sweep(sc);		/* dp.netmap_gate's give-backs and released cuts */
 
 	/*
 	 * And the second question, asked only when the kernel's policy database has changed since
@@ -6053,6 +6078,300 @@ octep_nhop_bridged(struct octep_softc *sc, int out_dif, const uint8_t *mac, stru
 	return (0);
 }
 
+/*
+ * ONE INSPECTOR PER CONNECTION (dp.netmap_gate, the decision table's first row), as the XGS 136's
+ * flow.netmap_gate. A front port in netmap mode has a reader that every frame the host carries for it
+ * passes through - Suricata in IPS mode, Zenarmor - and that sees nothing the fast path forwards.
+ * Measured on the XGS 136 on 2026-11-12 (item 14), Suricata inline through netmap's emulated adapter
+ * with the automatic maker on: a 10 MB transfer failed three times in three. The connection went to
+ * hardware once pf had it established and Suricata never saw its middle; its FIN, which the fast path
+ * always hands the host, came back through Suricata acknowledging data Suricata had not seen, was
+ * dropped as a stream error (stream.drop-invalid), and the connection hung until it timed out. With
+ * the maker off the same transfer completed. This maker hands a connection to hardware the same way,
+ * once pf has it established; with a netmap reader here that is not measured yet. The vendor's
+ * firmware, as every comparable product, moves an inspected connection to hardware only once its
+ * inspector lets it go. So the automatic maker leaves with the host a new connection that a front
+ * port in netmap mode, or the VLAN on one that its frames carry, lets in or out either way - unless
+ * it is made inspected (octep_ips_wanted, XGS: Settings "Inspect, then hardware"), when the inspector
+ * meets it first through oxips0. A make by hand (dp.accelerate) goes on, and says so.
+ *
+ * The cut after the inspector's depth, on such a port, is dp.netmap_gate_cut's (octep_netmap_cut_held).
+ * Measured on the XGS 136 on 2026-11-12 (item 16), Suricata inline on the port and "Inspect, then
+ * hardware" with a depth: the connection was cut to hardware once the depth was let through, its
+ * closing frames came back through the netmap Suricata, which dropped them as stream errors, and
+ * the transfers ended 680 to 1,120 bytes short and hung - issue 1148's failure again. With a depth
+ * of 0 - inspected for its whole life - the same transfers completed. So 0, the default, refuses
+ * that cut while a port of the connection is in netmap mode, and the connection stays inspected;
+ * 1 cuts as before. XGS: Settings sets 1 only while "Let rejected TCP segments through" is on
+ * (scripts/xgs/apply.php): Suricata's stream.drop-invalid off is what lets those closing frames
+ * through for every stream - stream.bypass alone covers only the protocols it identifies.
+ *
+ * And a connection already in hardware when a reader starts - Suricata started, or restarted by an
+ * IDS apply, under live traffic - is not new: nothing above meets it, and the fast path's give-backs
+ * would have it revived again and again. So the sweep gives back every connection a port of which
+ * is now in netmap mode (octep_netmap_sweep), the attach of a direction to one does the same, and a
+ * revival asks first (octep_conn_probe) - octep_netmap_out is the one test, dp.netmap_given counts
+ * them. Given back, its next frames meet the gate as a new connection's do.
+ *
+ * dp.netmap_gate is 1 by default, which changes what this driver did before: a connection on a
+ * port in netmap mode used to be made all the same. Item 15 measured and recommends it; whether
+ * the default stays 1 is the owner's decision when this is merged.
+ *
+ * In netmap mode is IFCAP_NETMAP among the interface's enabled capabilities: the one test both kinds
+ * of adapter answer while a reader holds the port, read in FreeBSD 15.1's sys/dev/netmap. A native
+ * adapter sets it as its first reader registers (nm_set_native_flags, nm_os_onenter) and clears it
+ * after its last (nm_clear_native_flags, nm_os_onexit); the emulated one, the only one these ports
+ * have, sets it as it takes the input function over for its first reader (nm_os_catch_rx) and clears
+ * it with the function put back after its last. if_bridge and if_lagg ask the same bit. Not the input
+ * function, which octep_ips_wanted compares for oxips0: a native adapter leaves it as it is. Nor the
+ * adapter's NAF_NETMAP_ON, which means following NA(ifp) to an emulated adapter that its last
+ * reader's close frees, with no lock this side can hold against that; the capability is a word of the
+ * ifnet, which lives as long as the port. A VLAN's interface is found by its tag in the net epoch, as
+ * octep_dp_lif_count finds it; a reader of the port itself has its VLANs' frames as well. 1 for the
+ * port, 2 for the VLAN's interface, 0 for neither, and the interface's name in name (IFNAMSIZ) when
+ * given. Takes no lock, as the rest of the maker reads the ports: they go only once the poll and the
+ * runs are drained.
+ */
+static int
+octep_netmap_on(struct octep_softc *sc, int dif, uint16_t vlan, char *name)
+{
+	struct epoch_tracker et;
+	struct ifnet *vifp;
+	if_t ifp;
+	int on = 0;
+
+	if (dif < 0 || dif >= OCTEP_DP_IF_MAX || (ifp = sc->dp_if[dif].ifp) == NULL)
+		return (0);
+	if ((if_getcapenable(ifp) & IFCAP_NETMAP) != 0)
+		on = 1;
+	else if (vlan != 0) {
+		NET_EPOCH_ENTER(et);
+		vifp = VLAN_DEVAT((struct ifnet *)ifp, vlan);
+		if (vifp != NULL && (if_getcapenable((if_t)vifp) & IFCAP_NETMAP) != 0) {
+			on = 2;
+			if (name != NULL)
+				strlcpy(name, if_name((if_t)vifp), IFNAMSIZ);
+		}
+		NET_EPOCH_EXIT(et);
+	}
+	if (on == 1 && name != NULL)
+		strlcpy(name, if_name(ifp), IFNAMSIZ);
+	return (on);
+}
+
+/*
+ * The answers of one pass, so that a sweep over many connections asks each port and VLAN once: up to
+ * OCTEP_NM_SEEN of them, the rest asked each time.
+ */
+#define	OCTEP_NM_SEEN	16
+struct octep_nm_seen {
+	int			 n;
+	int			 dif[OCTEP_NM_SEEN];
+	uint16_t		 vlan[OCTEP_NM_SEEN];
+	uint8_t			 on[OCTEP_NM_SEEN];
+};
+
+static int
+octep_netmap_seen(struct octep_softc *sc, int dif, uint16_t vlan, struct octep_nm_seen *seen)
+{
+	int i, on;
+
+	if (seen == NULL)
+		return (octep_netmap_on(sc, dif, vlan, NULL));
+	for (i = 0; i < seen->n; i++)
+		if (seen->dif[i] == dif && seen->vlan[i] == vlan)
+			return (seen->on[i]);
+	on = octep_netmap_on(sc, dif, vlan, NULL);
+	if (seen->n < OCTEP_NM_SEEN) {
+		seen->dif[seen->n] = dif;
+		seen->vlan[seen->n] = vlan;
+		seen->on[seen->n] = (uint8_t)on;
+		seen->n++;
+	}
+	return (on);
+}
+
+/*
+ * A port a direction of connection c enters or leaves by, with the VLAN its frames carry there, kept
+ * in c (nm_dif, nm_vlan) unless it is there already. Under sc->mtx.
+ */
+static void
+octep_conn_nm_add(struct octep_conn *c, int dif, uint16_t vlan)
+{
+	int k;
+
+	if (dif < 0 || dif >= OCTEP_DP_IF_MAX)
+		return;
+	for (k = 0; k < 4; k++) {
+		if (c->nm_dif[k] == (uint8_t)(dif + 1) && c->nm_vlan[k] == vlan)
+			return;
+		if (c->nm_dif[k] == 0) {
+			c->nm_dif[k] = (uint8_t)(dif + 1);
+			c->nm_vlan[k] = vlan;
+			return;
+		}
+	}
+}
+
+/* Whether a port connection c enters or leaves by, or the VLAN on it, is in netmap mode now. */
+static int
+octep_conn_netmap(struct octep_softc *sc, const struct octep_conn *c, struct octep_nm_seen *seen)
+{
+	int k;
+
+	for (k = 0; k < 4; k++)
+		if (c->nm_dif[k] != 0 &&
+		    octep_netmap_seen(sc, c->nm_dif[k] - 1, c->nm_vlan[k], seen) != 0)
+			return (1);
+	return (0);
+}
+
+/*
+ * Whether the cut of inspected connection c after the inspector's depth is refused now: the gate is
+ * on, dp.netmap_gate_cut is 0, and a port of it is in netmap mode (see octep_netmap_gate). Under
+ * sc->mtx.
+ */
+static int
+octep_netmap_cut_held(struct octep_softc *sc, const struct octep_conn *c, struct octep_nm_seen *seen)
+{
+
+	return (sc->dp_netmap_gate != 0 && sc->dp_netmap_gate_cut == 0 &&
+	    octep_conn_netmap(sc, c, seen));
+}
+
+/*
+ * Whether connection c, in hardware, is to be given back to the host for a reader in netmap mode
+ * (see octep_netmap_gate): the gate is on, it is not inspected, it was not made by hand past the
+ * gate's warning, it is not one dp.netmap_gate_cut 1 let be cut after its inspection, and a port of
+ * it is in netmap mode. Under sc->mtx.
+ */
+static int
+octep_netmap_out(struct octep_softc *sc, const struct octep_conn *c, struct octep_nm_seen *seen)
+{
+
+	return (sc->dp_netmap_gate != 0 && !c->ips && !c->nm_hand &&
+	    !(c->ips_was && sc->dp_netmap_gate_cut != 0) && octep_conn_netmap(sc, c, seen));
+}
+
+/*
+ * The sweep's half of dp.netmap_gate, once a poll (octep_flow_sweep): every connection
+ * octep_netmap_out says is to go is taken out, its microflows switched off and the connection
+ * reclaimed, and counted (dp.netmap_given); its next frames reach the host, and the gate meets
+ * them as a new connection's. And a connection whose cut dp.netmap_gate_cut refused has it asked
+ * for again once the reason has gone - its port out of netmap mode, the gate or the cut knob
+ * changed. Nothing locked on entry; each connection under sc->mtx in turn.
+ */
+static void
+octep_netmap_sweep(struct octep_softc *sc)
+{
+	struct octep_nm_seen seen;
+	struct octep_conn *c;
+	int i, k, release, given;
+
+	seen.n = 0;
+	for (k = (int)sc->dp_conn_nlive - 1; k >= 0; k--) {
+		release = given = 0;
+		mtx_lock(&sc->mtx);
+		if ((uint32_t)k >= sc->dp_conn_nlive) {
+			mtx_unlock(&sc->mtx);
+			continue;
+		}
+		i = (int)sc->dp_conn_live[k];
+		c = &sc->dp_conn[i];
+		if (!c->used || c->doomed) {
+			mtx_unlock(&sc->mtx);
+			continue;
+		}
+		if (c->nm_hold) {
+			if (!c->ips || !octep_netmap_cut_held(sc, c, &seen)) {
+				c->nm_hold = 0;
+				release = c->ips;
+			}
+		} else if (octep_netmap_out(sc, c, &seen)) {
+			if (octep_conn_takeout(sc, c, 1) == ETIMEDOUT) {
+				mtx_unlock(&sc->mtx);
+				octep_dp_handback_run(sc);
+				return;		/* marked doomed: the audit finishes it */
+			}
+			sc->dp_netmap_given++;
+			given = 1;
+		}
+		mtx_unlock(&sc->mtx);
+		if (release)
+			octep_ips_done_req(sc, (uint32_t)i);
+		if (given)
+			octep_dp_handback_run(sc);
+	}
+}
+
+/*
+ * dp.netmap_gate's answer for a new connection about to be made: n front ports (dp_if indices, -1
+ * passed over), each with the VLAN its frames carry there, and whether it is a plain one, which is
+ * made inspected while new ones are (octep_ips_first, asked under the lock octep_rpc_flow_create asks
+ * it under). 0 to go on. EACCES for the automatic maker when it is to stay with the host: its two
+ * tuples' candidates are marked with the port and VLAN found in netmap mode - nm_dif, the port's
+ * dp_if index plus one, and nm_vlan, 0 for the port itself - under each slot's word as every writer
+ * writes them, so that the drain does not ask again while they stay so (another tuple taking the place
+ * clears the mark, octep_flow_cand_put), and it is counted - here, once. A make by hand goes on, with
+ * a line saying what the gate would have done, and *hand 1 - the connection keeps nm_hand, so the
+ * sweep leaves it be (octep_netmap_out). Called with nothing locked.
+ */
+static int
+octep_netmap_gate(struct octep_softc *sc, const struct octep_pf_tuple tup[2], const int *dif,
+    const uint16_t *vlan, int n, int plain, int automatic, struct sbuf *sb, int *hand)
+{
+	struct octep_flow_cand_slot *cs;
+	struct octep_flow_cand *e;
+	char name[IFNAMSIZ];
+	int d, got, i, inspected, k, on = 0, w;
+
+	*hand = 0;
+	if (sc->dp_netmap_gate == 0)
+		return (0);
+	for (k = 0; k < n; k++)
+		if ((on = octep_netmap_on(sc, dif[k], vlan[k], name)) != 0)
+			break;
+	if (k == n)
+		return (0);
+	if (plain) {
+		mtx_lock(&sc->mtx);
+		inspected = octep_ips_first(sc);
+		mtx_unlock(&sc->mtx);
+		if (inspected)
+			return (0);
+	}
+	if (!automatic) {
+		sbuf_printf(sb, "warning: %s is in netmap mode, and its reader - Suricata in IPS mode, "
+		    "Zenarmor - sees none of this connection once it is in hardware; made because it was "
+		    "asked for by hand (dp.netmap_gate keeps such a connection with the host)\n", name);
+		*hand = 1;
+		return (0);
+	}
+	for (d = 0; d < 2; d++) {
+		cs = &sc->dp_cand[octep_flow_cand_slot(&tup[d])];
+		for (got = 0, i = 0; i < OCTEP_CAND_TRIES && !got; i++) {
+			got = octep_flow_cand_word_try(cs);
+			if (!got)
+				cpu_spinwait();
+		}
+		if (!got)
+			continue;
+		for (w = 0; w < OCTEP_FLOW_CAND_WAYS; w++) {
+			e = &cs->way[w];
+			if (e->stamp != 0 && octep_tuple_same(&e->tuple, &tup[d])) {
+				e->nm_dif = (uint8_t)(dif[k] + 1);
+				e->nm_vlan = on == 2 ? vlan[k] : 0;
+				break;
+			}
+		}
+		octep_flow_cand_word_drop(cs);
+	}
+	sc->dp_netmap_refused++;
+	sbuf_printf(sb, "not accelerated: %s is in netmap mode, and its reader sees a connection only "
+	    "while the host carries it - dp.netmap_gate keeps it with the host\n", name);
+	return (EACCES);
+}
+
 static int
 octep_dp_flow_make(struct octep_softc *sc, const struct octep_pf_tuple *tin, uint32_t slot,
     uint32_t rev, int in_dif, uint16_t tag, uint16_t fsa, uint16_t fsa_rev, const uint8_t *mac,
@@ -6069,8 +6388,8 @@ octep_dp_flow_make(struct octep_softc *sc, const struct octep_pf_tuple *tin, uin
 	uint8_t rclosing, tcpblk[OCTEP_CONN_TCP_LEN];
 	int err, d, fd, rd, rin_dif, oin_dif, have_rev, attach, hint, marked;
 	int ipsec, ipsec_half, dec, tunmiss, kept, perr, tcp_on, tcp_able, tos_marked;
-	int bridged, fb;
-	uint16_t dscp[2], rvlan = 0;
+	int bridged, fb, nmd[4], nmh = 0, nmk;
+	uint16_t dscp[2], rvlan = 0, nmv[4];
 	uint8_t rmac[12];
 
 	if (!octep_pf_present()) {
@@ -6621,6 +6940,26 @@ octep_dp_flow_make(struct octep_softc *sc, const struct octep_pf_tuple *tin, uin
 		return (EAGAIN);
 	}
 
+	/*
+	 * dp.netmap_gate (octep_netmap_gate), for a new connection: each direction's way in and its way
+	 * out, with the VLAN its frames carry there - the other direction's once it has been punted.
+	 * Kept with the connection (nm_dif, octep_conn_nm_add), an attached direction's as well, for
+	 * the sweep and the revival to ask again (octep_netmap_out).
+	 */
+	nmd[0] = in_dif;
+	nmv[0] = vlan;
+	nmd[1] = nh[d].ifname_unit;
+	nmv[1] = nh[d].vlan;
+	nmd[2] = have_rev ? rin_dif : -1;
+	nmv[2] = have_rev ? rvlan : 0;
+	nmd[3] = have_rev ? nh[rd].ifname_unit : -1;
+	nmv[3] = have_rev ? nh[rd].vlan : 0;
+	if (!attach) {
+		err = octep_netmap_gate(sc, tup, nmd, nmv, 4, ipsec == 0, stop != NULL, sb, &nmh);
+		if (err != 0)
+			return (err);
+	}
+
 	mtx_lock(&sc->mtx);
 	if (attach) {
 		/*
@@ -6679,6 +7018,36 @@ octep_dp_flow_make(struct octep_softc *sc, const struct octep_pf_tuple *tin, uin
 				sbuf_cat(sb, "the fast path had given this connection back; it has "
 				    "been reclaimed, and a later frame makes it again\n");
 				return (EAGAIN);
+			}
+		}
+		/*
+		 * dp.netmap_gate for a connection that exists (octep_netmap_out): this direction's
+		 * ports joined to the rest, and all of them asked about. One made before a reader
+		 * started on a port of it is given back to the host here, rather than given more of
+		 * the fast path; its next frames meet the gate as a new connection's. By hand it is
+		 * attached all the same, with the gate's warning, and the sweep leaves it be.
+		 */
+		for (nmk = 0; nmk < 2; nmk++)
+			octep_conn_nm_add(c, nmd[nmk], nmv[nmk]);
+		if (octep_netmap_out(sc, c, NULL)) {
+			if (stop == NULL) {
+				c->nm_hand = 1;
+				sbuf_cat(sb, "warning: a port of this connection is in netmap mode, and its "
+				    "reader sees none of it once it is in hardware; attached because it was "
+				    "asked for by hand (dp.netmap_gate gives such a connection back)\n");
+			} else {
+				idx = c->idx;
+				err = octep_conn_takeout(sc, c, 1);
+				if (err == 0)
+					sc->dp_netmap_given++;
+				mtx_unlock(&sc->mtx);
+				octep_dp_handback_run(sc);
+				if (err == ETIMEDOUT)
+					*stop = 1;
+				sbuf_printf(sb, "connection %u %s: a port of it is in netmap mode - "
+				    "dp.netmap_gate gives it back to the host\n", idx, err == ETIMEDOUT ?
+				    "could not be taken out, the far side is not answering" : "taken out");
+				return (err == ETIMEDOUT ? err : EACCES);
 			}
 		}
 		if (ipsec > 0) {
@@ -6826,6 +7195,10 @@ octep_dp_flow_make(struct octep_softc *sc, const struct octep_pf_tuple *tin, uin
 			c->mf[rd].in_dif = rin_dif;
 			c->mf[rd].in_tag = rtag;
 		}
+		/* what dp.netmap_gate asked about, for the sweep and the revival (octep_netmap_out) */
+		for (nmk = 0; nmk < 4; nmk++)
+			octep_conn_nm_add(c, nmd[nmk], nmv[nmk]);
+		c->nm_hand = (uint8_t)nmh;
 		c->mf[OCTEP_CONN_DIR_ORIGINAL].dscp = dscp[OCTEP_CONN_DIR_ORIGINAL];
 		c->mf[OCTEP_CONN_DIR_REPLY].dscp = dscp[OCTEP_CONN_DIR_REPLY];
 		c->bridged = (uint8_t)bridged;
@@ -7085,8 +7458,8 @@ octep_dp_flow_drain(struct octep_softc *sc, int kicked)
 	struct sbuf *sb;
 	uint32_t slot, rev, stamp;
 	uint16_t tag, sa, sa_rev;
-	uint8_t closing, asked, mac[12];
-	uint16_t vlan;
+	uint8_t closing, asked, mac[12], nm_dif;
+	uint16_t vlan, nm_vlan;
 	uint64_t cmds;
 	uint32_t hb;
 	u_int left;
@@ -7125,6 +7498,8 @@ octep_dp_flow_drain(struct octep_softc *sc, int kicked)
 		memcpy(mac, e->mac, sizeof(mac));
 		vlan = e->vlan;
 		asked = e->due;
+		nm_dif = e->nm_dif;
+		nm_vlan = e->nm_vlan;
 		if (!kicked) {
 			e->seen = stamp;
 			e->closing = 0;
@@ -7307,6 +7682,28 @@ octep_dp_flow_drain(struct octep_softc *sc, int kicked)
 				continue;
 		} else
 			mtx_unlock(&sc->mtx);
+
+		/*
+		 * A connection dp.netmap_gate keeps with the host (octep_netmap_gate) costs nothing here
+		 * either, while the port or VLAN it was kept for stays in netmap mode: not a make, not a
+		 * count, not one of this poll's attempts. The first of its frames read after that ends -
+		 * its reader stopped, or the gate set to 0 - finds it a candidate like any other. Only
+		 * where the table held no connection for the tuple: a direction of one is attached as
+		 * before.
+		 */
+		if (nm_dif != 0 && c == NULL) {
+			if (sc->dp_netmap_gate != 0 &&
+			    octep_netmap_on(sc, nm_dif - 1, nm_vlan, NULL) != 0) {
+				if (newmake)
+					octep_cand_hold(sc, hb);
+				continue;
+			}
+			if (octep_flow_cand_word_try(cs)) {
+				if (octep_tuple_same(&e->tuple, &t))
+					e->nm_dif = 0;
+				octep_flow_cand_word_drop(cs);
+			}
+		}
 
 		/*
 		 * A connection being left with the host after a give-back costs nothing here: not
@@ -7634,13 +8031,18 @@ octep_sysctl_dp_cand_table(SYSCTL_HANDLER_ARGS)
 			if (way[w].stamp == 0)
 				continue;
 			sbuf_printf(sb, "%2d.%d  proto %u  0x%08x:%u -> 0x%08x:%u  %ju ms ago  %s  "
-			    "run %u%s%s  microflow %u rev %u\n", s, w, way[w].tuple.proto,
+			    "run %u%s%s  microflow %u rev %u", s, w, way[w].tuple.proto,
 			    way[w].tuple.sip, ntohs(way[w].tuple.sport),
 			    way[w].tuple.dip, ntohs(way[w].tuple.dport),
 			    (uintmax_t)((u_int)now - (u_int)way[w].when) * 1000 / (u_int)hz,
 			    way[w].stamp == way[w].seen ? "read  " : "unread",
 			    way[w].run, way[w].due ? "  asked" : "",
 			    way[w].closing ? "  closing" : "", way[w].slot, way[w].rev);
+			/* kept with the host by dp.netmap_gate: the port, by its dp_if index, and VLAN */
+			if (way[w].nm_dif != 0)
+				sbuf_printf(sb, "  netmap_gate: port %d vlan %u", way[w].nm_dif - 1,
+				    way[w].nm_vlan);
+			sbuf_cat(sb, "\n");
 		}
 	}
 	error = sbuf_finish(sb);
@@ -9147,6 +9549,44 @@ octep_dp_add_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
 	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "flow_released",
 	    CTLFLAG_RD, &sc->dp_flow_released, 0,
 	    "connections handed back to the host one at a time, from the Flows page");
+	/*
+	 * 1 changes what this driver did before; item 15 recommends it, and whether the default stays
+	 * 1 is the owner's decision when this is merged (octep_netmap_gate).
+	 */
+	sc->dp_netmap_gate = 1;
+	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "netmap_gate",
+	    CTLFLAG_RW, &sc->dp_netmap_gate, 0,
+	    "1 (the default): a connection is not made in hardware automatically while a front port "
+	    "either direction enters or leaves by - or the VLAN on it that its frames carry - is in "
+	    "netmap mode: a reader such as Suricata in IPS mode or Zenarmor holds it, and would miss "
+	    "the connection's middle and drop its end (measured on the XGS 136, 2026-11-12). Unless "
+	    "it is made inspected (dp.ips_new; its cut is netmap_gate_cut's); it is made once the port "
+	    "leaves netmap mode. One in hardware already when the port enters netmap mode is given "
+	    "back (netmap_given). By hand (accelerate) it is made all the same, with a warning. 0: "
+	    "made as before");
+	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "netmap_refused",
+	    CTLFLAG_RD, &sc->dp_netmap_refused, 0,
+	    "connections netmap_gate kept with the host - each once, when it was to be made, and not "
+	    "again while the port or VLAN it was kept for stays in netmap mode");
+	/* 0 by default: scripts/xgs/apply.php sets 1 with "Let rejected TCP segments through" */
+	sc->dp_netmap_gate_cut = 0;
+	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "netmap_gate_cut",
+	    CTLFLAG_RW, &sc->dp_netmap_gate_cut, 0,
+	    "with netmap_gate on, for a connection made inspected (ips_new) that a port in netmap mode "
+	    "carries: 0 (the default) refuses its cut to hardware after ips_depth, so it stays "
+	    "inspected for its whole life - cut, its closing frames came back through the netmap "
+	    "reader, which dropped them (measured on the XGS 136, 2026-11-12); 1 cuts it as before, "
+	    "safe once Suricata's stream.drop-invalid is off. XGS: Settings sets 1 while \"Let "
+	    "rejected TCP segments through\" is on");
+	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "netmap_cut_refused",
+	    CTLFLAG_RD, &sc->dp_netmap_cut_refused, 0,
+	    "inspected connections whose cut netmap_gate_cut 0 refused - each once; the sweep asks "
+	    "for the cut again once the port leaves netmap mode");
+	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "netmap_given",
+	    CTLFLAG_RD, &sc->dp_netmap_given, 0,
+	    "connections in hardware netmap_gate gave back to the host because a port of theirs went "
+	    "into netmap mode after they were made: by the sweep, at an attach, or instead of a "
+	    "revival");
 	SYSCTL_ADD_PROC(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "flow_table",
 	    CTLTYPE_STRING | CTLFLAG_RD | CTLFLAG_MPSAFE, sc, 0,
 	    octep_sysctl_dp_flow_table, "A",
@@ -10101,7 +10541,8 @@ octep_ips_done_req(struct octep_softc *sc, uint32_t idx)
 	if (sc->dp_conn == NULL || idx < 2 || idx >= sc->dp_conn_cap)
 		return;
 	c = &sc->dp_conn[idx];
-	if (!c->ips || !atomic_cmpset_32(&c->ips_req, 0, 1))
+	/* nm_hold: the cut dp.netmap_gate_cut refused, asked again by the sweep, not by each frame */
+	if (!c->ips || c->nm_hold || !atomic_cmpset_32(&c->ips_req, 0, 1))
 		return;
 	mtx_lock(&sc->dp_ips_tab_mtx);
 	if (sc->dp_ips_npend < OCTEP_IPS_PEND) {
@@ -10172,21 +10613,37 @@ octep_ips_input(if_t ifp, struct mbuf *m)
 }
 
 /*
- * Whether a connection about to be made should be made inspected: new connections are to be
- * (dp.ips_new), something reads oxips0, the connection is not a tunnel's and its microflows ask the
- * verdict at all, and - for one revived after a give-back - it has not been let through to the depth
- * already. octep_rpc_flow_create asks, with sc->mtx held.
+ * Whether new plain connections are made inspected now: they are to be (dp.ips_new), something reads
+ * oxips0, and their microflows ask the verdict at all. octep_ips_wanted's test without the
+ * connection's own part, which a plain one fresh from octep_conn_alloc - nothing let through yet -
+ * always passes; dp.netmap_gate asks it of a connection about to be made (octep_netmap_gate). With
+ * sc->mtx held, as octep_ips_wanted.
  */
-int
-octep_ips_wanted(struct octep_softc *sc, const struct octep_conn *c)
+static int
+octep_ips_first(struct octep_softc *sc)
 {
 	if_t ifp = sc->dp_ips_ifp;
 
 	return (sc->dp_ips_new != 0 && sc->dp_ips_on && ifp != NULL &&
 	    (if_getdrvflags(ifp) & IFF_DRV_RUNNING) != 0 &&
-	    if_getinputfn(ifp) != octep_ips_input && !c->ipsec &&
-	    sc->dp_mflow_action == OCTEP_MFLOW_ACTION_IPS &&
-	    (sc->dp_ips_depth == 0 || c->ips_bytes < sc->dp_ips_depth));
+	    if_getinputfn(ifp) != octep_ips_input &&
+	    sc->dp_mflow_action == OCTEP_MFLOW_ACTION_IPS);
+}
+
+/*
+ * Whether a connection about to be made should be made inspected: new connections are
+ * (octep_ips_first), the connection is not a tunnel's, and - for one revived after a give-back - it
+ * has not been let through to the depth already, or it has and its cut is refused while a port of it
+ * is in netmap mode (dp.netmap_gate_cut 0, octep_netmap_cut_held). octep_rpc_flow_create asks, with
+ * sc->mtx held.
+ */
+int
+octep_ips_wanted(struct octep_softc *sc, const struct octep_conn *c)
+{
+
+	return (octep_ips_first(sc) && !c->ipsec &&
+	    (sc->dp_ips_depth == 0 || c->ips_bytes < sc->dp_ips_depth ||
+	    (c->ips && octep_netmap_cut_held(sc, c, NULL))));
 }
 
 /* After a connection is made: inspected, if that is the verdict it was made with. */
@@ -10207,6 +10664,10 @@ octep_ips_mark(struct octep_softc *sc, struct octep_conn *c)
  * The requests, carried out: each connection still inspected, not dropped since, and either let
  * through to the depth or with nothing reading oxips0 any more, is set to forward. A connection whose
  * slot was reused since the request is new and has let nothing through yet, so it is left alone.
+ * Not one a port of which is in netmap mode while dp.netmap_gate_cut is 0 (octep_netmap_cut_held,
+ * octep_netmap_gate says why): it stays inspected, marked nm_hold so that its frames stop asking,
+ * and counted once in dp.netmap_cut_refused; the sweep asks for the cut again once the reason has
+ * gone (octep_netmap_sweep).
  */
 static void
 octep_ips_done_task(void *arg, int pending)
@@ -10236,8 +10697,16 @@ octep_ips_done_task(void *arg, int pending)
 			c->ips_req = 0;
 			continue;
 		}
+		if (octep_netmap_cut_held(sc, c, NULL)) {
+			if (!c->nm_hold)
+				sc->dp_netmap_cut_refused++;
+			c->nm_hold = 1;
+			c->ips_req = 0;
+			continue;
+		}
 		if (octep_rpc_conn_verdict(sc, c, OCTEP_CONN_VERDICT_CUT_THRU) == 0) {
 			c->ips = 0;
+			c->ips_was = 1;
 			sc->dp_ips_cut++;
 		}
 		c->ips_req = 0;

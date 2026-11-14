@@ -1804,6 +1804,8 @@ struct octep_flow_cand {
 	uint8_t			 due;
 	uint32_t		 run;
 	int			 when;		/* ticks at the last write: the oldest makes room */
+	uint8_t			 nm_dif;	/* kept by dp.netmap_gate: the port's dp_if + 1, 0 none */
+	uint16_t		 nm_vlan;	/* and its VLAN, 0 the port itself: octep_netmap_gate */
 };
 
 /*
@@ -2069,6 +2071,19 @@ struct octep_conn {
 	uint8_t			 ips;
 	uint32_t		 ips_req;
 	uint64_t		 ips_bytes;
+	/*
+	 * dp.netmap_gate's record of it (octep_netmap_out). nm_dif and nm_vlan: the front ports its
+	 * directions enter and leave by, each its dp_if index plus one (0 an empty place) with the VLAN
+	 * its frames carry there, gathered as each direction is made. nm_hand: made by hand while one of
+	 * them was in netmap mode, which the gate lets be. nm_hold: its cut after the inspector's depth
+	 * refused by dp.netmap_gate_cut 0, so it stays inspected, and no frame asks for the cut again
+	 * until the sweep finds the reason gone. ips_was: set to forward after it was inspected.
+	 */
+	uint8_t			 nm_dif[4];
+	uint16_t		 nm_vlan[4];
+	uint8_t			 nm_hand;
+	uint8_t			 nm_hold;
+	uint8_t			 ips_was;
 	/* Its live user (dp.live_users), 0 for none: made with it, and revived with it while it lasts. */
 	uint16_t		 luid;
 	uint8_t			 lu_side;	/* 0 the client opened it, 1 it was opened to the client */
@@ -3809,6 +3824,11 @@ struct octep_softc {
 	uint64_t		 dp_flow_v6_refused;	/* IPv6 not made: translated, or a policy covers it */
 	uint64_t		 dp_flow_excluded;	/* times not made or taken out: the owner keeps it */
 	uint64_t		 dp_flow_released;	/* connections handed back from the Flows page */
+	uint32_t		 dp_netmap_gate;	/* 1: none made automatically through netmap mode */
+	uint64_t		 dp_netmap_refused;	/* connections it kept with the host, each once */
+	uint32_t		 dp_netmap_gate_cut;	/* 1: an inspected one is cut there all the same */
+	uint64_t		 dp_netmap_cut_refused;	/* inspect cuts it refused, each connection once */
+	uint64_t		 dp_netmap_given;	/* connections in hardware it gave back to the host */
 	struct octep_flow_held	 dp_held[OCTEP_FLOW_HELD_MAX];	/* under mtx */
 	uint32_t		 dp_held_next;
 	struct octep_flow_excl	 dp_excl[OCTEP_FLOW_EXCL_MAX];	/* under mtx */

@@ -155,6 +155,19 @@ struct npuflow_conn {
 	uint32_t	ips_req;
 	uint64_t	ips_bytes;
 	/*
+	 * flow.netmap_gate's record of it (npuflow_netmap_out). nm_port and nm_vlan: the front ports
+	 * its directions enter and leave by, each plus one (0 an empty place) with the VLAN its frames
+	 * carry there, as it was made. nm_hand: made by hand while one of them was in netmap mode, which
+	 * the gate lets be. nm_hold: its cut after the inspector's depth refused by
+	 * flow.netmap_gate_cut 0, so it stays inspected, and no frame asks for the cut again until the
+	 * sweep finds the reason gone. ips_was: set to forward after it was inspected.
+	 */
+	uint8_t		nm_port[4];
+	uint16_t	nm_vlan[4];
+	uint8_t		nm_hand;
+	uint8_t		nm_hold;
+	uint8_t		ips_was;
+	/*
 	 * Its TCP window as FLOW_CREATE_FP carries it (issue #679), the OCTEON TX driver's tcp_on and
 	 * tcp (octep.h): filled from pf's live numbers when it was made, then the fast path checks the
 	 * window and a take-back gives pf the fast path's numbers back. tcp_on 0 sends zeros, the
@@ -417,6 +430,20 @@ struct npuflow_softc {
 	uint32_t		 ips_pend[NPUFLOW_IPS_PEND];
 	uint32_t		 ips_npend;
 	struct task		 ips_task;
+	/*
+	 * One inspector per connection (flow.netmap_gate, npuflow_netmap_on): 1 leaves with the host a
+	 * connection a front port or VLAN in netmap mode carries, and netmap_refused counts them, each
+	 * once.
+	 */
+	int			 netmap_gate;
+	uint64_t		 netmap_refused;
+	/*
+	 * flow.netmap_gate_cut, 1 to cut an inspected connection there all the same; the cuts it
+	 * refused, each connection once; and the connections in hardware the gate gave back.
+	 */
+	int			 netmap_gate_cut;
+	uint64_t		 netmap_cut_refused;
+	uint64_t		 netmap_given;
 	/* FINs and RSTs held for pf to judge with the fast path's numbers (npuflow_closing_hold) */
 	struct task		 closing_task;
 	struct mbufq		 closing_q;
@@ -453,6 +480,12 @@ static void	npuflow_takeout_how(struct npuflow_softc *, int, int);
 static int	npuflow_sysctl_auto(SYSCTL_HANDLER_ARGS);
 static int	npuflow_sysctl_ipsec_flows(SYSCTL_HANDLER_ARGS);
 static int	npuflow_make(struct npuflow_softc *, uint32_t, int, struct sbuf *);
+struct npuflow_nm_seen;
+static int	npuflow_netmap_cut_held(const struct npuflow_softc *, const struct npuflow_conn *,
+		    struct npuflow_nm_seen *);
+static int	npuflow_netmap_out(const struct npuflow_softc *, const struct npuflow_conn *,
+		    struct npuflow_nm_seen *);
+static void	npuflow_netmap_sweep(struct npuflow_softc *);
 static void	npuflow_takeout(struct npuflow_softc *, int);
 static int	npuflow_takeout_all(struct npuflow_softc *);
 static int	npuflow_kept(struct npuflow_softc *, const struct npuep_pf_tuple *, int);
@@ -863,6 +896,7 @@ npuflow_sweep(void *arg, int pending __unused)
 	npuflow_vlan_lifs(sc);
 	npuflow_held_sweep(sc);
 	npuflow_keepalive(sc);
+	npuflow_netmap_sweep(sc);	/* flow.netmap_gate's give-backs and released cuts */
 	npuflow_policy_sweep(sc);
 	npuflow_ipsec_account(sc);
 	if (sc->autom) {
@@ -1376,6 +1410,11 @@ npuflow_conn_alloc(struct npuflow_softc *sc, const struct npuep_pf_tuple tup[2],
 	c->ips = 0;
 	c->ips_req = 0;
 	c->ips_bytes = 0;
+	memset(c->nm_port, 0, sizeof(c->nm_port));
+	memset(c->nm_vlan, 0, sizeof(c->nm_vlan));
+	c->nm_hand = 0;
+	c->nm_hold = 0;
+	c->ips_was = 0;
 	npuflow_conn_link(sc, i);
 	c->live_pos = sc->conn_nlive;
 	sc->conn_live[sc->conn_nlive++] = i;
@@ -1701,18 +1740,34 @@ npuflow_conn_verdict(uint32_t ci, uint32_t conn_rev, uint32_t verdict, int *rc)
 }
 
 /*
+ * Whether new plain connections are made inspected now (discovery 4): they are to be (flow.ips_new),
+ * something reads oxips0 (npuips.c), and their microflows ask the verdict at all (flow.mflow_action
+ * 2). npuflow_ips_verdict's test without the connection's own part, which one fresh from
+ * npuflow_conn_alloc - not dropped, nothing let through yet - always passes. Takes no lock: the two
+ * knobs are a word each, and npuips_listening reads oxips0's own.
+ */
+static int
+npuflow_ips_first(const struct npuflow_softc *sc)
+{
+
+	return (sc->ips_new != 0 && npuflow_action(sc) == NPURPC_MFLOW_ACTION_IPS &&
+	    npuips_listening());
+}
+
+/*
  * Whether a plain connection about to be made, or revived, should be inspected (discovery 4): new
- * connections are to be (flow.ips_new), something reads oxips0 (npuips.c), its microflows ask the
- * verdict at all (flow.mflow_action 2), it is not dropped, and the inspector has not let it through
- * to the depth already. Returns the verdict to make it with. Under FLOW_LOCK.
+ * connections are (npuflow_ips_first), it is not dropped, and the inspector has not let it through
+ * to the depth already - or it has, and its cut is refused while a port of it is in netmap mode
+ * (flow.netmap_gate_cut 0, npuflow_netmap_cut_held). Returns the verdict to make it with. Under
+ * FLOW_LOCK.
  */
 static uint32_t
 npuflow_ips_verdict(const struct npuflow_softc *sc, const struct npuflow_conn *c)
 {
 
-	return (sc->ips_new != 0 && npuflow_action(sc) == NPURPC_MFLOW_ACTION_IPS &&
-	    npuips_listening() && !c->dropped &&
-	    (sc->ips_depth == 0 || c->ips_bytes < sc->ips_depth) ?
+	return (npuflow_ips_first(sc) && !c->dropped &&
+	    (sc->ips_depth == 0 || c->ips_bytes < sc->ips_depth ||
+	    (c->ips && npuflow_netmap_cut_held(sc, c, NULL))) ?
 	    NPURPC_CONN_VERDICT_SEND_TO_IPS : NPURPC_CONN_VERDICT_CUT_THRU);
 }
 
@@ -1725,8 +1780,12 @@ npuflow_ips_mark(struct npuflow_softc *sc, struct npuflow_conn *c, uint32_t verd
 		if (!c->ips)
 			sc->ips_made++;
 		c->ips = 1;
-	} else
+	} else {
+		if (c->ips)
+			c->ips_was = 1;
 		c->ips = 0;
+		c->nm_hold = 0;
+	}
 	c->ips_req = 0;
 }
 
@@ -1744,7 +1803,8 @@ npuflow_ips_done_req(struct npuflow_softc *sc, uint32_t ci)
 	if (sc->conn == NULL || ci < 2 || ci >= sc->conn_cap)
 		return;
 	c = &sc->conn[ci];
-	if (!c->ips || !atomic_cmpset_32(&c->ips_req, 0, 1))
+	/* nm_hold: the cut flow.netmap_gate_cut refused, asked again by the sweep, not by each frame */
+	if (!c->ips || c->nm_hold || !atomic_cmpset_32(&c->ips_req, 0, 1))
 		return;
 	mtx_lock(&sc->ips_mtx);
 	if (sc->ips_npend < NPUFLOW_IPS_PEND) {
@@ -1798,7 +1858,10 @@ npuflow_ips_unwatched(uint32_t ci)
  * The requests, carried out: each connection still inspected, not dropped since, and either let
  * through to the depth or with nothing reading oxips0 any more, is set to forward. One whose slot
  * was reused since is new and has let nothing through yet, so the revision check leaves it alone.
- * On the flow's taskqueue, under sc->sx as every request that waits.
+ * Not one a port of which is in netmap mode while flow.netmap_gate_cut is 0 (npuflow_netmap_cut_held,
+ * npuflow_netmap_on says why): it stays inspected, marked nm_hold so that its frames stop asking,
+ * and counted once in flow.netmap_cut_refused; the sweep asks for the cut again once the reason has
+ * gone (npuflow_netmap_sweep). On the flow's taskqueue, under sc->sx as every request that waits.
  */
 static void
 npuflow_ips_task(void *arg, int pending)
@@ -1822,6 +1885,12 @@ npuflow_ips_task(void *arg, int pending)
 		c = &sc->conn[idx[i]];
 		go = c->used && !c->making && !c->dropped && c->ips &&
 		    !(listening && sc->ips_depth != 0 && c->ips_bytes < sc->ips_depth);
+		if (go && npuflow_netmap_cut_held(sc, c, NULL)) {
+			if (!c->nm_hold)
+				sc->netmap_cut_refused++;
+			c->nm_hold = 1;
+			go = 0;
+		}
 		rev = c->conn_rev;
 		if (!go)
 			c->ips_req = 0;
@@ -1832,6 +1901,7 @@ npuflow_ips_task(void *arg, int pending)
 		FLOW_LOCK(sc);
 		if (err == 0 && c->used && c->conn_rev == rev) {
 			c->ips = 0;
+			c->ips_was = 1;
 			sc->ips_cut++;
 		}
 		c->ips_req = 0;
@@ -1876,6 +1946,240 @@ npuflow_conn_read(uint32_t ci, uint32_t conn_rev, uint32_t *state)
 }
 
 /*
+ * ONE INSPECTOR PER CONNECTION (flow.netmap_gate, the decision table's first row). A front port in
+ * netmap mode has a reader that every frame the host carries for it passes through - Suricata in IPS
+ * mode, Zenarmor - and that sees nothing the fast path forwards. Measured on the XGS 136 on 2026-11-12
+ * (item 14, the module of 0.1.0-alpha.15.2), Suricata inline on Port8 through netmap's emulated
+ * adapter, flow.auto 1: a 10 MB transfer failed three times in three. The connection went to
+ * hardware once pf had it established, and Suricata never saw its middle; its FIN, which the fast
+ * path always hands the host, came back through Suricata acknowledging data Suricata had not seen,
+ * was dropped as a stream error (stream.drop-invalid), and the connection hung until it timed out.
+ * With flow.auto 0 the same transfer completed. The vendor's firmware, as every comparable product,
+ * moves an inspected connection to hardware only once its inspector lets it go. So the automatic
+ * maker leaves with the host a connection that a front port in netmap mode, or the VLAN on one that
+ * its frames carry, lets in or out either way - unless it is made inspected (npuflow_ips_first, XGS:
+ * Settings "Inspect, then hardware"), when the inspector meets it first through oxips0. A make by
+ * hand (flow.accelerate) goes on, and says so.
+ *
+ * The cut after the inspector's depth, on such a port, is flow.netmap_gate_cut's
+ * (npuflow_netmap_cut_held). Measured on the XGS 136 on 2026-11-12 (item 16), Suricata inline on the
+ * port and "Inspect, then hardware" with a depth: the connection was cut to hardware once the depth
+ * was let through, its closing frames came back through the netmap Suricata, which dropped them as
+ * stream errors, and the transfers ended 680 to 1,120 bytes short and hung - issue 1148's failure
+ * again. With a depth of 0 - inspected for its whole life - the same transfers completed. So 0, the
+ * default, refuses that cut while a port of the connection is in netmap mode, and the connection
+ * stays inspected; 1 cuts as before. XGS: Settings sets 1 only while "Let rejected TCP segments
+ * through" is on (scripts/xgs/apply.php): Suricata's stream.drop-invalid off is what lets those
+ * closing frames through for every stream - stream.bypass alone covers only the protocols it
+ * identifies.
+ *
+ * And a connection already in hardware when a reader starts - Suricata started, or restarted by an
+ * IDS apply, under live traffic - is not new: nothing above meets it, and the fast path's give-backs
+ * would have it revived again and again. So the sweep gives back every connection a port of which
+ * is now in netmap mode (npuflow_netmap_sweep), and a revival asks first (npuflow_revive) -
+ * npuflow_netmap_out is the one test, flow.netmap_given counts them. Given back, its next frames
+ * meet the gate as a new connection's do.
+ *
+ * flow.netmap_gate is 1 by default, which changes what this driver did before: a connection on a
+ * port in netmap mode used to be made all the same. Item 15 measured and recommends it; whether the
+ * default stays 1 is the owner's decision when this is merged.
+ *
+ * In netmap mode is IFCAP_NETMAP among the interface's enabled capabilities: the one test both kinds
+ * of adapter answer while a reader holds the port, read in FreeBSD 15.1's sys/dev/netmap. The native
+ * one (hw.npuep.netmap) sets it as its first reader registers (nm_set_native_flags, nm_os_onenter)
+ * and clears it after its last (nm_clear_native_flags, nm_os_onexit); the emulated one sets it as it
+ * takes the input function over for its first reader (nm_os_catch_rx) and clears it with the
+ * function put back after its last. if_bridge and if_lagg ask the same bit. Not the input function,
+ * which npuips_listening compares for oxips0: the native adapter leaves it as it is. Nor the
+ * adapter's NAF_NETMAP_ON, which means following NA(ifp) to an emulated adapter that its last
+ * reader's close frees, with no lock this side can hold against that; the capability is a word of
+ * the ifnet, which lives as long as the port. A VLAN's interface is found by its tag in the net
+ * epoch, as npuflow_lif_count finds it; a reader of the port itself has its VLANs' frames as well.
+ * 1 for the port, 2 for the VLAN's interface, 0 for neither, and the interface's name in name
+ * (IFNAMSIZ) when given. Takes no lock; called under FLOW_LOCK as well.
+ */
+static int
+npuflow_netmap_on(int port, uint16_t vlan, char *name)
+{
+	struct epoch_tracker et;
+	struct ifnet *vifp;
+	if_t ifp;
+	int on = 0;
+
+	if ((ifp = npugiu_port_ifp(port)) == NULL)
+		return (0);
+	if ((if_getcapenable(ifp) & IFCAP_NETMAP) != 0)
+		on = 1;
+	else if (vlan != 0) {
+		NET_EPOCH_ENTER(et);
+		vifp = VLAN_DEVAT((struct ifnet *)ifp, vlan);
+		if (vifp != NULL && (if_getcapenable((if_t)vifp) & IFCAP_NETMAP) != 0) {
+			on = 2;
+			if (name != NULL)
+				strlcpy(name, if_name((if_t)vifp), IFNAMSIZ);
+		}
+		NET_EPOCH_EXIT(et);
+	}
+	if (on == 1 && name != NULL)
+		strlcpy(name, if_name(ifp), IFNAMSIZ);
+	return (on);
+}
+
+/*
+ * A candidate flow.netmap_gate keeps with the host stays so while the gate is on and the port or VLAN
+ * it was kept for is still in netmap mode. Under FLOW_LOCK.
+ */
+static int
+npuflow_netmap_still(const struct npuflow_softc *sc, const struct npuep_flow_cand *c)
+{
+
+	return (c->nm_port != 0 && sc->netmap_gate != 0 &&
+	    npuflow_netmap_on(c->nm_port - 1, c->nm_vlan, NULL) != 0);
+}
+
+/*
+ * The answers of one pass, so that a sweep over many connections asks each port and VLAN once: up to
+ * NPUFLOW_NM_SEEN of them, the rest asked each time.
+ */
+#define	NPUFLOW_NM_SEEN	16
+struct npuflow_nm_seen {
+	int		n;
+	int		port[NPUFLOW_NM_SEEN];
+	uint16_t	vlan[NPUFLOW_NM_SEEN];
+	uint8_t		on[NPUFLOW_NM_SEEN];
+};
+
+static int
+npuflow_netmap_seen(int port, uint16_t vlan, struct npuflow_nm_seen *seen)
+{
+	int i, on;
+
+	if (seen == NULL)
+		return (npuflow_netmap_on(port, vlan, NULL));
+	for (i = 0; i < seen->n; i++)
+		if (seen->port[i] == port && seen->vlan[i] == vlan)
+			return (seen->on[i]);
+	on = npuflow_netmap_on(port, vlan, NULL);
+	if (seen->n < NPUFLOW_NM_SEEN) {
+		seen->port[seen->n] = port;
+		seen->vlan[seen->n] = vlan;
+		seen->on[seen->n] = (uint8_t)on;
+		seen->n++;
+	}
+	return (on);
+}
+
+/*
+ * The n front ports a connection's directions enter and leave by, each with the VLAN its frames carry
+ * there (a port of -1 passed over), kept in c - nm_port, nm_vlan - for the sweep and the revival to
+ * ask again (npuflow_netmap_out). Under FLOW_LOCK.
+ */
+static void
+npuflow_conn_nm_set(struct npuflow_conn *c, const int *port, const uint16_t *vlan, int n)
+{
+	int i, k, m = 0;
+
+	memset(c->nm_port, 0, sizeof(c->nm_port));
+	memset(c->nm_vlan, 0, sizeof(c->nm_vlan));
+	for (i = 0; i < n && m < 4; i++) {
+		if (port[i] < 0 || port[i] > 254)
+			continue;
+		for (k = 0; k < m; k++)
+			if (c->nm_port[k] == (uint8_t)(port[i] + 1) && c->nm_vlan[k] == vlan[i])
+				break;
+		if (k < m)
+			continue;
+		c->nm_port[m] = (uint8_t)(port[i] + 1);
+		c->nm_vlan[m] = vlan[i];
+		m++;
+	}
+}
+
+/* Whether a port connection c enters or leaves by, or the VLAN on it, is in netmap mode now. */
+static int
+npuflow_conn_netmap(const struct npuflow_conn *c, struct npuflow_nm_seen *seen)
+{
+	int k;
+
+	for (k = 0; k < 4; k++)
+		if (c->nm_port[k] != 0 &&
+		    npuflow_netmap_seen(c->nm_port[k] - 1, c->nm_vlan[k], seen) != 0)
+			return (1);
+	return (0);
+}
+
+/*
+ * Whether the cut of inspected connection c after the inspector's depth is refused now: the gate is
+ * on, flow.netmap_gate_cut is 0, and a port of it is in netmap mode (see npuflow_netmap_on's
+ * comment). Under FLOW_LOCK, or with c copied out.
+ */
+static int
+npuflow_netmap_cut_held(const struct npuflow_softc *sc, const struct npuflow_conn *c,
+    struct npuflow_nm_seen *seen)
+{
+
+	return (sc->netmap_gate != 0 && sc->netmap_gate_cut == 0 && npuflow_conn_netmap(c, seen));
+}
+
+/*
+ * Whether connection c, in hardware, is to be given back to the host for a reader in netmap mode:
+ * the gate is on, it is not inspected, it was not made by hand past the gate's warning, it is not
+ * one flow.netmap_gate_cut 1 let be cut after its inspection, and a port of it is in netmap mode.
+ * Under FLOW_LOCK.
+ */
+static int
+npuflow_netmap_out(const struct npuflow_softc *sc, const struct npuflow_conn *c,
+    struct npuflow_nm_seen *seen)
+{
+
+	return (sc->netmap_gate != 0 && !c->ips && !c->nm_hand &&
+	    !(c->ips_was && sc->netmap_gate_cut != 0) && npuflow_conn_netmap(c, seen));
+}
+
+/*
+ * flow.netmap_gate's answer for a connection about to be made: n front ports, each with the VLAN its
+ * frames carry there (0 untagged; a port of -1 is passed over), and whether it is a plain one, which
+ * is made inspected while new ones are. 0 to go on. EACCES for the automatic maker (sb NULL) when it
+ * is to stay with the host: both its directions' candidates are marked with the port and VLAN found
+ * in netmap mode, so that the sweep does not ask again while they stay so (npuflow_automake), and it
+ * is counted - here, once. A make by hand goes on, with a line saying what the gate would have done,
+ * and *hand 1 - the connection keeps nm_hand, so the sweep leaves it be (npuflow_netmap_out).
+ * Called under sc->sx, with no other lock held.
+ */
+static int
+npuflow_netmap_gate(struct npuflow_softc *sc, const struct npuep_pf_tuple tup[2], const int *port,
+    const uint16_t *vlan, int n, int plain, struct sbuf *sb, int *hand)
+{
+	char name[IFNAMSIZ];
+	int d, i, k, on = 0;
+
+	*hand = 0;
+	if (sc->netmap_gate == 0)
+		return (0);
+	for (k = 0; k < n; k++)
+		if (port[k] >= 0 && (on = npuflow_netmap_on(port[k], vlan[k], name)) != 0)
+			break;
+	if (k == n || (plain && npuflow_ips_first(sc)))
+		return (0);
+	if (sb != NULL) {
+		sbuf_printf(sb, "warning: %s is in netmap mode, and its reader - Suricata in IPS mode, "
+		    "Zenarmor - sees none of this connection once it is in hardware; made because it was "
+		    "asked for by hand (flow.netmap_gate keeps such a connection with the host)\n", name);
+		*hand = 1;
+		return (0);
+	}
+	FLOW_LOCK(sc);
+	for (d = 0; d < 2; d++)
+		if ((i = npuflow_find_tuple(sc, &tup[d])) >= 0) {
+			sc->cand[i].nm_port = (uint8_t)(port[k] + 1);
+			sc->cand[i].nm_vlan = on == 2 ? vlan[k] : 0;
+		}
+	sc->netmap_refused++;
+	FLOW_UNLOCK(sc);
+	return (EACCES);
+}
+
+/*
  * Turn one candidate into a flow the fast path forwards itself: resolve both directions' next hops,
  * program them, and send one FLOW_CREATE_FP carrying the connection and both microflows. Called by
  * the by-hand sysctl and by the automatic sweep, both under sc->sx. On any failure every table
@@ -1895,7 +2199,8 @@ npuflow_make(struct npuflow_softc *sc, uint32_t id, int slot, struct sbuf *sb)
 	uint16_t etype, luid, dscp[2];
 	uint8_t nho_rev, nhr_rev;
 	int i, d, ri, lan_port, err, rc, ci, nio, nir, fresh_o, fresh_r, marked, tcp_on, tcp_able;
-	int tos_marked, bridged, fb, vlan_rw;
+	int tos_marked, bridged, fb, vlan_rw, nm_held, nmh = 0, nmp[4];
+	uint16_t nmv[4];
 
 	if (!npuep_pf_present()) {
 		if (sb != NULL) sbuf_cat(sb, "pf is not loaded\n");
@@ -1916,7 +2221,14 @@ npuflow_make(struct npuflow_softc *sc, uint32_t id, int slot, struct sbuf *sb)
 		return (ENOENT);
 	}
 	c = sc->cand[d];
+	/*
+	 * Kept with the host by flow.netmap_gate when its other direction was to be made, in this same
+	 * sweep or an earlier one: not asked about, nor counted, again (npuflow_netmap_gate).
+	 */
+	nm_held = (sb == NULL && npuflow_netmap_still(sc, &sc->cand[d]));
 	FLOW_UNLOCK(sc);
+	if (nm_held)
+		return (EACCES);
 
 	if (!npuep_pf_state_read(&c.tuple, &st) || !npuep_pf_settled(&c.tuple)) {
 		if (sb != NULL) sbuf_cat(sb, "pf has no settled state for that flow\n");
@@ -2024,8 +2336,25 @@ npuflow_make(struct npuflow_softc *sc, uint32_t id, int slot, struct sbuf *sb)
 
 		if (sc->ipsec_flows == 1 && c.tuple.af == AF_INET && !st.nat_valid)
 			r = npuipsec_flow_tunnel(tup, &fi);
-		if (r == 1 && fi.enc_dir == d && c.port != fi.port && c.vlan == 0)
-			return (npuflow_make_tunnel(sc, &c, &st, tup, &fi, sb));
+		if (r == 1 && fi.enc_dir == d && c.port != fi.port && c.vlan == 0) {
+			nmp[0] = c.port;
+			nmp[1] = fi.port;
+			nmv[0] = nmv[1] = 0;
+			/* flow.netmap_gate, as for a plain one below: a tunnel's is never inspected */
+			if ((err = npuflow_netmap_gate(sc, tup, nmp, nmv, 2, 0, sb, &nmh)) != 0)
+				return (err);
+			err = npuflow_make_tunnel(sc, &c, &st, tup, &fi, sb);
+			if (err == 0) {
+				/* what the gate asked about, for the sweep (npuflow_netmap_out) */
+				FLOW_LOCK(sc);
+				if ((ci = npuflow_conn_find(sc, &tup[0])) >= 0) {
+					npuflow_conn_nm_set(&sc->conn[ci], nmp, nmv, 2);
+					sc->conn[ci].nm_hand = (uint8_t)nmh;
+				}
+				FLOW_UNLOCK(sc);
+			}
+			return (err);
+		}
 		sc->ipsec_refused++;
 		if (sb != NULL)
 			sbuf_printf(sb, "not accelerated: an IPsec policy covers this connection, and the "
@@ -2144,6 +2473,21 @@ npuflow_make(struct npuflow_softc *sc, uint32_t id, int slot, struct sbuf *sb)
 		}
 	}
 
+	/*
+	 * flow.netmap_gate (npuflow_netmap_gate): each direction's way in - the candidate's port, and the
+	 * reply's - and its way out, its next hop's, each with the VLAN its frames carry there.
+	 */
+	nmp[0] = c.port;
+	nmp[1] = r.port;
+	nmp[2] = nho.port;
+	nmp[3] = nhr.port;
+	nmv[0] = c.vlan;
+	nmv[1] = r.vlan;
+	nmv[2] = nho.vlan;
+	nmv[3] = nhr.vlan;
+	if ((err = npuflow_netmap_gate(sc, tup, nmp, nmv, 4, 1, sb, &nmh)) != 0)
+		return (err);
+
 	/* the tag written where a direction arrives tagged or leaves by a VLAN (discovery 10) */
 	vlan_rw = (c.vlan != 0 || r.vlan != 0 || nho.vlan != 0 || nhr.vlan != 0);
 
@@ -2162,6 +2506,9 @@ npuflow_make(struct npuflow_softc *sc, uint32_t id, int slot, struct sbuf *sb)
 		return (ENOSPC);
 	}
 	sc->conn[ci].tcp_on = (uint8_t)tcp_on;
+	/* what flow.netmap_gate asked about, for the sweep and the revival (npuflow_netmap_out) */
+	npuflow_conn_nm_set(&sc->conn[ci], nmp, nmv, 4);
+	sc->conn[ci].nm_hand = (uint8_t)nmh;
 	sc->conn[ci].bridged = (uint8_t)bridged;
 	sc->conn[ci].vlan_rw = (uint8_t)vlan_rw;
 	sc->conn[ci].vlan_out[0] = nho.vlan;
@@ -3021,6 +3368,16 @@ npuflow_automake(struct npuflow_softc *sc)
 			sc->excluded++;	/* the owner keeps it with the host: an attempt, counted */
 			continue;
 		}
+		/*
+		 * Kept with the host by flow.netmap_gate (npuflow_netmap_gate): not asked about again, nor
+		 * counted, while the port or VLAN it was kept for stays in netmap mode. The sweep after
+		 * that ends - its reader stopped, or the gate set to 0 - finds it a candidate like any other.
+		 */
+		if (c->nm_port != 0) {
+			if (npuflow_netmap_still(sc, c))
+				continue;
+			c->nm_port = 0;
+		}
 		sc->mk_id[nids] = c->id;
 		sc->mk_slot[nids] = (uint16_t)i;
 		nids++;
@@ -3098,6 +3455,15 @@ npuflow_revive(struct npuflow_softc *sc, int ci)
 	if (luid != 0 && !npuflow_lu_listed(sc, luid)) {
 		FLOW_UNLOCK(sc);
 		return (ENOENT);
+	}
+	/*
+	 * Nor one to be forwarded while a port of it is in netmap mode (flow.netmap_gate,
+	 * npuflow_netmap_out): a reader that started while it was in hardware would see none of it
+	 * again. EACCES, and npuflow_letgo takes it out; its next frames meet the gate.
+	 */
+	if (verdict == NPURPC_CONN_VERDICT_CUT_THRU && npuflow_netmap_out(sc, &sc->conn[ci], NULL)) {
+		FLOW_UNLOCK(sc);
+		return (EACCES);
 	}
 	FLOW_UNLOCK(sc);
 	if (!npuep_pf_state_read(&t0, &st))
@@ -3252,7 +3618,11 @@ npuflow_letgo(struct npuflow_softc *sc)
 			/* waiting for a segment of each direction: the next pass revives it */
 			if (n == EBUSY)
 				continue;
-			sc->revive_failed++;
+			/* a port of it in netmap mode: given back, and the remake below meets the gate */
+			if (n == EACCES)
+				sc->netmap_given++;
+			else
+				sc->revive_failed++;
 		}
 		FLOW_LOCK(sc);
 		tup[0] = sc->conn[sc->rm_ci[i]].tuple[0];
@@ -3370,6 +3740,57 @@ npuflow_policy_sweep(struct npuflow_softc *sc)
 		npuflow_give_pf(sc, i);
 		npuflow_takeout(sc, i);
 		sc->ipsec_taken++;
+	}
+}
+
+/*
+ * The sweep's half of flow.netmap_gate, once a pass, whether or not flow.auto is set: every
+ * connection npuflow_netmap_out says is to go - a reader started on a port of it in netmap mode
+ * after it was made - is given back, what it carried handed to pf first, and counted
+ * (flow.netmap_given); its next frames reach the host, and the gate meets them as a new
+ * connection's. And a connection whose cut flow.netmap_gate_cut refused has it asked for again once
+ * the reason has gone - its port out of netmap mode, the gate or the cut knob changed. Each port
+ * and VLAN is asked once a pass (struct npuflow_nm_seen). Under sc->sx, in curvnet; the live list
+ * is walked from its end, as npuflow_policy_sweep walks it.
+ */
+static void
+npuflow_netmap_sweep(struct npuflow_softc *sc)
+{
+	struct npuflow_nm_seen seen;
+	struct npuflow_conn *c;
+	int i, k, release, out;
+
+	if (sc->conn == NULL)
+		return;
+	seen.n = 0;
+	for (k = (int)sc->conn_nlive - 1; k >= 0; k--) {
+		release = out = 0;
+		FLOW_LOCK(sc);
+		if ((uint32_t)k >= sc->conn_nlive) {
+			FLOW_UNLOCK(sc);
+			continue;
+		}
+		i = (int)sc->conn_live[k];
+		c = &sc->conn[i];
+		if (!c->used || c->making) {
+			FLOW_UNLOCK(sc);
+			continue;
+		}
+		if (c->nm_hold) {
+			if (!c->ips || !npuflow_netmap_cut_held(sc, c, &seen)) {
+				c->nm_hold = 0;
+				release = c->ips;
+			}
+		} else
+			out = npuflow_netmap_out(sc, c, &seen);
+		FLOW_UNLOCK(sc);
+		if (release)
+			npuflow_ips_done_req(sc, (uint32_t)i);
+		if (out) {
+			npuflow_give_pf(sc, i);
+			npuflow_takeout(sc, i);
+			sc->netmap_given++;
+		}
 	}
 }
 
@@ -4680,12 +5101,14 @@ npuflow_sysctl_flows(SYSCTL_HANDLER_ARGS)
 	if (sb == NULL)
 		return (ENOMEM);
 	sbuf_printf(sb, "auto %s | connections %u of %u (board %u) next hops %u of %u | made %ju "
-	    "(auto %ju) taken %ju gone %ju | flow-full %ju nhop-full %ju v6-refused %ju | IPsec: "
-	    "refused %ju taken out %ju, tunnel flows %d made %ju gone %ju | fw_rev %u bumps %ju/%ju\n",
+	    "(auto %ju) taken %ju gone %ju | flow-full %ju nhop-full %ju v6-refused %ju "
+	    "netmap-refused %ju | IPsec: refused %ju taken out %ju, tunnel flows %d made %ju gone "
+	    "%ju | fw_rev %u bumps %ju/%ju\n",
 	    sc->autom ? "on" : "off", sc->conn_used, sc->conn_max, sc->board_conn, sc->nhop_used,
 	    sc->nhop_cap, (uintmax_t)sc->made, (uintmax_t)sc->auto_made, (uintmax_t)sc->taken,
 	    (uintmax_t)sc->auto_gone, (uintmax_t)sc->flow_full, (uintmax_t)sc->nhop_full,
-	    (uintmax_t)sc->v6_refused, (uintmax_t)sc->ipsec_refused, (uintmax_t)sc->ipsec_taken,
+	    (uintmax_t)sc->v6_refused, (uintmax_t)sc->netmap_refused, (uintmax_t)sc->ipsec_refused,
+	    (uintmax_t)sc->ipsec_taken,
 	    sc->ipsec_flows, (uintmax_t)sc->ipsec_made, (uintmax_t)sc->ipsec_gone, sc->fw_rev, (uintmax_t)sc->fw_rev_bumps,
 	    (uintmax_t)sc->fw_rev_bump_fail);
 	for (k = 0; (r = npuflow_flows_entry(sc, sb, k, n < NPUFLOW_PRINT_MAX)) >= 0; k++)
@@ -4791,6 +5214,9 @@ npuflow_sysctl_candidates(SYSCTL_HANDLER_ARGS)
 			sbuf_printf(sb, " | nhop error %d", c.nh_err);
 		if (c.nh_ok && c.nh.vlan != 0)
 			sbuf_printf(sb, " vlan %u", c.nh.vlan);
+		if (c.nm_port != 0)
+			sbuf_printf(sb, " | with the host by netmap_gate: port %d vlan %u in netmap mode",
+			    c.nm_port - 1, c.nm_vlan);
 		sbuf_cat(sb, "\n");
 	}
 	if (n == 0)
@@ -4847,6 +5273,12 @@ npuflow_attach(device_t dev, struct sysctl_ctx_list *ctx, struct sysctl_oid *par
 	sc->dscp_pf = 1;
 	sc->bridge_flows = 1;
 	sc->vlan_flows = 1;
+	/*
+	 * 1 changes what this driver did before; item 15 recommends it, and whether the default stays
+	 * 1 is the owner's decision when this is merged (npuflow_netmap_on's comment).
+	 */
+	sc->netmap_gate = 1;
+	sc->netmap_gate_cut = 0;
 	/*
 	 * Tunnel connections in hardware: off unless the owner asked for them in XGS: Settings, which
 	 * writes the loader tunable hw.npuep.ipsec_flows (scripts/xgs/apply.php) - 1 or nothing else.
@@ -4938,6 +5370,35 @@ npuflow_attach(device_t dev, struct sysctl_ctx_list *ctx, struct sysctl_oid *par
 		SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "released", CTLFLAG_RD,
 		    &sc->released, 0, "connections handed back to the host one at a time, from the "
 		    "Flows page");
+		SYSCTL_ADD_INT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "netmap_gate", CTLFLAG_RW,
+		    &sc->netmap_gate, 0, "1 (the default): a connection is not made in hardware "
+		    "automatically while a front port either direction enters or leaves by - or the "
+		    "VLAN on it that its frames carry - is in netmap mode: a reader such as Suricata in "
+		    "IPS mode or Zenarmor holds it, and would miss the connection's middle and drop its "
+		    "end (measured 2026-11-12). Unless it is made inspected (ips_new; its cut is "
+		    "netmap_gate_cut's); it is made once the port leaves netmap mode. One in hardware "
+		    "already when the port enters netmap mode is given back (netmap_given). By hand "
+		    "(accelerate) it is made all the same, with a warning. 0: made as before");
+		SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "netmap_refused", CTLFLAG_RD,
+		    &sc->netmap_refused, 0, "connections netmap_gate kept with the host - each once, "
+		    "when it was to be made, and not again while the port or VLAN it was kept for stays "
+		    "in netmap mode");
+		/* 0 by default: scripts/xgs/apply.php sets 1 with "Let rejected TCP segments through" */
+		SYSCTL_ADD_INT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "netmap_gate_cut", CTLFLAG_RW,
+		    &sc->netmap_gate_cut, 0, "with netmap_gate on, for a connection made inspected "
+		    "(ips_new) that a port in netmap mode carries: 0 (the default) refuses its cut to "
+		    "hardware after ips_depth, so it stays inspected for its whole life - cut, its "
+		    "closing frames came back through the netmap reader, which dropped them (measured "
+		    "2026-11-12); 1 cuts it as before, safe once Suricata's stream.drop-invalid is off. "
+		    "XGS: Settings sets 1 while \"Let rejected TCP segments through\" is on");
+		SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "netmap_cut_refused", CTLFLAG_RD,
+		    &sc->netmap_cut_refused, 0, "inspected connections whose cut netmap_gate_cut 0 "
+		    "refused - each once; the sweep asks for the cut again once the port leaves netmap "
+		    "mode");
+		SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "netmap_given", CTLFLAG_RD,
+		    &sc->netmap_given, 0, "connections in hardware netmap_gate gave back to the host "
+		    "because a port of theirs went into netmap mode after they were made: by the "
+		    "sweep, or instead of a revival");
 		SYSCTL_ADD_PROC(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "auto",
 		    CTLTYPE_INT | CTLFLAG_RW | CTLFLAG_MPSAFE, sc, 0, npuflow_sysctl_auto, "I",
 		    "let the sweep accelerate settled, resolved candidates on its own and take each "

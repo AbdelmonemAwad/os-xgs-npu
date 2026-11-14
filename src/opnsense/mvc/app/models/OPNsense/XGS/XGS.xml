@@ -128,6 +128,15 @@
                 <Required>Y</Required>
                 <Default>0</Default>
             </inspect_then_hardware>
+            <!-- Let rejected TCP segments through (issue 1148, measured 2026-11-12): while "Inspect,
+                 then hardware" is on, the template overlay OPNsense/IDS/xgs-inspector.yaml writes
+                 stream.drop-invalid: no, so the closing frames of a connection cut to hardware are
+                 not dropped by Suricata when it never identified the connection's protocol (and so
+                 never bypassed it). Off by default: Suricata's own behaviour. -->
+            <inspect_pass_invalid type="BooleanField">
+                <Required>Y</Required>
+                <Default>0</Default>
+            </inspect_pass_invalid>
             <!-- Copies for packet capture (discoveries 12 and 17, 2026-10-25): the fast path's
                  FP_PKT_DUMP bit, 0x10 of its configuration word, written by offload.sh with the gate;
                  the copies it then sends (control message type 6) go to the port's BPF in the
