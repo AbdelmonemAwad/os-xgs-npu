@@ -97,6 +97,9 @@ class Appliance(unittest.TestCase):
             self.stub(os.path.join('..', '07-npuep'))
         for name in ('kldload', 'configctl', 'daemon'):
             self.stub(name)
+        # the Intrusion Detection's restart (ids-ports.sh): what it says is in ids-said
+        self.write('ids-said', None)
+        self.stub(os.path.join('..', 'scripts', 'xgs', 'ids-ports.sh'), 'cat "%s/ids-said"' % d)
         # the running kernel, as uname -v says it, and /boot/modules with the module and no stamp beside it
         os.makedirs(os.path.join(d, 'modules'))
         self.write(os.path.join('modules', '%s.ko' % drv), 'a module')
@@ -171,12 +174,76 @@ class Reload(object):
         # nothing begun behind a recovery that was not done: the management link, the switch's ports
         self.assertEqual(self.calls('daemon'), [])
 
+    # decision row 9 (2026-11-13): the fast path back by itself before the driver took the coprocessor as
+    # gone (heartbeat.gone_ms past dead_ms) - nothing restarted, and a success
+    def test_a_fast_path_back_before_gone_restarts_nothing(self):
+        drv = 'octep' if self.FAMILY == 'octeontx' else 'npuep'
+        self.node('dev.%s.0.gone' % drv, '0')
+        done = self.recover()
+        self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+        self.assertRegex(done.stdout, r'the fast path answered again after \d+ s; nothing restarted')
+        for name in ('python3', 'kldunload', 'kldload', 'devctl', 'rc.reload_all', 'daemon'):
+            self.assertEqual(self.calls(name), [], name)
+
+    def test_a_fast_path_back_after_gone_is_said_and_recovered_for(self):
+        """gone set: the driver sends it nothing until it is brought up again, so the recovery goes on"""
+        done = self.recover()
+        self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+        self.assertEqual(done.stdout.count('had already taken the coprocessor as gone'), 1)
+        self.assertNotIn('nothing restarted', done.stdout)
+        self.assertEqual(len(self.calls('rc.reload_all')), 1)
+
+    def test_a_dead_fast_path_waits_for_gone_and_is_refused_without_it(self):
+        drv = 'octep' if self.FAMILY == 'octeontx' else 'npuep'
+        self.node('dev.%s.0.gone' % drv, '0')
+        self.node('dev.%s.0.heartbeat.state' % drv, 'dead')
+        done = self.recover()
+        self.assertEqual(done.returncode, 1, done.stdout + done.stderr)
+        self.assertIn('is not 1), and a reset now could stop the host', done.stdout)
+        self.assertEqual(self.calls('rc.reload_all'), [])
+
     def test_a_reload_that_finishes_is_taken_up_in_place(self):
         done = self.recover()
         self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
         self.assertIn('the fast path answers again: taken up in place in', done.stdout)
         self.assertEqual(len(self.calls('rc.reload_all')), 1)
         self.assertEqual(os.listdir(os.path.join(self.dir, 'tmp')), [], 'what the reload said is left behind')
+
+    # #1153 (item M1, 2026-11-11): the Intrusion Detection in Netmap mode stayed on the rings of the ports
+    # a reload destroyed. ids-ports.sh is asked once, after the interfaces are reloaded and the fast path
+    # answers, and what it says is a line of the recovery's.
+    def test_the_intrusion_detection_is_asked_once_at_the_end(self):
+        self.write('ids-said', 'the Intrusion Detection restarted: in Netmap mode on npup8, whose interfaces '
+                               'were made again')
+        done = self.recover()
+        self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+        self.assertEqual(len(self.calls('ids-ports.sh')), 1)
+        lines = done.stdout.splitlines()
+        at = [i for i, l in enumerate(lines) if 'the Intrusion Detection restarted' in l]
+        self.assertEqual(len(at), 1, done.stdout)
+        self.assertGreater(at[0], [i for i, l in enumerate(lines) if 'taken up in place in' in l][0])
+        with open(os.path.join(self.dir, 'calls'), encoding='utf-8') as f:
+            order = [l.split(' ', 1)[0] for l in f]
+        self.assertLess(order.index('rc.reload_all'), order.index('ids-ports.sh'))
+
+    def test_nothing_from_the_intrusion_detection_says_nothing(self):
+        done = self.recover()
+        self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+        self.assertEqual(len(self.calls('ids-ports.sh')), 1)
+        self.assertNotIn('Intrusion Detection', done.stdout)
+
+    def test_a_recovery_not_done_leaves_the_intrusion_detection_alone(self):
+        self.write('reload-exit', '255')
+        done = self.recover()
+        self.assertEqual(done.returncode, 1, done.stdout + done.stderr)
+        self.assertEqual(self.calls('ids-ports.sh'), [])
+
+    def test_a_fast_path_back_by_itself_leaves_the_intrusion_detection_alone(self):
+        drv = 'octep' if self.FAMILY == 'octeontx' else 'npuep'
+        self.node('dev.%s.0.gone' % drv, '0')
+        done = self.recover()
+        self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+        self.assertEqual(self.calls('ids-ports.sh'), [])
 
 
 class Octeon(Reload, Appliance):
@@ -293,6 +360,185 @@ class Armada(Reload, Appliance):
         self.assertEqual(self.calls('kldunload'), [])
         self.assertEqual(self.calls('kldload'), [])
         self.assertNotIn('resetting the coprocessor', done.stdout)
+
+
+IDS_PORTS = os.path.join(HERE, '..', 'src', 'opnsense', 'scripts', 'xgs', 'ids-ports.sh')
+SOURCE = os.path.join(HERE, '..')
+
+
+@unittest.skipUnless(POSIX, 'ids-ports.sh runs under /bin/sh')
+class IntrusionDetection(unittest.TestCase):
+    """scripts/xgs/ids-ports.sh (#1153): OPNsense's Intrusion Detection restarted after the front ports
+    were made again, when it runs in Netmap mode on one of them - and only then. Run as a copy whose
+    paths point at stand-ins: Suricata's process (pgrep), the Intrusion Detection's model and the
+    interfaces (php), configd (configctl), the interfaces there (ifconfig), the locks (lockf)."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        d = self.dir = self.tmp.name
+        self.bin = os.path.join(d, 'bin')
+        os.makedirs(self.bin)
+        open(os.path.join(d, 'calls'), 'w').close()
+        self.running(True)
+        self.settings('1 netmap', 'npup8')
+        self.write('interfaces', 'npup1\nnpup8\nigc0\nvlan01\nlagg0\nbridge0')
+        self.write('ifconfig-vlan01', 'vlan01: flags=8943<UP>\n\tvlan: 5 vlanproto: 802.1q vlanpcp: 0 '
+                                      'parent interface: npup8')
+        self.write('ifconfig-lagg0', 'lagg0: flags=8943<UP>\n\tlaggproto lacp\n\tlaggport: npup2 '
+                                     'flags=1c<ACTIVE>\n\tlaggport: npup3 flags=1c<ACTIVE>')
+        self.write('ifconfig-bridge0', 'bridge0: flags=8843<UP>\n\tmember: npup8 flags=143<LEARNING>')
+        self.stub('pgrep', '[ -f "%s/suricata-running" ]' % d)
+        self.stub('php', 'cat "%s/settings"' % d)
+        self.stub('configctl', 'exit 0')
+        self.stub('sleep', 'exit 0')
+        # ifconfig <dev>: what ifconfig-<dev> holds, for a device in interfaces
+        self.script('ifconfig', 'grep -qx "$1" "%s/interfaces" || exit 1\ncat "%s/ifconfig-$1" 2>/dev/null; exit 0'
+                    % (d, d))
+        # lockf [-s] [-k] [-t n] file command...: the recovery's lock held while recover-held is there
+        self.stub('lockf', 'while :; do case $1 in -s|-k) shift ;; -t) shift 2 ;; *) break ;; esac; done\n'
+                           'case $1 in *recover.lock) [ -f "%s/recover-held" ] && exit 75 ;; esac\n'
+                           'shift\nexec "$@"' % d)
+        self.env = dict(os.environ, PATH=self.bin + os.pathsep + '/usr/bin:/bin')
+        self.env.pop('XGS_RECOVER_LOCKED', None)
+        self.env.pop('XGS_IDS_LOCKED', None)
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def write(self, name, text):
+        with open(os.path.join(self.dir, name), 'w', encoding='utf-8', newline='\n') as f:
+            f.write(text + '\n')
+
+    def script(self, name, body):
+        path = os.path.join(self.bin, name)
+        with open(path, 'w', encoding='utf-8', newline='\n') as f:
+            f.write('#!/bin/sh\n%s\n' % body)
+        os.chmod(path, 0o755)
+        return path
+
+    def stub(self, name, body='exit 0'):
+        return self.script(name, 'echo "%s $*" >> "%s/calls"\n%s' % (name, self.dir, body))
+
+    def calls(self, name):
+        with open(os.path.join(self.dir, 'calls'), encoding='utf-8') as f:
+            return [line.rstrip('\n') for line in f if line.split(' ', 1)[0] == name]
+
+    def running(self, yes):
+        path = os.path.join(self.dir, 'suricata-running')
+        if yes:
+            open(path, 'w').close()
+        elif os.path.exists(path):
+            os.remove(path)
+
+    def settings(self, first, *devices):
+        """The Intrusion Detection's "<enabled> <mode>", then each device it is given."""
+        self.write('settings', '\n'.join((first,) + devices))
+
+    def run_it(self, **env):
+        d = self.dir
+        with open(IDS_PORTS, encoding='utf-8') as f:
+            text = f.read()
+        for real, fake in (
+                ('PATH=/sbin:/bin:/usr/sbin:/usr/bin:/usr/local/sbin:/usr/local/bin',
+                 'PATH=%s:/usr/bin:/bin' % self.bin),
+                ('LOCK=/var/run/xgs-ids-ports.lock', 'LOCK=%s' % os.path.join(d, 'ids.lock')),
+                ('RECOVER_LOCK=/var/run/xgs-recover.lock', 'RECOVER_LOCK=%s' % os.path.join(d, 'recover.lock')),
+                ('OVERLAY=/usr/local/etc/suricata/conf.d/xgs-inspector.yaml',
+                 'OVERLAY=%s' % os.path.join(d, 'xgs-inspector.yaml')),
+                ('/usr/local/bin/php', os.path.join(self.bin, 'php')),
+                ('/usr/bin/true', 'true')):
+            self.assertIn(real, text, 'nothing in ids-ports.sh to stand in for: %s' % real)
+            text = text.replace(real, fake)
+        path = os.path.join(d, 'ids-ports.sh')
+        with open(path, 'w', encoding='utf-8', newline='\n') as f:
+            f.write(text)
+        return subprocess.run(['/bin/sh', path], capture_output=True, text=True, errors='replace',
+                              timeout=60, env=dict(self.env, **env))
+
+    def restarts(self):
+        return [c for c in self.calls('configctl') if c == 'configctl ids restart']
+
+    def test_netmap_on_a_front_port_is_restarted_once(self):
+        done = self.run_it()
+        self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+        self.assertEqual(self.restarts(), ['configctl ids restart'])
+        self.assertEqual(done.stdout.strip(), 'the Intrusion Detection restarted: in Netmap mode on npup8, '
+                                              'whose interfaces were made again')
+
+    def test_suricata_not_running_is_left_alone(self):
+        """at boot it starts after the ports are made, and one stopped by hand stays stopped"""
+        self.running(False)
+        done = self.run_it()
+        self.assertEqual((done.returncode, done.stdout), (0, ''))
+        self.assertEqual(self.calls('configctl'), [])
+        self.assertEqual(self.calls('php'), [])
+
+    def test_off_pcap_divert_and_other_ports_are_left_alone(self):
+        for first, devices in (('0 netmap', ('npup8',)), ('1 pcap', ('npup8',)), ('1 divert', ('npup8',)),
+                               ('1 netmap', ('igc0',)), ('1 netmap', ('bridge0',)), ('1 netmap', ()),
+                               ('', ())):
+            with self.subTest(settings=first, devices=devices):
+                self.settings(first, *devices)
+                done = self.run_it()
+                self.assertEqual((done.returncode, done.stdout), (0, ''))
+                self.assertEqual(self.restarts(), [])
+
+    def test_a_vlan_or_lagg_over_a_front_port_is_restarted(self):
+        for dev in ('vlan01', 'lagg0'):
+            with self.subTest(dev=dev):
+                open(os.path.join(self.dir, 'calls'), 'w').close()
+                self.settings('1 netmap', 'igc0', dev)
+                done = self.run_it()
+                self.assertEqual(self.restarts(), ['configctl ids restart'])
+                self.assertIn('in Netmap mode on %s,' % dev, done.stdout)
+
+    def test_the_inspector_interface_from_the_overlay_counts(self):
+        self.settings('1 netmap', 'igc0')
+        self.write('xgs-inspector.yaml', 'netmap.900: interface\nnetmap.900.interface: oxips0')
+        self.write('interfaces', 'igc0\noxips0')
+        done = self.run_it()
+        self.assertEqual(self.restarts(), ['configctl ids restart'])
+        self.assertIn('on oxips0,', done.stdout)
+
+    def test_not_in_the_middle_of_a_recovery(self):
+        """a recovery restarts it itself at its end; while one runs nobody else does"""
+        open(os.path.join(self.dir, 'recover-held'), 'w').close()
+        done = self.run_it()
+        self.assertEqual(self.restarts(), [])
+        self.assertIn('a recovery in place runs, and restarts it at its end', done.stdout)
+        done = self.run_it(XGS_RECOVER_LOCKED='1')		# the recovery itself asking
+        self.assertEqual(self.restarts(), ['configctl ids restart'])
+
+    def test_a_second_caller_at_once_gives_no_second_restart(self):
+        self.stub('lockf', 'case "$*" in *ids.lock*) exit 75 ;; esac\nexit 0')	# another run holds it
+        done = self.run_it()
+        self.assertEqual(done.stdout, '')
+        self.assertEqual(self.restarts(), [])
+
+    def test_a_port_still_missing_is_waited_for_and_said(self):
+        self.write('interfaces', 'igc0')
+        done = self.run_it()
+        self.assertEqual(len(self.calls('sleep')), 60)
+        self.assertEqual(self.restarts(), ['configctl ids restart'])
+        self.assertIn('(still missing after 60 s: npup8)', done.stdout)
+
+    def test_a_restart_configd_refused_is_said(self):
+        self.stub('configctl', 'exit 1')
+        done = self.run_it()
+        self.assertIn('the Intrusion Detection asked to restart, and configd said it failed', done.stdout)
+
+    def test_the_other_reloads_ask_it_too(self):
+        """reload.sh after the interfaces and rules, bringup.sh when it made the ports and is not a recovery's"""
+        with open(os.path.join(SOURCE, 'contrib', 'npuep', 'reload.sh'), encoding='utf-8') as f:
+            reload = f.read()
+        self.assertLess(reload.rindex('configctl filter reload'), reload.index('ids-ports.sh'))
+        self.assertLess(reload.index('ids-ports.sh'), reload.rindex('mgmt-link.sh coprocessor'))
+        with open(os.path.join(SOURCE, 'src', 'opnsense', 'scripts', 'octep', 'bringup.sh'),
+                  encoding='utf-8') as f:
+            bringup = f.read()
+        call = bringup[bringup.rindex('if [ "${HAD:-0}" -eq 0 ]'):]
+        self.assertIn('[ -z "${XGS_RECOVER_LOCKED:-}" ]', call)
+        self.assertIn('ids-ports.sh', call)
 
 
 if __name__ == '__main__':

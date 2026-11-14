@@ -63,12 +63,40 @@ esac
 gone_or_refuse() {
 	i=0
 	while [ "${i}" -lt 90 ] && [ "$(sysctl -n dev.${DRV}.0.gone 2>/dev/null)" != 1 ]; do
+		still_stopped
 		i=$((i + 5))
 		sleep 5
 	done
 	[ "$(sysctl -n dev.${DRV}.0.gone 2>/dev/null)" = 1 ] && return 0
+	still_stopped
 	say "the driver still reads the coprocessor (dev.${DRV}.0.gone is not 1), and a reset now could stop the host; not taken up in place"
 	exit 1
+}
+# THE FAST PATH BACK BY ITSELF, looked at again just before every step that cannot be taken back - the
+# wait for the driver to take the coprocessor as gone, its reset from the host (ARMADA), the reboot asked
+# of its console and the driver's unload or detach (OCTEON TX) - since 2026-11-13 (decision row 9). On
+# 2026-11-12 the second XGS 3300's fast path, stopped for 45 s, answered again by itself after 47 s,
+# 16 s into this recovery, and nothing here looked: the coprocessor was rebooted, the driver detached
+# and attached, and the data path came back 310 s after the stop; on 2026-10-22, before this existed,
+# the same stop came back in 48 s by itself.
+# N in its line is counted from this recovery's start (T0). What it can stop for is a fast path that answers while the driver has NOT taken the coprocessor as
+# gone (dev.<driver>.0.gone 0): the driver still sends it beats and frames, so nothing needs doing, and
+# the exit is 0 with nothing restarted. That is the time before gone, which the driver's
+# heartbeat.gone_ms sets: 50 s by default, 20 s past dead_ms's 30. Set to dead_ms, fastpath.py starts
+# this only once gone is set, and this window is empty. Once gone is set the driver sends nothing until it is
+# brought up again - on the ARMADA it no longer even sees a beat taken, on the OCTEON TX only the
+# beats sent before it are answered - so a fast path that answers then is one the host no longer uses:
+# that is said, once, and the recovery goes on.
+REVIVAL_SAID=
+still_stopped() {
+	[ "$(sysctl -n dev.${DRV}.0.heartbeat.state 2>/dev/null)" = alive ] || return 0
+	if [ "$(sysctl -n dev.${DRV}.0.gone 2>/dev/null)" != 1 ]; then
+		say "the fast path answered again after $(since) s; nothing restarted"
+		exit 0
+	fi
+	[ -n "${REVIVAL_SAID}" ] && return 0
+	REVIVAL_SAID=1
+	say "the fast path answers again, but the driver had already taken the coprocessor as gone and sends it nothing until it is brought up again (heartbeat.gone_ms); going on"
 }
 # The heartbeat, alive within limit seconds: 0, or 1.
 hb_alive() {
@@ -174,6 +202,7 @@ if [ "${FAMILY}" = armada ]; then
 		say "the driver came from neither npuep.ko nor npuep.ko.prev; not taken up in place - nothing reset, the driver left as it is"
 		exit 1
 	fi
+	still_stopped
 	say "resetting the coprocessor"
 	# Refused (2) before the bridge is opened on a board whose reset values have run at no boot, 200
 	# and 224 (#1050): nothing was reset, and the datapath attaches once per coprocessor boot (07-npuep),
@@ -200,6 +229,7 @@ if [ "${FAMILY}" = armada ]; then
 	say "the coprocessor answers again after ${i} s; the driver unloaded and loaded"
 	jumbo_reset
 	# unloaded by the file it came from, loaded from the one chosen above for this kernel
+	still_stopped
 	if kldstat -q -m pci/npuep; then
 		kldunload "${loaded}" || { say "the driver did not unload; not taken up in place"; exit 1; }
 	fi
@@ -222,6 +252,7 @@ else
 		sleep 5
 	done
 	if ! console_waits; then
+		still_stopped
 		say "the coprocessor has not restarted on its own; asking its console to"
 		# busybox's reboot, forced: vendor versions 22 and 23 have busybox's reboot but no link to it
 		# on the coprocessor's path ("reboot: command not found", 2026-10-26), and -f skips the
@@ -252,6 +283,7 @@ else
 	# octep.ko.prev is unloaded by that name (bringup.sh loads it when octep.ko is for another kernel)
 	ko=octep.ko
 	kldstat -q -n octep.ko.prev && ko=octep.ko.prev
+	still_stopped
 	if kldstat -q -m pci/octep && ! kldunload "${ko}" 2>/dev/null; then
 		# IPsec associations point into the module, which stays loaded: its device is detached and
 		# attached again instead (since 2026-10-26; until then this restarted the appliance). The
@@ -300,6 +332,12 @@ fi
 [ "${rc}" -eq 0 ] || exit 1
 if hb_alive 120; then
 	say "the fast path answers again: taken up in place in $(since) s"
+	# The Intrusion Detection first, once the interfaces are reloaded and the fast path answers: in
+	# Netmap mode on a front port it stays on the rings of the ports this recovery destroyed - 30,000
+	# errors a second at 98 % CPU and the traffic uninspected until restarted by hand (#1153, item M1,
+	# 2026-11-11). ids-ports.sh restarts it then, and only then; its line, if it has one, is said here.
+	ids=$(/bin/sh ${LIB}/xgs/ids-ports.sh 2>/dev/null)
+	[ -n "${ids}" ] && say "${ids}"
 	# The management link last, in the background as at boot: the coprocessor's end lost its address
 	# with its reset, and what gives it one (mgmt-link.sh coprocessor, xgs.inc) runs at boot only -
 	# the first XGS 3300's link stayed down after it was taken up in place on 2026-10-26.

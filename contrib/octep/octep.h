@@ -3446,6 +3446,7 @@ struct octep_softc {
 	uint32_t		 dp_hb_period_ms;
 	uint32_t		 dp_hb_late_ms;
 	uint32_t		 dp_hb_dead_ms;
+	uint32_t		 dp_hb_gone_ms;		/* and gone set (octep_hb_judge) */
 	int			 dp_hb_state;		/* OCTEP_HB_* */
 	uint32_t		 dp_hb_seq;		/* the last sequence sent */
 	sbintime_t		 dp_hb_sent_at;		/* when it was sent */

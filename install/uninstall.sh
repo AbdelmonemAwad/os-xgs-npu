@@ -123,6 +123,7 @@ rm -f "${PREFIX}/opnsense/scripts/xgs/apply.php" "${PREFIX}/opnsense/scripts/xgs
     "${PREFIX}/opnsense/scripts/xgs/health.py" "${PREFIX}/opnsense/scripts/xgs/models.py" \
     "${PREFIX}/opnsense/scripts/xgs/portcheck.py" "${PREFIX}/opnsense/scripts/xgs/fastpath.py" \
     "${PREFIX}/opnsense/scripts/xgs/recover.sh" "${PREFIX}/opnsense/scripts/xgs/portstats.py" \
+    "${PREFIX}/opnsense/scripts/xgs/fastpath-monit.sh" "${PREFIX}/opnsense/scripts/xgs/ids-ports.sh" \
     "${PREFIX}/opnsense/scripts/xgs/coprocessor.py" "${PREFIX}/opnsense/scripts/xgs/fpcounters.py" \
     "${PREFIX}/etc/cron.d/xgs-ja4" \
     "${PREFIX}/opnsense/scripts/xgs/anomaly.py" \

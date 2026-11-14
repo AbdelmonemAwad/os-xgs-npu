@@ -1861,15 +1861,35 @@ octep_hb_judge(struct octep_softc *sc, sbintime_t now)
 			sc->dp_hb_deaths++;
 			device_printf(sc->dev, "heartbeat: the fast path has not answered for %ju s - "
 			    "taken as stopped\n", (uintmax_t)(ms / 1000));
-			/*
-			 * And nothing more read from the coprocessor (#768): a coprocessor whose fast
-			 * path has stopped is one its own watchdog may reset next, and on this family
-			 * the link stays up while it boots again, so a read in that time never
-			 * completes and the host stops with it. Its watchdog runs out at 60 s, the beat
-			 * is taken as stopped at 30: the reads end in that margin.
-			 */
-			octep_gone(sc, "its fast path stopped answering the heartbeat");
 		}
+		/*
+		 * And nothing more read from the coprocessor (#768): a coprocessor whose fast
+		 * path has stopped is one its own watchdog may reset next, and on this family
+		 * the link stays up while it boots again, so a read in that time never
+		 * completes and the host stops with it. Its watchdog runs out at 60 s, the
+		 * coprocessor is taken as gone at 50: the reads end in that margin.
+		 *
+		 * At heartbeat.gone_ms of silence, never before dead_ms; 50 s by default. It was
+		 * dead_ms, 30 s, from #768 until its own knob on 2026-11-13 (decision row 9): gone
+		 * is cleared only by a reload, and from it on nothing is sent - no beat,
+		 * no frame - so a fast path that answers again after it is one the host no longer
+		 * uses. On 2026-11-12 the second XGS 3300's fast path, stopped for 45 s (SIGSTOP,
+		 * then SIGCONT), answered again after 47 s, 17 s after gone: the beats sent before
+		 * gone were answered, none after, and it was taken as stopped again 32 s later. The
+		 * data path stayed down until the recovery had restarted the coprocessor and
+		 * attached the driver again, 310 s in all. On 2026-10-22, before gone existed, the
+		 * same stop came back in 48 s with the data path unhurt. What runs that watchdog
+		 * out is the coprocessor's Linux stopping, not its fast path: busybox's watchdog
+		 * feeds it (measured 2026-10-25), and on 2026-11-12 the coprocessor had not reset
+		 * itself 120 s after its fast path stopped. A later gone_ms keeps the beats, and
+		 * the frames, going for a fast path that comes back; it stays under that
+		 * watchdog's 60 s less a beat's period, as the silence is judged once a period.
+		 * Measured at 50 s on 2026-11-13: the same 45 s stop came back with nothing
+		 * restarted, the data path down 45 s and not 310; a 90 s stop was still recovered,
+		 * in 313 s. octep_gone() sets gone once, so it is asked at every judgement past gone_ms.
+		 */
+		if (ms >= sc->dp_hb_gone_ms)
+			octep_gone(sc, "its fast path stopped answering the heartbeat");
 	} else if (ms >= sc->dp_hb_late_ms && (sc->dp_hb_state == OCTEP_HB_ALIVE ||
 	    sc->dp_hb_state == OCTEP_HB_WAITING)) {
 		sc->dp_hb_state = OCTEP_HB_LATE;
@@ -1987,6 +2007,7 @@ octep_hb_add_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
 	sc->dp_hb_period_ms = 5000;
 	sc->dp_hb_late_ms = 15000;
 	sc->dp_hb_dead_ms = 30000;
+	sc->dp_hb_gone_ms = 50000;	/* heartbeat.gone_ms: octep_hb_judge */
 	node = SYSCTL_ADD_NODE(ctx, top, OID_AUTO, "heartbeat", CTLFLAG_RD, NULL,
 	    "the heartbeat with the fast path: asked every period_ms, answered with its sequence");
 	if (node == NULL)
@@ -2000,6 +2021,12 @@ octep_hb_add_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
 	    "no answer for this long is late, and said once in the system log");
 	SYSCTL_ADD_UINT(ctx, c, OID_AUTO, "dead_ms", CTLFLAG_RW, &sc->dp_hb_dead_ms, 0,
 	    "no answer for this long and the fast path is taken as stopped, said once");
+	SYSCTL_ADD_UINT(ctx, c, OID_AUTO, "gone_ms", CTLFLAG_RW, &sc->dp_hb_gone_ms, 0,
+	    "no answer for this long, and never before dead_ms, and the coprocessor is taken as "
+	    "gone: nothing more sent to it or read from it until the driver is brought up again "
+	    "(dev.octep.0.gone, fastpath.py); 50000 by default, under the coprocessor's own "
+	    "watchdog's 60 s. Set to dead_ms, 30000, it is taken as gone as soon as stopped, as "
+	    "before");
 	SYSCTL_ADD_PROC(ctx, c, OID_AUTO, "state", CTLTYPE_STRING | CTLFLAG_RD | CTLFLAG_MPSAFE,
 	    sc, 0, octep_sysctl_hb_state, "A",
 	    "off, waiting (no answer yet), alive, late or dead");

@@ -213,6 +213,19 @@ configctl interface bridge configure > /dev/null 2>&1 || true
 done
 configctl filter reload > /dev/null 2>&1 || true
 echo "   bridges: $(ifconfig -g bridge 2>/dev/null | tr '\n' ' ')"
+# THE INTRUSION DETECTION ON THE NEW PORTS. In Netmap mode on a front port, Suricata stays on the rings
+# of the ports this reload destroyed: on 2026-11-11 (item M1, #1153) it wrote 30,000 errors a second at
+# 98 % CPU and the traffic crossed uninspected until it was restarted by hand. ids-ports.sh restarts it
+# once the interfaces are configured again - before the management link, which can take minutes - and
+# does nothing when it is off or not on these ports. Its line goes to the system log as well.
+IDS=/usr/local/opnsense/scripts/xgs/ids-ports.sh
+if [ -f "${IDS}" ]; then
+    said=$(/bin/sh "${IDS}" 2>/dev/null || true)
+    if [ -n "${said}" ]; then
+        echo "   ${said}"
+        logger -t npuep -p daemon.notice "reload.sh: ${said}" 2>/dev/null || true
+    fi
+fi
 if [ -x /usr/local/opnsense/scripts/npuctl/mgmt-link.sh ]; then
     # It tells the coprocessor its address again while the link does not answer: up to about five
     # minutes (#1010).

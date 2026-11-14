@@ -224,6 +224,29 @@ XGS log, and blocks nothing ([measured](../measurements/anomaly-2026-10-19.md)).
 
 </details>
 
+### Being told when the fast path stops (Monit)
+
+Every frame through the front ports goes through the coprocessor's fast path, and the driver checks
+every five seconds that it still answers. **When the fast path stops**, on the Hardware tab, says what
+the appliance does about it. To be told as well - by email, or however Monit is set to alert - use
+OPNsense's own Monit with the plugin's script `/usr/local/opnsense/scripts/xgs/fastpath-monit.sh`. The
+script only reads; it prints one line, such as `fast path heartbeat alive (octep), last answer 912 ms ago`,
+and exits 0 while the fast path answers, 1 when it does not. It works on both families.
+
+1. **Services: Monit: Settings**, **General Settings**: tick **Enable Monit**, and on **Alert Settings**
+   add where alerts go (your mail address), if that is not done yet. Apply.
+2. **Service Tests Settings**, **+**: **Name** `FastPathHeartbeat`, **Condition** `status != 0`,
+   **Action** `Alert`; its type is Custom, the default. Save.
+3. **Service Settings**, **+**: **Name** `xgs_fastpath`, **Type** `Custom`, **Path**
+   `/usr/local/opnsense/scripts/xgs/fastpath-monit.sh`, **Tests** `FastPathHeartbeat`. Save, then Apply.
+
+**Services: Monit: Status** then shows the service and the script's last line. An alert comes about half
+a minute after the fast path stops, and a second one when it answers again: measured on an XGS 3300
+on 2026-11-12, with the fast path stopped on purpose for 45 seconds, the alert came 24 seconds after
+the stop and cleared when it came back. For a few seconds after each boot the heartbeat has not begun,
+and the script says `waiting`: to be told only of a stop that lasts, set the test's condition to
+`status != 0 for 3 cycles` instead.
+
 ## XGS: Ports
 
 ![XGS: Ports on the second XGS 3300, in English: 7 of 16 front ports with a link, 16 assigned, the expansion module AMDA0207-0001 in bay A, the switch chip in its jumbo-frame mode, then each port with its link, assignment, address, MAC address, speed, MTU, bridge and device](../images/screens/en/03-xgs-ports.png)
