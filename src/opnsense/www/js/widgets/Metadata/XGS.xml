@@ -18,6 +18,7 @@
         <endpoints>
             <endpoint>/api/xgs/status/get</endpoint>
             <endpoint>/api/xgs/ports/search</endpoint>
+            <endpoint>/api/xgs/flows/summary</endpoint>
             <endpoint>/api/diagnostics/system/system_temperature</endpoint>
         </endpoints>
         <translations>
@@ -30,6 +31,9 @@
             <off>off</off>
             <ports>Ports</ports>
             <linked>with a link</linked>
+            <inhardware>Connections in hardware</inhardware>
+            <load>Coprocessor load</load>
+            <oncores>on %s cores</oncores>
             <npu>Coprocessor temperature</npu>
             <memory>Coprocessor memory</memory>
             <inlet>Inlet air</inlet>

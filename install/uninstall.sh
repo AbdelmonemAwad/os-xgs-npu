@@ -147,6 +147,14 @@ rm -f "${PREFIX}/opnsense/scripts/xgs/switch.sh" /var/db/os-xgs-npu/switch.state
 rm -f "${PREFIX}/opnsense/www/js/widgets/XGSCoprocessor.js" "${PREFIX}/opnsense/www/js/widgets/XGSPorts.js" \
     "${PREFIX}/opnsense/www/js/widgets/XGSIpsec.js" "${PREFIX}/opnsense/www/js/widgets/XGSFlows.js" \
     "${PREFIX}/opnsense/www/js/widgets/Metadata/XGS.xml"
+# Reporting: Health's collector and descriptions. The figures already written stay in /var/db/rrd,
+# OPNsense's own, until they are deleted there (Reporting: Health, or Reporting: Settings).
+rm -f "${PREFIX}/opnsense/scripts/health/library/OPNsense/RRD/Stats/XGSCoprocessor.php" \
+    "${PREFIX}/opnsense/scripts/health/library/OPNsense/RRD/Types/XGSCoprocessor.php" \
+    "${PREFIX}/opnsense/scripts/health/library/OPNsense/RRD/Types/XGSFlows.php" \
+    "${PREFIX}/opnsense/scripts/health/definitions/system-xgs-coprocessor.xml" \
+    "${PREFIX}/opnsense/scripts/health/definitions/system-xgs-flows.xml" \
+    /var/db/os-xgs-npu/health-history.json
 # The GUI translations' merge, its hook and its trigger, from a version before 2026-10-22 (since
 # then the Arabic is in opnsense-arabic's catalogue). The strings already merged stay in the
 # catalogues until a catalogue is written again.

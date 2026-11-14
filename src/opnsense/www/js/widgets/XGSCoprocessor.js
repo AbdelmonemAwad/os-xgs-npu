@@ -5,11 +5,14 @@
 
 /*
  * Dashboard widget: the coprocessor at a glance - whether it answers, whether offloading is on,
- * how many of its front ports have a link, and its temperatures.
+ * how many connections it forwards by itself, its load, how many of its front ports have a link,
+ * and its temperatures.
  *
  * Everything comes from what the pages already read: /api/xgs/status/get for the driver and the
  * offload gate, /api/xgs/ports/search for the ports (the same rows the Ports page and the XGS Ports
- * widget count, expansion module included), and OPNsense's own sensor list for the temperatures the drivers
+ * widget count, expansion module included), /api/xgs/flows/summary for the connections in hardware (the
+ * figure the XGS Offloaded Flows widget shows), the load as scripts/xgs/health.py last read it (status.health,
+ * every five minutes), and OPNsense's own sensor list for the temperatures the drivers
  * publish (dev.octep.0.temperature.* on the XGS 3300, dev.npuep.0.temperature on the XGS 136).
  * Nothing is derived here that the page does not show; a line that has nothing to say is left out.
  */
@@ -46,6 +49,13 @@ export default class XGSCoprocessor extends BaseTableWidget {
             ports = [];
         }
 
+        let flows = {};
+        try {
+            flows = await this.ajaxCall('/api/xgs/flows/summary');
+        } catch (e) {
+            flows = {};
+        }
+
         let temperatures = [];
         try {
             temperatures = await this.ajaxCall('/api/diagnostics/system/system_temperature');
@@ -53,7 +63,7 @@ export default class XGSCoprocessor extends BaseTableWidget {
             temperatures = [];
         }
 
-        if (!this.dataChanged('xgs-coprocessor', [status, ports, temperatures])) {
+        if (!this.dataChanged('xgs-coprocessor', [status, ports, flows, temperatures])) {
             return;
         }
 
@@ -71,6 +81,16 @@ export default class XGSCoprocessor extends BaseTableWidget {
         rows.push([this.translations.offloading,
             this.icon(offload.offload_bit_requested === true ? true : null,
                 offload.offload_bit_requested === true ? this.translations.on : this.translations.off)]);
+        const inHardware = flows && flows.summary ? flows.summary.in_hardware : undefined;
+        if (inHardware !== undefined) {
+            rows.push([this.translations.inhardware, Number(inHardware).toLocaleString()]);
+        }
+        /* the one-minute load on its cores, as the Overview's Graphs tab draws it */
+        const health = status.health || {};
+        if (Array.isArray(health.load) && health.load.length) {
+            rows.push([this.translations.load, `<bdi dir="ltr">${Number(health.load[0]).toFixed(2)}</bdi>` +
+                (health.cpus ? ` ${this.translations.oncores.replace('%s', health.cpus)}` : '')]);
+        }
         if (ports.length) {
             // the figures on their own, left to right: in Arabic "8 / 16" would otherwise read "16 / 8"
             rows.push([this.translations.ports, `<bdi dir="ltr">${up} / ${ports.length}</bdi> ${this.translations.linked}`]);

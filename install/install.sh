@@ -310,6 +310,21 @@ for w in XGSCoprocessor XGSPorts XGSIpsec XGSFlows; do
     install -m 0644 "${SRC}/src/opnsense/www/js/widgets/${w}.js" "${PREFIX}/opnsense/www/js/widgets/${w}.js"
 done
 install -m 0644 "${SRC}/src/opnsense/www/js/widgets/Metadata/XGS.xml" "${PREFIX}/opnsense/www/js/widgets/Metadata/XGS.xml"
+# Reporting: Health: the coprocessor's load, memory and connections in hardware, collected by
+# OPNsense's own updaterrd.php, which runs every class in these two directories; and how Health
+# names the two files it writes.
+install -d -m 0755 "${PREFIX}/opnsense/scripts/health/library/OPNsense/RRD/Stats" \
+    "${PREFIX}/opnsense/scripts/health/library/OPNsense/RRD/Types" "${PREFIX}/opnsense/scripts/health/definitions"
+install -m 0644 "${SRC}/src/opnsense/scripts/health/library/OPNsense/RRD/Stats/XGSCoprocessor.php" \
+    "${PREFIX}/opnsense/scripts/health/library/OPNsense/RRD/Stats/XGSCoprocessor.php"
+for t in XGSCoprocessor XGSFlows; do
+    install -m 0644 "${SRC}/src/opnsense/scripts/health/library/OPNsense/RRD/Types/${t}.php" \
+        "${PREFIX}/opnsense/scripts/health/library/OPNsense/RRD/Types/${t}.php"
+done
+for d in system-xgs-coprocessor system-xgs-flows; do
+    install -m 0644 "${SRC}/src/opnsense/scripts/health/definitions/${d}.xml" \
+        "${PREFIX}/opnsense/scripts/health/definitions/${d}.xml"
+done
 
 # The menu is cached in a file with a time-to-live, so a new entry can be up to that long in
 # appearing. Removing it costs one rebuild on the next page load and makes the install immediate.

@@ -219,6 +219,11 @@ jobs:
       - name: The IPsec page's associations
         run: python3 tools/test-ipsec.py
 
+      # The Overview's graphs: one sample per read of the coprocessor, seven days kept, a failed read
+      # a gap. tools/test-health.py.
+      - name: The Overview's graphs
+        run: python3 tools/test-health.py
+
       # The offload gate and a counter read through the XGS 3300 driver's one set of rpc sysctls, each
       # under the same lock: the gate's own command is the one posted for it, and the read's after it
       # (flock stands in for lockf). tools/test-rpc-lock.py.

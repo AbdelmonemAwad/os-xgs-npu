@@ -50,6 +50,16 @@ class StatusController extends ApiControllerBase
     }
 
     /**
+     * The Overview's graphs: the coprocessor's load, memory in use and connections in hardware,
+     * one sample every five minutes for seven days, as scripts/xgs/health.py keeps them.
+     */
+    public function historyAction()
+    {
+        $decoded = json_decode((new Backend())->configdRun('xgs healthhistory'), true);
+        return is_array($decoded) ? $decoded : ['samples' => [], 'step' => 300];
+    }
+
+    /**
      * The coprocessor itself, for the Overview's Coprocessor tab - its software and versions, its
      * chips, its flash and eMMC - as scripts/xgs/coprocessor.py reads them: what was read last on a
      * GET; on a POST read again, with `read` "collect", or with "slots" also opening each eMMC

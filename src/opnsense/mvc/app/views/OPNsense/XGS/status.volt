@@ -1034,6 +1034,7 @@
     <li class="active"><a data-toggle="tab" href="#status">{{ lang._('Status') }}</a></li>
     <li><a data-toggle="tab" href="#counters">{{ lang._('Datapath counters') }}</a></li>
     <li><a data-toggle="tab" href="#coprocessor">{{ lang._('Coprocessor') }}</a></li>
+    <li><a data-toggle="tab" href="#graphs">{{ lang._('Graphs') }}</a></li>
     <li><a data-toggle="tab" href="#details">{{ lang._('Technical details') }}</a></li>
 </ul>
 
@@ -1183,6 +1184,108 @@
             <tbody id="xgs_raw"></tbody>
         </table>
     </div>
+
+    <!-- The Graphs tab (2026-11-14): its own block, with its own script below the page. -->
+    <div id="graphs" class="tab-pane">
+        <table class="table table-condensed">
+            <thead>
+                <tr>
+                    <th>
+                        <div class="xgs-head">
+                            <b>{{ lang._('Coprocessor load') }}</b>
+                            <button class="btn btn-default btn-xs pull-right" id="graphsReadAct" type="button"><i class="fa fa-refresh"></i></button>
+                        </div>
+                    </th>
+                </tr>
+            </thead>
+            <tbody><tr><td><div style="position: relative; height: 200px;"><canvas id="graph_load"></canvas></div></td></tr></tbody>
+            <thead><tr><th><div class="xgs-head"><b>{{ lang._('Coprocessor memory in use') }}</b></div></th></tr></thead>
+            <tbody><tr><td><div style="position: relative; height: 200px;"><canvas id="graph_memory"></canvas></div></td></tr></tbody>
+            <thead><tr><th><div class="xgs-head"><b>{{ lang._('Connections in hardware') }}</b></div></th></tr></thead>
+            <tbody><tr><td><div style="position: relative; height: 200px;"><canvas id="graph_flows"></canvas></div></td></tr></tbody>
+        </table>
+        <div class="text-muted" style="padding: 0 10px 10px;">
+            <small id="graphs_none" style="display: none;">{{ lang._('Nothing kept yet: the first reading comes within five minutes.') }}<br/></small>
+            <small>{{ lang._('Read every five minutes and kept for seven days. The same figures go to Reporting: Health, under System, while its collection is on (Reporting: Settings).') }}</small>
+        </div>
+    </div>
 </div>
+
+<!-- The Graphs tab's script: OPNsense's own Chart.js, as Reporting: Traffic loads it. -->
+<script src="{{ cache_safe('/ui/js/chart.umd.min.js') }}"></script>
+<script src="{{ cache_safe('/ui/js/moment-with-locales.min.js') }}"></script>
+<script src="{{ cache_safe('/ui/js/chartjs-adapter-moment.min.js') }}"></script>
+<script>
+    $(document).ready(function () {
+        /*
+         * The coprocessor's load, memory in use and connections in hardware, one sample every five
+         * minutes for seven days, as scripts/xgs/health.py keeps them ([time, load, memory %,
+         * connections]). A sample that could not be read, or one missing, is a gap, not a line
+         * drawn across it.
+         */
+        const charts = {};
+
+        function series(samples, index, step) {
+            const points = [];
+            let last = null;
+            samples.forEach(function (s) {
+                if (last !== null && s[0] - last > 2 * step) {
+                    points.push({x: (last + step) * 1000, y: null});
+                }
+                points.push({x: s[0] * 1000, y: s[index] === null || s[index] === undefined ? null : Number(s[index])});
+                last = s[0];
+            });
+            return points;
+        }
+
+        function draw(id, label, points, max) {
+            if (charts[id]) {
+                charts[id].data.datasets[0].data = points;
+                charts[id].update('none');
+                return;
+            }
+            charts[id] = new Chart(document.getElementById(id).getContext('2d'), {
+                type: 'line',
+                data: {datasets: [{label: label, data: points, borderColor: '#337ab7',
+                    backgroundColor: 'rgba(51, 122, 183, 0.15)', fill: true, borderWidth: 1.5,
+                    pointRadius: 0, spanGaps: false, tension: 0}]},
+                options: {
+                    animation: false, maintainAspectRatio: false, normalized: true,
+                    interaction: {mode: 'nearest', axis: 'x', intersect: false},
+                    plugins: {legend: {display: false}},
+                    scales: {
+                        x: {type: 'time', time: {tooltipFormat: 'lll'}},
+                        y: Object.assign({beginAtZero: true}, max ? {max: max} : {})
+                    }
+                }
+            });
+        }
+
+        function read_graphs() {
+            ajaxGet('/api/xgs/status/history', {}, function (d) {
+                const samples = (d && Array.isArray(d.samples)) ? d.samples : [];
+                const step = (d && d.step) ? Number(d.step) : 300;
+                $('#graphs_none').toggle(samples.length === 0);
+                draw('graph_load', "{{ lang._('Coprocessor load') }}", series(samples, 1, step));
+                draw('graph_memory', "{{ lang._('Coprocessor memory in use') }}", series(samples, 2, step), 100);
+                draw('graph_flows', "{{ lang._('Connections in hardware') }}", series(samples, 3, step));
+            });
+        }
+
+        /* drawn when the tab is first shown: a canvas in a hidden pane has no size */
+        let drawn = false;
+        $('a[href="#graphs"]').on('shown.bs.tab', function () {
+            if (!drawn) {
+                drawn = true;
+                read_graphs();
+            }
+        });
+        if (window.location.hash === '#graphs') {
+            drawn = true;
+            read_graphs();
+        }
+        $('#graphsReadAct').on('click', read_graphs);
+    });
+</script>
 
 {{ partial("OPNsense/XGS/credit") }}
