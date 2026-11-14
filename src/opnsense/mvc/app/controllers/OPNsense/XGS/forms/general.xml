@@ -33,13 +33,13 @@
             <id>xgs.general.offload</id>
             <label>Hardware offloading</label>
             <type>checkbox</type>
-            <help>Let the coprocessor forward traffic it recognises without handing it to the firewall. A frame the coprocessor handles does not reach pf - that is what offloading means, and it is why this is off until you turn it on. It is applied to the hardware when you save, and again at every boot, because the coprocessor forgets it: it comes up with offloading off whatever this page says.</help>
+            <help>Let the coprocessor forward traffic it recognises without handing it to the firewall. A frame the coprocessor handles does not reach pf - that is what offloading means. On in a new install, with Accelerate connections automatically: a connection on a port the Intrusion Detection reads in IPS mode stays with this firewall whatever this says, so Suricata sees all of it. It is applied to the hardware when you save, and again at every boot, because the coprocessor forgets it: it comes up with offloading off whatever this page says.</help>
         </field>
         <field>
             <id>xgs.general.flow_auto</id>
             <label>Accelerate connections automatically</label>
             <type>checkbox</type>
-            <help>The flow maker: the driver puts established connections in hardware on its own (dp.auto on the XGS 3300, flow.auto on the XGS 136, which also opens its ports to the coprocessor's flow table). Nothing leaves the firewall's path while this is off, even with offloading on. Applied when you save and at every boot. Suricata sees how a connection in hardware starts and, with Inspect, then hardware on the Security tab, its first megabyte; what it must see in full goes in Never offloaded below, or this stays off.</help>
+            <help>The flow maker: the driver puts established connections in hardware on its own (dp.auto on the XGS 3300, flow.auto on the XGS 136, which also opens its ports to the coprocessor's flow table). Nothing leaves the firewall's path while this is off, even with offloading on. On in a new install. A connection on a port the Intrusion Detection reads in IPS mode is never put in hardware. Applied when you save and at every boot. Suricata sees how a connection in hardware starts and, with Inspect, then hardware on the Security tab, its first megabyte; what it must see in full goes in Never offloaded below, or this stays off.</help>
         </field>
         <field>
             <id>xgs.general.count_to_pf</id>
@@ -73,7 +73,7 @@
             <id>xgs.general.cp_hardware</id>
             <label>Captive Portal clients in hardware</label>
             <type>checkbox</type>
-            <help>The Captive Portal lets a client through and stops it again in the firewall, where a connection the coprocessor forwards no longer passes, so every enabled zone is kept with the firewall as if it were listed under Never offloaded. With this on, each client that logs in is given to the coprocessor as a live user of its own, within two seconds of its login; its connections are put in hardware with it, and when its session ends - a logout, a timeout, a disconnect - the coprocessor gives all of them back at once and they are not made again. The idle timeout and RADIUS accounting read what the firewall counted for each client, which misses what the coprocessor carries: a zone with either runs in hardware only where the coprocessor's counts are added to the portal's own, by a change to one of the portal's files that is made only on the versions of it this plugin knows. Any other zone stays with the firewall, and the row below says why.</help>
+            <help>The Captive Portal lets a client through and stops it again in the firewall, where a connection the coprocessor forwards no longer passes, so every enabled zone is kept with the firewall as if it were listed under Never offloaded. With this on, each client that logs in is given to the coprocessor as a live user of its own, within two seconds of its login; its connections are put in hardware with it, and when its session ends - a logout, a timeout, a disconnect - the coprocessor gives all of them back at once and they are not made again. The idle timeout and RADIUS accounting read what the firewall counted for each client, which misses what the coprocessor carries: a zone with either runs in hardware only where the coprocessor's counts are added to the portal's own, by a change to one of the portal's files that is made only on the versions of it this plugin knows. Any other zone stays with the firewall, and the row below says why. On in a new install.</help>
         </field>
         <field>
             <id>xgs_now_cp</id>
@@ -96,16 +96,28 @@
             <help>TLS fingerprints (JA4) whose connections are cut: a JA4 names the software that opened a connection - the ciphers, extensions and protocols its ClientHello offers - rather than the address it went to, so it still matches a program that changes its server. It needs the Intrusion Detection with its TLS log carrying JA4: Services: Intrusion Detection: Administration, advanced mode, "Enable eve TLS logging" and "ja4" in "Eve TLS custom logging"; IDS mode, which only listens, is enough. The log is read every two seconds, and every connection it shows with a fingerprint listed here is cut: its states are killed, and the coprocessor lets go of it with them. The fingerprint is taken from the connection's first message, before it is put in hardware. Listing one cuts what is already open with it. One per line or separated by commas, as t13d1516h2_8daaf6152771_e5627efa2ab1. The XGS log says what was cut.</help>
         </field>
         <field>
+            <id>xgs.general.cut_ips_drops</id>
+            <label>Cut what the IPS drops</label>
+            <type>checkbox</type>
+            <help>Suricata drops only the frames it sees. A connection the coprocessor already carries, or put in hardware after the inspector's depth, goes on there. On, every alert the Intrusion Detection logs as blocked for a TCP connection cuts it as a listed fingerprint does: its states are killed, and with Cut in hardware on it is dropped on the coprocessor first. Not UDP or ICMP, whose frames are easily forged with another's addresses, and not Suricata's own decoder, stream and application-layer event rules (signature ids 2200000 to 2299999): they drop the frame and let the connection go on. Only what is logged after it is turned on; read every two seconds. It acts only while the Intrusion Detection runs in IPS mode: in IDS mode nothing is logged as blocked. The XGS log says what was cut.</help>
+        </field>
+        <field>
             <id>xgs.general.cut_in_hardware</id>
             <label>Cut in hardware</label>
             <type>checkbox</type>
             <help>A connection that a watched block list or a listed TLS fingerprint cuts is dropped on the coprocessor at once, both ways, before its pf state is killed as always - and kept there while its sender goes on sending, so those frames never reach this firewall. For that, connections are made in hardware with the coprocessor asking each one's verdict for every frame, which was measured to cost nothing. Off, they are made to forward without asking, as before 2026-10-23: a cut takes the connection out of hardware and pf drops what follows here. Tunnel connections are made the second way either way. Applied when you save, to the connections made from then on, and at every boot.</help>
         </field>
         <field>
+            <id>xgs.general.flood_cut</id>
+            <label>Cut floods by the firewall's own limits</label>
+            <type>checkbox</type>
+            <help>A firewall rule with "Max new connections" (advanced options) puts a source that opens connections faster than it allows in a table - virusprot, or the rule's own overload table - and the firewall blocks it and cuts its connections at once. With this on, those tables are watched like a block list under Cut open connections when listed: what such a source still has in the coprocessor is dropped there as well, both ways, with Cut in hardware on. The limits are the rules' own; this sets none. Checked every minute. On in a new install.</help>
+        </field>
+        <field>
             <id>xgs.general.inspect_then_hardware</id>
             <label>Inspect, then hardware</label>
             <type>checkbox</type>
-            <help>Each new connection the coprocessor carries is inspected by the Intrusion Detection first: every frame of it goes to Suricata through oxips0, the coprocessor's inspector interface, until Suricata has let a quarter more than its own stream depth through (1 MiB by default; a save sets the coprocessor's depth to it, so Suricata reaches its own and stops following the connection first), and the rest then runs in hardware. What Suricata drops never reaches its destination. It needs the Intrusion Detection on in IPS mode (Services: Intrusion Detection: Administration), on any interface: oxips0 is added to the interfaces it inspects without being assigned, and Suricata takes up a connection whose first frames it did not see. It needs "Cut in hardware" on as well. Turned on, the coprocessor's inspector function is made at the next reboot; after that, a save applies it to the connections made from then on, and so does every boot. A connection's first frames, before it is in hardware, cross this firewall and are inspected only where the Intrusion Detection inspects the interface they arrive on. An experiment, measured on the XGS 3300 and the XGS 136.</help>
+            <help>Each new connection the coprocessor carries is inspected by the Intrusion Detection first: every frame of it goes to Suricata through oxips0, the coprocessor's inspector interface, until Suricata has let a quarter more than its own stream depth through (1 MiB by default; a save sets the coprocessor's depth to it, so Suricata reaches its own and stops following the connection first), and the rest then runs in hardware. What Suricata drops never reaches its destination. It needs the Intrusion Detection on in IPS mode (Services: Intrusion Detection: Administration), on any interface: oxips0 is added to the interfaces it inspects without being assigned, and Suricata takes up a connection whose first frames it did not see. It does nothing while the Intrusion Detection is off or in IDS mode: connections then run in hardware as without it. On in a new install. It needs "Cut in hardware" on as well. Turned on, the coprocessor's inspector function is made at the next reboot; after that, a save applies it to the connections made from then on, and so does every boot. A connection's first frames, before it is in hardware, cross this firewall and are inspected only where the Intrusion Detection inspects the interface they arrive on. An experiment, measured on the XGS 3300 and the XGS 136.</help>
         </field>
         <field>
             <id>xgs.general.inspect_pass_invalid</id>
@@ -114,10 +126,16 @@
             <help>With "Inspect, then hardware" on, a connection longer than the inspected part runs in hardware after it, and its last frames come back to this firewall with sequence numbers far past what Suricata saw. Suricata stops following a connection whose protocol it knows once it has inspected that much of it, and those frames then pass; but a connection whose protocol it never identifies it keeps following, rejects those frames as out of its window and drops them, and the connection hangs until it times out a few bytes short. On, Suricata drops no TCP segment its stream tracking rejects - out of window, acknowledging data it never saw, a wrong sequence number while closing, a changed handshake - on every interface it inspects, not only for these connections: it still raises its stream events, and rules that match them still alert or drop, but data in such a segment reaches its destination without Suricata having inspected it. Connections pf tracks itself still have their window checked there. It also decides the connections a port Suricata reads in IPS mode carries: on, they are put in hardware after the inspected part like any other; off, they stay inspected through oxips0 for their whole life, because their last frames would come back through Suricata on that port and be dropped. Off, as Suricata does by default. Only while "Inspect, then hardware" is on; a save restarts the Intrusion Detection to apply it.</help>
         </field>
         <field>
+            <id>xgs.general.failclose</id>
+            <label>Drop when the inspection stops</label>
+            <type>checkbox</type>
+            <help>With Inspect, then hardware on, a new connection the coprocessor carries goes to the Intrusion Detection first. While Suricata does not read it - stopped, restarting, or exited - its frames are dropped with this on, so no connection runs in hardware uninspected; off, they pass and the connection runs in hardware without inspection, as before. It does nothing while the Intrusion Detection is off or in IDS mode, or while Inspect, then hardware is off, so a new install, whose Intrusion Detection is off, drops nothing. Followed within two seconds when the Intrusion Detection is turned on or off. On in a new install.</help>
+        </field>
+        <field>
             <id>xgs.general.anomaly_watch</id>
             <label>Watch for unusual traffic</label>
             <type>checkbox</type>
-            <help>Report, in the XGS log, what no normal day looks like - never block it. Every minute the firewall's connections are read every ten seconds, and for each host that opened any: a port scan (one host trying 100 ports or more on one address within a minute) and a sweep (one host reaching 256 new addresses or more) are reported at once; and a host that sends, receives or opens far more than it usually does - six spreads above its own moving mean, and above a floor of 200 MB sent, 1 GB received or 500 connections a minute - is reported once it has an hour of history. The same host is reported for the same thing at most once in ten minutes. On the XGS 3300 the volumes include what the coprocessor forwarded when "Count hardware traffic in pf" is on; on the XGS 136 a connection in hardware stops adding to them, so there the patterns are what is complete. Each check reads the whole state table six times a minute: on a firewall with hundreds of thousands of connections, that is work to weigh.</help>
+            <help>Report, in the XGS log, what no normal day looks like - never block it. Every minute the firewall's connections are read every ten seconds, and for each host that opened any: a port scan (one host trying 100 ports or more on one address within a minute) and a sweep (one host reaching 256 new addresses or more) are reported at once; and a host that sends, receives or opens far more than it usually does - six spreads above its own moving mean, and above a floor of 200 MB sent, 1 GB received or 500 connections a minute - is reported once it has an hour of history. The same host is reported for the same thing at most once in ten minutes. On the XGS 3300 the volumes include what the coprocessor forwarded when "Count hardware traffic in pf" is on; on the XGS 136 a connection in hardware stops adding to them, so there the patterns are what is complete. Each check reads the whole state table six times a minute: on a firewall with hundreds of thousands of connections, that is work to weigh. Each report is also kept for os-netreport to send. On in a new install.</help>
         </field>
     </tab>
     <tab id="xgs-ipsec" description="IPsec">
@@ -125,13 +143,13 @@
             <id>xgs.general.ipsec_offload</id>
             <label>IPsec in the coprocessor's engine</label>
             <type>checkbox</type>
-            <help>Encrypt and decrypt the tunnels configured under VPN: IPsec in the coprocessor's crypto engine instead of the host's CPU (AES-GCM, and AES-CBC with an HMAC). Written as a loader tunable through System: Settings: Tunables, because the driver has to have it before the tunnels come up: it takes effect at the next reboot.</help>
+            <help>Encrypt and decrypt the tunnels configured under VPN: IPsec in the coprocessor's crypto engine instead of the host's CPU (AES-GCM, and AES-CBC with an HMAC). Written as a loader tunable through System: Settings: Tunables, because the driver has to have it before the tunnels come up: it takes effect at the next reboot. On in a new install: the install writes the tunable, and the driver has it from its next start.</help>
         </field>
         <field>
             <id>xgs.general.ipsec_flows</id>
             <label>Outbound tunnel flows forwarded by the coprocessor</label>
             <type>checkbox</type>
-            <help>The direction of a tunnel's connections that leaves encrypted is forwarded by the coprocessor itself, with its association named in the flow; the direction that arrives as ESP still crosses the host. Needs IPsec in the engine. Takes effect at the next reboot. The XGS 3300's driver has a third mode, both directions, never offered here: it also forwards clear text that arrives on the tunnel's port and matches a connection, past the policy that says it must have come through the tunnel.</help>
+            <help>The direction of a tunnel's connections that leaves encrypted is forwarded by the coprocessor itself, with its association named in the flow; the direction that arrives as ESP still crosses the host. Needs IPsec in the engine. Takes effect at the next reboot. On in a new install, as IPsec in the engine is. The XGS 3300's driver has a third mode, both directions, never offered here: it also forwards clear text that arrives on the tunnel's port and matches a connection, past the policy that says it must have come through the tunnel.</help>
         </field>
         <field>
             <id>xgs.general.ipsec_soft_crypto</id>
@@ -201,6 +219,16 @@
             <label>When the fast path stops</label>
             <type>dropdown</type>
             <help>The host asks the coprocessor's fast path every five seconds whether it is there, and takes it as stopped after 30 seconds without an answer. Every frame through the front ports goes through the fast path, so while it is stopped nothing passes. Either way it is written in the system log and, unless problem reporting is off, reported. Take it up again, the default: the driver stops reading the coprocessor, which restarts by itself or is restarted, and is brought up again with the host running - every port back in about four minutes, nothing of the host's lost; if that does not bring the fast path back, the appliance is restarted. A restart comes once the fast path has gone that long without answering, the report collected first, and never more than three times a day, so an appliance whose coprocessor does not come back stays up for somebody to look at. On the XGS 136, whose fast path does not answer the heartbeat message, the answer is the message being taken off the host's queue by the fast path.</help>
+        </field>
+        <field>
+            <type>header</type>
+            <label>Coprocessor memory</label>
+        </field>
+        <field>
+            <id>xgs.general.ecc_alert</id>
+            <label>Memory error alert</label>
+            <type>text</type>
+            <help>The coprocessor's memory corrects single-bit errors by itself (ECC) and counts them. When this many corrected errors have been counted since the last alert, or since the coprocessor started, an alert is written in the system log and handed to os-netreport to send. An error the memory could not correct always raises one. 0: no alert for corrected errors. Read every five minutes; XGS: Overview shows the counts. Only the XGS 3300 has these counters: on the XGS 136 nothing is read.</help>
         </field>
         <field>
             <type>header</type>

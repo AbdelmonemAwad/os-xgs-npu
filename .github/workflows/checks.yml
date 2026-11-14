@@ -219,6 +219,16 @@ jobs:
       - name: The IPsec page's associations
         run: python3 tools/test-ipsec.py
 
+      # The Overview's graphs: one sample per read of the coprocessor, seven days kept, a failed read
+      # a gap. tools/test-health.py.
+      - name: The Overview's graphs
+        run: python3 tools/test-health.py
+
+      # The Ports page's VLANs: each front port's VLAN subinterfaces from ifconfig, with their bridge.
+      # tools/test-portmap.py.
+      - name: The Ports page's VLANs
+        run: python3 tools/test-portmap.py
+
       # The offload gate and a counter read through the XGS 3300 driver's one set of rpc sysctls, each
       # under the same lock: the gate's own command is the one posted for it, and the read's after it
       # (flock stands in for lockf). tools/test-rpc-lock.py.
@@ -283,9 +293,17 @@ jobs:
       # after about five minutes (#1010); trust waits as long as the address for that lock. And
       # mgmt-link.sh early, the ARMADA's link assigned at a boot that has it and no assignment, before
       # OPNsense configures its interfaces, and nothing done at the boot after, without the link, on
-      # the XGS 3300, or on an answer it cannot read (the review's A4).
+      # the XGS 3300, or on an answer it cannot read (the review's A4). And mgmt-link.sh ping, an
+      # address or name and a count checked before anything reaches the coprocessor (svc-1-10).
       - name: The management link's address
         run: python3 tools/test-mgmt-link.py
+
+      # The coprocessor's log to OPNsense's remote destinations: the Syslog templates' overlay
+      # rendered against made-up destinations (svc-3-30). tools/test-syslog-remote.py.
+      - name: The coprocessor's log to the remote servers
+        run: |
+          python3 -m pip install --quiet jinja2
+          python3 tools/test-syslog-remote.py
 
       # bridge-pathcost.sh against a made-up kernel's bridges, run after run: a 2.5G port's medium
       # as FreeBSD names it, a cost the old STP keeps in sixteen bits asked for once and not every
@@ -372,6 +390,12 @@ jobs:
       # 2026-11-06, D2 and G10). tools/test-coprocessor-state.py.
       - name: The coprocessor's last good reading kept
         run: python3 tools/test-coprocessor-state.py
+
+      # The coprocessor's memory error counters and their alert: at the threshold XGS: Settings sets,
+      # at an error not corrected, counted again from each alert and each start of the coprocessor
+      # (hw-10). tools/test-health.py.
+      - name: The coprocessor's memory error alert
+        run: python3 tools/test-health.py
 
       # Which device becomes MGMT at the first boot, after an install and after a factory reset (issue
       # 957): scripts/xgs/assign.php's own function, with PHP and no OPNsense. tools/test-assign-mgmt.py.

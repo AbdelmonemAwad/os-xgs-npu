@@ -196,7 +196,7 @@ def wanted():
         root = ET.parse(CONFIG).getroot()
     except (OSError, ET.ParseError):
         return None
-    if (root.findtext('OPNsense/XGS/general/cp_hardware') or '0') == '1':
+    if (root.findtext('OPNsense/XGS/general/cp_hardware') or '1') == '1':
         return True
     try:
         with open(COUNTS) as handle:

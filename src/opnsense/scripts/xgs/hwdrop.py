@@ -220,7 +220,13 @@ def drop_ends(groups, path=CONFIG):
     # so a connection that took its source from one of them and its destination from another was
     # dropped though it was not cut: a client that used one port to two servers, its connection to
     # the first cut in the same reading as another client's to the second, lost both.
+    # A group is a state's ends, or (its protocol, its ends): since 2026-11-14 a connection whose
+    # protocol the table names (the XGS 3300's; the XGS 136's has none) is dropped only for a state
+    # of the same protocol - a UDP connection on the ports of a TCP one cut is not that one.
+    norm = [(g[0].lower(), g[1]) if isinstance(g, tuple) else ('', g) for g in groups]
+
     def both(f):
         a, b = (address(f.get('src', '')), f.get('sport')), (address(f.get('dst', '')), f.get('dport'))
-        return any(a in ends and b in ends for ends in groups)
+        proto = (f.get('protocol') or '').lower()
+        return any(a in ends and b in ends and (not want or not proto or proto == want) for want, ends in norm)
     return drop(both, path)

@@ -36,7 +36,7 @@
     .xgs-card .s { font-size: 12px; opacity: 0.7; }
     .xgs-card .fa { opacity: 0.35; float: inline-end; font-size: 18px; margin-top: 2px; }
     @media (min-width: 768px) {
-        #grid-flows .tabulator-tableholder { overflow-x: hidden; }
+        #grid-flows .tabulator-tableholder, #grid-left .tabulator-tableholder { overflow-x: hidden; }
     }
 </style>
 
@@ -121,8 +121,46 @@
                             ? '<i class="fa fa-bolt text-success"></i> ' + "{{ lang._('in hardware') }}"
                             : '<span class="text-muted">' + row.state + '</span>';
                     },
+                    /* the next hop each direction leaves by, as the driver keeps it per flow */
+                    nhop: function (column, row) {
+                        const out = row.nhop_orig ? '&rarr; <code>' + row.nhop_orig + '</code>' : '';
+                        const back = row.nhop_reply ? '&larr; <code>' + row.nhop_reply + '</code>' : '';
+                        return '<span dir="ltr">' + [out, back].filter(Boolean).join('<br/>') + '</span>';
+                    },
+                    /* what the coprocessor counts for it added to its pf state (Settings: count_to_pf) */
+                    pf: function (column, row) {
+                        if (row.pf === 'counted') {
+                            return '<i class="fa fa-check text-success"></i> ' + "{{ lang._('counted in pf') }}";
+                        }
+                        return '<span class="text-muted">' + (row.pf === 'off' ? "{{ lang._('not given to pf') }}" :
+                            "{{ lang._('nothing counted yet') }}") + '</span>';
+                    },
                     commands: release_button,
                     release: release_button
+                }
+            }
+        });
+
+        /* the connections that left hardware between two readings of this page, newest first */
+        function when(t) {
+            return t ? new Date(t * 1000).toLocaleString() : '';
+        }
+
+        $('#grid-left').UIBootgrid({
+            search: '/api/xgs/flows/left',
+            options: {
+                selection: false,
+                formatters: {
+                    connection: function (column, row) {
+                        return '<span dir="ltr"><code>' + row.source + '</code> &rarr; <code>' + row.destination + '</code></span>';
+                    },
+                    between: function (column, row) {
+                        return row.after ? when(row.after) + ' &ndash; ' + when(row.before) : "{{ lang._('before') }}" + ' ' + when(row.before);
+                    },
+                    pf: function (column, row) {
+                        return row.pf === 'gone' ? "{{ lang._('its pf state is gone: closed, killed or expired') }}" :
+                            "{{ lang._('pf still has its state: the host carries it') }}";
+                    }
                 }
             }
         });
@@ -193,6 +231,7 @@
         $('#refreshAct').click(function () {
             load();
             $('#grid-flows').bootgrid('reload');
+            $('#grid-left').bootgrid('reload');
         });
 
         load();
@@ -220,7 +259,9 @@
                 <th data-column-id="ipsec" data-formatter="ipsec" data-type="string">{{ lang._('IPsec') }}</th>
                 <th data-column-id="state" data-formatter="state" data-type="string" data-width="9em">{{ lang._('State') }}</th>
                 <th data-column-id="punts" data-type="numeric" data-width="6em" data-visible="false">{{ lang._('Handed back') }}</th>
+                <th data-column-id="nhop" data-formatter="nhop" data-sortable="false" data-type="string">{{ lang._('Next hop') }}</th>
                 <th data-column-id="bytes" data-formatter="traffic" data-type="numeric" data-width="13em">{{ lang._('Counted in hardware') }}</th>
+                <th data-column-id="pf" data-formatter="pf" data-type="string" data-width="10em">{{ lang._('In pf') }}</th>
                 <th data-column-id="packets" data-type="numeric" data-width="8em" data-visible="false">{{ lang._('Packets in hardware') }}</th>
                 <th data-column-id="commands" data-formatter="release" data-sortable="false" data-width="5em">{{ lang._('Commands') }}</th>
             </tr>
@@ -228,6 +269,25 @@
         <tbody></tbody>
         <tfoot></tfoot>
     </table>
+    <div style="padding: 15px 15px 5px;"><div class="xgs-head"><b>{{ lang._('Left hardware') }}</b></div></div>
+    <table id="grid-left" class="table table-condensed table-hover table-striped table-responsive">
+        <thead>
+            <tr>
+                <th data-column-id="n" data-identifier="true" data-type="numeric" data-visible="false">#</th>
+                <th data-column-id="protocol" data-type="string" data-width="6em">{{ lang._('Protocol') }}</th>
+                <th data-column-id="connection" data-formatter="connection" data-sortable="false" data-type="string">{{ lang._('Connection') }}</th>
+                <th data-column-id="source" data-type="string" data-visible="false">{{ lang._('Source') }}</th>
+                <th data-column-id="destination" data-type="string" data-visible="false">{{ lang._('Destination') }}</th>
+                <th data-column-id="before" data-formatter="between" data-type="numeric">{{ lang._('Left between') }}</th>
+                <th data-column-id="pf" data-formatter="pf" data-type="string">{{ lang._('Why, as pf tells it now') }}</th>
+            </tr>
+        </thead>
+        <tbody></tbody>
+        <tfoot></tfoot>
+    </table>
+    <div class="text-muted" style="padding: 0 15px 10px;">
+        <small>{{ lang._('The drivers count why connections leave hardware but keep no record of each, so this page keeps one: a connection in its last reading and not in this one left between the two. A killed state leaves hardware within two seconds. The last 100 are kept; none are told while the table lists only part of what is in hardware.') }}</small>
+    </div>
 </div>
 
 {{ partial("OPNsense/XGS/credit") }}

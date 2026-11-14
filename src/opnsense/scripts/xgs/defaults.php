@@ -153,6 +153,36 @@ if ($again === null && in_array($key, $done, true)) {
     }
 }
 
+/*
+ * The driver's IPsec loader tunables where XGS: Settings has nothing saved (2026-11-14). The settings
+ * offer IPsec in the engine and its tunnel flows on by default, and the driver reads them from loader
+ * tunables, which apply.php writes at the owner's Apply. A new install has their rows from the
+ * model's migration to 1.3.0, which runs before this; a factory reset takes the configuration with
+ * /conf and runs no migration, so the rows were gone, the page showed IPsec on and the driver ran
+ * without it until the owner's first Apply. Where this model's settings are not in the configuration
+ * and no row sets them, the rows are written from its defaults, once: the driver has them from the
+ * next boot (tunables-kenv.sh). An appliance with its settings saved is left as its owner has it.
+ */
+$key = 'ipsec_tunables';
+if (isset($c->OPNsense->XGS->general)) {
+    echo "{$key}: XGS: Settings is saved here - left as the owner has it\n";
+} elseif (in_array($key, $done, true)) {
+    echo "{$key}: written once already - left as it is\n";
+} elseif ($check) {
+    echo "{$key}: would be written where no row sets them (XGS: Settings has nothing saved)\n";
+} else {
+    $written = \OPNsense\XGS\XGS::ipsecTunablesWhereNone(new \OPNsense\XGS\XGS(), $family);
+    if (count($written)) {
+        $changed = true;
+        echo "{$key}: " . implode(', ', array_map(function ($k) use ($written) {
+            return $k . '=' . $written[$k];
+        }, array_keys($written))) . " - the driver has them from the next boot\n";
+    } else {
+        echo "{$key}: each already has its row - left as it is\n";
+    }
+    $recorded[] = $key;
+}
+
 if ($check) {
     exit(0);
 }

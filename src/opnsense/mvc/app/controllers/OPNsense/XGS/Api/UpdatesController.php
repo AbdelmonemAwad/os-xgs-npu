@@ -61,6 +61,19 @@ class UpdatesController extends ApiControllerBase
     }
 
     /**
+     * The coprocessor's software for the Coprocessor tab - its vendor build, its fast path's build, its
+     * boot firmware and the U-Boot match check (scripts/xgs/coprocessor.py, uboot_check) - as last read
+     * on a GET, read again on a POST (in the background, answered at once with "reading"). Everything
+     * it runs reads; nothing writes the coprocessor's flash, and no write is offered here.
+     */
+    public function coprocessorAction()
+    {
+        $what = $this->request->isPost() ? 'collect' : 'show';
+        $decoded = json_decode((new Backend())->configdRun('xgs coprocessor ' . $what), true);
+        return is_array($decoded) ? $decoded : ['error' => 'unread'];
+    }
+
+    /**
      * The channel the updates follow: releases, or main for an owner who wants what is merged before
      * it is released. POST with channel=releases or channel=main sets it; anything else is refused
      * here, before configd.

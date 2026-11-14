@@ -110,5 +110,21 @@ check('the states a list naming 203.0.113.0/24 and 198.51.100.9 cuts', cut,
 empty = lc.Matcher(set())
 check('an empty list matches nothing', any(a in empty for _, addrs in st for a in addrs), False)
 
+# The flood cut: pf's overload tables, watched while general.flood_cut is on (the default).
+with tempfile.TemporaryDirectory() as work:
+    def floods(general, rules=''):
+        path = os.path.join(work, 'config.xml')
+        with open(path, 'w') as fh:
+            fh.write('<opnsense><OPNsense><XGS><general>%s</general></XGS></OPNsense><filter>%s</filter></opnsense>'
+                     % (general, rules))
+        return lc.flood_tables(path)
+    check('flood cut: on with nothing saved, virusprot', floods(''), ['virusprot'])
+    check('flood cut: a rule\'s own overload table as well, once',
+          floods('<flood_cut>1</flood_cut>', '<rule><overload>floods</overload></rule><rule><overload>floods</overload></rule>'),
+          ['virusprot', 'floods'])
+    check('flood cut: a name pf could not have is not watched',
+          floods('', '<rule><overload>bad name;</overload></rule>'), ['virusprot'])
+    check('flood cut: off watches nothing', floods('<flood_cut>0</flood_cut>'), [])
+
 print('all passed' if not failures else f'{failures} failed')
 sys.exit(1 if failures else 0)

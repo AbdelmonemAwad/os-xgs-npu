@@ -19,6 +19,8 @@
  *                      Detection's configuration through the template overlay OPNsense/IDS/xgs-inspector.yaml;
  *                      while on, the running driver's dp.ips_depth or flow.ips_depth a quarter over
  *                      Suricata's stream depth (xgs_ips_depth)
+ *   failclose          the running driver's dp.ips_loop or ips.loop, through failclose.py (and from cron)
+ *   flood_cut          lists_cut.py, which watches pf's overload tables as well while it is on
  *   inspect_pass_invalid  the same overlay (stream.drop-invalid: no), while inspect_then_hardware is on,
  *                      and the running driver's dp.netmap_gate_cut or flow.netmap_gate_cut, 1 while it
  *                      is on and 0 otherwise
@@ -181,7 +183,7 @@ if ($family !== 'octeontx' && $family !== 'armada') {
 }
 
 /* The offload gate, as it always was. */
-$want = $get('offload', '0') === '1' ? 'on' : 'off';
+$want = $get('offload', '1') === '1' ? 'on' : 'off';
 $gate = json_decode((string)shell_exec('/usr/local/opnsense/scripts/xgs/offload.sh ' . $want . ' 2>/dev/null'), true);
 if (!is_array($gate) || empty($gate['applied'])) {
     $ok = false;
@@ -194,7 +196,7 @@ if (!is_array($gate) || empty($gate['applied'])) {
 
 /* The flow maker, on the running driver. */
 $auto_oid = $family === 'octeontx' ? 'dev.octep.0.dp.auto' : 'dev.npuep.0.flow.auto';
-$auto = $get('flow_auto', '0') === '1' ? '1' : '0';
+$auto = $get('flow_auto', '1') === '1' ? '1' : '0';
 if (sysctl_get($auto_oid) === null) {
     $steps[] = 'automatic acceleration: the driver is not loaded, applied at the next boot';
 } elseif (sysctl_set($auto_oid, $auto)) {
@@ -231,7 +233,7 @@ if (sysctl_get($act_oid) === null) {
 $marker = '/var/db/os-xgs-npu/inspector-vf';
 $present = '/var/run/os-xgs-npu.oxips0';
 $overlay = '/usr/local/etc/suricata/conf.d/xgs-inspector.yaml';
-$inspect = $get('inspect_then_hardware', '0') === '1';
+$inspect = $get('inspect_then_hardware', '1') === '1';
 exec('/sbin/ifconfig oxips0 > /dev/null 2>&1', $ifout, $ifrc);
 $have_if = $ifrc === 0;
 if ($inspect) {
@@ -356,6 +358,21 @@ if (sysctl_get($gate_cut_oid) === null) {
     $steps[] = 'let rejected TCP segments through: the driver refused ' . $gate_cut_oid . '=' . $gate_cut;
 }
 
+/*
+ * Drop when the inspection stops (failclose.py): the inspector's knob, dp.ips_loop or ips.loop, 0 only
+ * while the setting and "Inspect, then hardware" are on and the Intrusion Detection is on in IPS mode,
+ * 1 otherwise; cron keeps it so every two seconds, as the Intrusion Detection is turned on or off.
+ */
+$fc = json_decode((string)shell_exec('/usr/local/opnsense/scripts/xgs/failclose.py 2>/dev/null'), true);
+if (!is_array($fc)) {
+    $steps[] = 'drop when the inspection stops: no answer from failclose.py';
+} else {
+    if (empty($fc['applied'])) {
+        $ok = false;
+    }
+    $steps[] = $fc['message'];
+}
+
 /* The coprocessor's counts, to pf and to the interfaces: both drivers read them. */
 $cnt = $family === 'octeontx' ? 'dev.octep.0.dp.' : 'dev.npuep.0.flow.';
 foreach (['count_to_pf' => [$cnt . 'hw_to_pf', 'hardware traffic counted in pf'],
@@ -376,7 +393,7 @@ $cut = json_decode((string)shell_exec('/usr/local/opnsense/scripts/xgs/lists_cut
 $steps[] = is_array($cut) && isset($cut['message']) ? $cut['message'] : 'cut when listed: no answer from lists_cut.py';
 
 /* Unusual traffic, reported and never blocked - anomaly.py, every minute from cron while on. */
-$steps[] = 'watching for unusual traffic ' . ($get('anomaly_watch', '0') === '1' ? 'on, every minute' : 'off');
+$steps[] = 'watching for unusual traffic ' . ($get('anomaly_watch', '1') === '1' ? 'on, every minute' : 'off');
 
 /* The TLS fingerprints whose connections are cut - ja4_cut.py, also every two seconds from cron. */
 $ja4 = json_decode((string)shell_exec('/usr/local/opnsense/scripts/xgs/ja4_cut.py 2>/dev/null'), true);
@@ -386,7 +403,7 @@ $steps[] = is_array($ja4) && isset($ja4['message']) ? $ja4['message'] : 'cut by 
    the list below: it decides which zones run in hardware, which that list no longer keeps. */
 $cp = json_decode((string)shell_exec('/usr/local/opnsense/scripts/xgs/cp_users.py 2>/dev/null'), true);
 $steps[] = is_array($cp) && isset($cp['message']) ? $cp['message'] : 'Captive Portal clients in hardware: no answer from cp_users.py';
-if ($get('cp_hardware', '0') === '1') {
+if ($get('cp_hardware', '1') === '1') {
     /* watched from now, not from cron's next minute: a login and a logout can both fall before it */
     exec('/usr/sbin/daemon -f /usr/local/opnsense/scripts/xgs/cp_users.py --for 58');
 }
@@ -411,11 +428,11 @@ if (!is_array($excl)) {
 /* The tunables this family reads at attach. */
 $tunables = [];
 if ($family === 'octeontx') {
-    $tunables['hw.octep.ipsec_on'] = $get('ipsec_offload', '0') === '1' ? '1' : '0';
-    $tunables['hw.octep.ipsec_flows'] = $get('ipsec_flows', '0') === '1' ? '1' : '0';
+    $tunables['hw.octep.ipsec_on'] = $get('ipsec_offload', '1') === '1' ? '1' : '0';
+    $tunables['hw.octep.ipsec_flows'] = $get('ipsec_flows', '1') === '1' ? '1' : '0';
 } else {
-    $tunables['hw.npuep.ipsec_on'] = $get('ipsec_offload', '0') === '1' ? '1' : '0';
-    $tunables['hw.npuep.ipsec_flows'] = $get('ipsec_flows', '0') === '1' ? '1' : '0';
+    $tunables['hw.npuep.ipsec_on'] = $get('ipsec_offload', '1') === '1' ? '1' : '0';
+    $tunables['hw.npuep.ipsec_flows'] = $get('ipsec_flows', '1') === '1' ? '1' : '0';
     $tunables['hw.npuep.giu.poll_ms'] = (string)max(1, min(100, (int)$get('rx_poll_ms', '1')));
     $tunables['hw.npuep.giu.rx_budget'] = (string)max(4, min(4096, (int)$get('rx_budget', '1024')));
     $tunables['hw.npuep.giu.rx_msix'] = $get('rx_doorbells', '1') === '1' ? '1' : '0';

@@ -19,12 +19,40 @@ Each driver keeps its table as text: dev.octep.0.dp.flow_table on the XGS 3300 (
 three or four lines, addresses as the driver's own hex words) and dev.npuep.0.flow.flows on the XGS
 136 (a connection on one line, addresses dotted). This reads whichever is there and gives both the
 same rows, so the page draws one table for either family.
+
+WHAT EACH ROW ALSO SAYS (2026-11-14):
+
+    nhop      the next hop each direction leaves by: the driver keeps one per flow, not a route
+              table. On the XGS 3300 dev.octep.0.dp.nhop_table names each one's MAC, MTU and VLAN,
+              and the host's ARP and NDP tables give the address behind the MAC; the XGS 136's
+              driver prints the index only.
+    to_pf     whether what the coprocessor counts for a connection is added to its pf state
+              (dev.octep.0.dp.hw_to_pf, dev.npuep.0.flow.hw_to_pf: Settings' count_to_pf); a row
+              is "counted in pf" when it is on and the coprocessor has counted the connection.
+
+LEFT HARDWARE. Neither driver keeps a record of a connection it let go, only counts of why
+(dev.octep.0.dp.flow_reclaimed, flow_timeout, flow_released; dev.npuep.0.flow.auto_gone, released).
+So each listing is kept (/var/db/os-xgs-npu/flows-seen.json), and a connection in the last one and
+not in this one has left hardware between the two readings: it is kept in a list of the last 100
+(flows-gone.json) with the two times and what pf says of it now - its state gone (closed, killed
+or expired: a killed state leaves hardware within two seconds) or still there (the host carries
+it: handed back, returned by hand, or let go for another reason). Not done when the listing is cut
+short (the drivers print the first 4,096): a connection past it would read as gone.
 """
 
 import json
+import os
 import re
 import subprocess
 import sys
+import time
+
+SEEN = '/var/db/os-xgs-npu/flows-seen.json'
+GONE = '/var/db/os-xgs-npu/flows-gone.json'
+GONE_KEEP = 100
+NHOP_LINE = re.compile(r'^\s*(\d+)\s+rev\s+\d+\s+refs\s+\d+\s+iface\s+\d+\s+to\s+([0-9a-f:]{17})\s+from\s+\S+\s+'
+                       r'mtu\s+(\d+)(?:\s+vlan\s+(\d+))?', re.I)
+NEIGHBOUR = re.compile(r'\(([0-9a-f.:]+)\)\s+at\s+([0-9a-f:]{17})', re.I)
 
 OCTEP_HEAD = re.compile(r'^\s*(\d+)\s+rev\s+(\d+)\s+proto\s+(\d+)')
 OCTEP_DIR = re.compile(r'^\s*(orig|reply)\s+(0x[0-9a-f]{8}|\[[0-9a-f:.]+\]):(\d+)\s+->\s+(0x[0-9a-f]{8}|\[[0-9a-f:.]+\]):(\d+)(.*)$',
@@ -88,6 +116,9 @@ def octep(text):
         found = OCTEP_DIR.match(line)
         if found:
             direction, src, sport, dst, dport, rest = found.groups()
+            nhop = re.search(r'\bnhop\s+(\d+)', rest)
+            current.setdefault('nhop', [None, None])[0 if direction == 'orig' else 1] = \
+                int(nhop.group(1)) if nhop else None
             if direction == 'orig':
                 current.update(src=word_to_ip(src), sport=int(sport), dst=word_to_ip(dst), dport=int(dport))
                 port = re.search(r'\bin\s+(\S+)', rest)
@@ -128,7 +159,7 @@ def npuep(text):
                       'src': g[6].strip('[]'), 'sport': int(g[7]), 'dst': g[8].strip('[]'), 'dport': int(g[9]),
                       'port': '', 'state': 'being made' if 'being made' in g[16] else 'active',
                       'ipsec': [], 'punts': 0, 'bridged': bool(BRIDGED.search(line.split('|')[0] + ' ')),
-                      'vlan': False})
+                      'vlan': False, 'nhop': [int(g[5]), int(g[11])]})
     return flows
 
 
@@ -197,6 +228,95 @@ def release(index, rev=''):
     return 0
 
 
+def run(argv):
+    try:
+        done = subprocess.run(argv, capture_output=True, text=True, errors='replace', timeout=20)
+    except (OSError, subprocess.SubprocessError):
+        return ''
+    return done.stdout if done.returncode == 0 else ''
+
+
+def next_hops(text):
+    """The XGS 3300's dp.nhop_table, {index: {mac, mtu, vlan, address}}: the address is the host's
+    neighbour with that MAC, from arp -an and ndp -an, when it has one."""
+    found = {}
+    for line in (text or '').splitlines():
+        m = NHOP_LINE.match(line)
+        if m:
+            found[m.group(1)] = {'mac': m.group(2).lower(), 'mtu': int(m.group(3)),
+                                 'vlan': int(m.group(4)) if m.group(4) else 0, 'address': ''}
+    if found:
+        by_mac = {}
+        for line in run(['/usr/sbin/arp', '-an']).splitlines():
+            m = NEIGHBOUR.search(line)
+            if m:
+                by_mac.setdefault(m.group(2).lower(), m.group(1))
+        for line in run(['/usr/sbin/ndp', '-an']).splitlines():
+            parts = line.split()
+            if len(parts) > 1 and re.match(r'^[0-9a-f:]{17}$', parts[1], re.I) and not parts[0].startswith('fe80'):
+                by_mac.setdefault(parts[1].lower(), parts[0])
+        for nh in found.values():
+            nh['address'] = by_mac.get(nh['mac'], '')
+    return found
+
+
+def flow_key(f):
+    return '%s/%s' % (f.get('id'), f.get('rev'))
+
+
+def pf_has(states, f):
+    """Whether pf still has a state with this connection's two ends, from pfctl -ss: an IPv4 end
+    as address:port, an IPv6 one as address[port], both on one line."""
+    if ':' in str(f.get('src', '')):
+        a, b = '%s[%s]' % (f['src'], f['sport']), '%s[%s]' % (f['dst'], f['dport'])
+    else:
+        a, b = '%s:%s' % (f.get('src'), f.get('sport')), '%s:%s' % (f.get('dst'), f.get('dport'))
+    return any(a in line and b in line for line in states)
+
+
+def load(path, default):
+    try:
+        with open(path, encoding='utf-8') as handle:
+            return json.load(handle)
+    except (OSError, ValueError):
+        return default
+
+
+def save(path, value):
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path + '.tmp', 'w', encoding='utf-8') as handle:
+        json.dump(value, handle, separators=(',', ':'))
+    os.replace(path + '.tmp', path)
+
+
+def track(flows, complete, now=None):
+    """The connections that left hardware since the last listing, added to the kept list; returns
+    {'gone': [...], 'since': the last listing's time, 'complete': whether it could be told}."""
+    now = int(now if now is not None else time.time())
+    kept = load(GONE, [])
+    kept = kept if isinstance(kept, list) else []
+    last = load(SEEN, {})
+    if not complete:
+        # cut short: what is past the listing would read as gone; start again from the next whole one
+        if os.path.exists(SEEN):
+            os.unlink(SEEN)
+        return {'gone': kept, 'since': None, 'complete': False}
+    if isinstance(last, dict) and isinstance(last.get('flows'), dict):
+        here = {flow_key(f) for f in flows}
+        left = [f for k, f in last['flows'].items() if k not in here]
+        if left:
+            states = run(['/sbin/pfctl', '-ss']).splitlines()
+            for f in left:
+                kept.append(dict(f, after=last.get('at'), before=now,
+                                 pf='state' if pf_has(states, f) else 'gone'))
+            kept = kept[-GONE_KEEP:]
+            save(GONE, kept)
+    save(SEEN, {'at': now, 'flows': {flow_key(f): {k: f.get(k) for k in
+                                                     ('id', 'rev', 'protocol', 'src', 'sport', 'dst', 'dport')}
+                                     for f in flows}})
+    return {'gone': kept, 'since': last.get('at') if isinstance(last, dict) else None, 'complete': True}
+
+
 def main():
     if len(sys.argv) > 1 and sys.argv[1] == 'summary':
         return figures()
@@ -214,6 +334,8 @@ def main():
             if value.isdigit():
                 answer['counters'][name] = int(value)
         answer['flows'] = octep(table)
+        answer['to_pf'] = (sysctl('dev.octep.0.dp.hw_to_pf') or '').strip() == '1'
+        answer['nhops'] = next_hops(sysctl('dev.octep.0.dp.nhop_table'))
     else:
         table = sysctl('dev.npuep.0.flow.flows')
         if table is not None:
@@ -234,6 +356,11 @@ def main():
                 if value.isdigit():
                     answer['counters'][key] = int(value)
             answer['flows'] = npuep(table)
+            answer['to_pf'] = (sysctl('dev.npuep.0.flow.hw_to_pf') or '').strip() == '1'
+            answer['nhops'] = {}
+    if answer['family']:
+        listed = len(answer['flows'])
+        answer['left'] = track(answer['flows'], listed >= answer['counters'].get('flows', listed))
     print(json.dumps(answer))
     return 0
 

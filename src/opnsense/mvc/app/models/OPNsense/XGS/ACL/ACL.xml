@@ -9,7 +9,7 @@
         the pages are in one section of the menu. Only the names shown were changed.
     -->
     <page-interfaces-diagnostics-xgs>
-        <name>XGS: Overview, Ports, Transceivers, IPsec and Offloaded Flows</name>
+        <name>XGS: Overview, Ports, Transceivers, IPsec, Offloaded Flows and Coprocessor Ping</name>
         <description>Allow reading the XGS coprocessor's status, ports, transceivers, IPsec engine and offloaded flows; these pages change nothing</description>
         <patterns>
             <pattern>ui/xgs/status</pattern>
@@ -24,6 +24,9 @@
             <pattern>api/xgs/ipsec/*</pattern>
             <pattern>ui/xgs/flows</pattern>
             <pattern>api/xgs/flows/*</pattern>
+            <!-- a ping sent by the coprocessor over the management link: a few packets, nothing changed -->
+            <pattern>ui/xgs/ping</pattern>
+            <pattern>api/xgs/ping/*</pattern>
         </patterns>
     </page-interfaces-diagnostics-xgs>
     <page-system-settings-xgs>

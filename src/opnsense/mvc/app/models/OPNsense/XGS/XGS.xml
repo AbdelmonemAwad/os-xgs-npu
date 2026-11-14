@@ -4,7 +4,7 @@
 -->
 <model>
     <mount>//OPNsense/XGS</mount>
-    <version>1.2.0</version>
+    <version>1.3.0</version>
     <description>XGS coprocessor</description>
     <items>
         <!--
@@ -24,32 +24,35 @@
             <offload type="BooleanField">
                 <Required>Y</Required>
                 <!--
-                    Off.
+                    On in a new install since 2026-11-14 (the owner's decision D9), with the flow
+                    maker below; off until then.
 
-                    Three reasons, in the order they were learned. The coprocessor comes up with
-                    fw_cfg 0x2 - TCP_SEQ_CHK alone, no offload - so off is also what the hardware
-                    itself defaults to, and a plugin that silently differed from the hardware
-                    would be the first thing to suspect and the last thing anybody looked at.
+                    The coprocessor comes up with fw_cfg 0x2 - TCP_SEQ_CHK alone, no offload - and
+                    forgets the gate at every boot, so this is written again at every boot
+                    (bringup.sh, 07-npuep-gate). With the gate open, a frame the fast path decides it
+                    can handle does not reach pf; opening it by itself accelerates nothing, because a
+                    frame leaves the host's path only once the driver has put its connection in
+                    hardware, which the flow maker does (docs/findings/the-state-is-the-gate.md).
 
-                    Then: with the gate open, a frame that the fast path decides it can handle
-                    does not reach pf. That is the entire point of it, and it is also the reason
-                    it is not a default. Nothing in this package may quietly take traffic out of
-                    the firewall's path on the strength of having been installed.
+                    It was off for as long as a connection in hardware could escape the Intrusion
+                    Detection: a port Suricata reads through netmap lost the end of every transfer
+                    the flow maker cut to hardware (issue 1148). The netmap gate (dp.netmap_gate,
+                    flow.netmap_gate) now keeps every connection on such a port with the host, so
+                    the default changed with it, and only with it.
 
-                    And: opening the gate by itself accelerates nothing. A frame leaves the
-                    host's path only once the driver has put its connection in hardware, and the
-                    flow maker that does that - dp.auto on the OCTEON TX, flow.auto on the ARMADA -
-                    is off unless set; see docs/findings/the-state-is-the-gate.md and
-                    docs/npuep/offload-plan.md. So the honest default is the one that changes
-                    nothing until there is something to change.
+                    A default is what a new install gets: an installed appliance keeps the value it
+                    saved, and XGS: Overview offers the recommended values to its owner
+                    (Api/SettingsController.php, recommended). Never a migration.
                 -->
-                <Default>0</Default>
+                <Default>1</Default>
             </offload>
-            <!-- The flow maker: dp.auto on the OCTEON TX, flow.auto on the ARMADA. Off, for the
-                 offload gate's reasons: it is what takes a connection out of the firewall's path. -->
+            <!-- The flow maker: dp.auto on the OCTEON TX, flow.auto on the ARMADA. On in a new install
+                 since 2026-11-14, with offload above and for its reasons: it is what takes a
+                 connection out of the firewall's path, and the netmap gate keeps the ports Suricata
+                 reads in IPS mode with the host. -->
             <flow_auto type="BooleanField">
                 <Required>Y</Required>
-                <Default>0</Default>
+                <Default>1</Default>
             </flow_auto>
             <!-- The coprocessor's own counts of what it forwards, given to pf's states and rules
                  (dev.octep.0.dp.hw_to_pf, dev.npuep.0.flow.hw_to_pf) and to the interfaces' counters
@@ -78,10 +81,11 @@
                  user (dp.live_users, flow.live_users), so a logout takes its connections out of
                  hardware at once; flow_exclude.php then stops keeping those zones with the host. A
                  zone with an idle timeout or RADIUS accounting needs the counts cp_overlay.py adds to
-                 the portal's, and stays with the host where the overlay is not on. Off by default. -->
+                 the portal's, and stays with the host where the overlay is not on. On in a new install
+                 since 2026-11-14 (svc-2-16), off until then. -->
             <cp_hardware type="BooleanField">
                 <Required>Y</Required>
-                <Default>0</Default>
+                <Default>1</Default>
             </cp_hardware>
             <!-- Block lists whose additions cut the connections already open: scripts/xgs/lists_cut.py,
                  every minute from cron.d/xgs-lists and when the page is saved. The aliases are pf tables;
@@ -110,6 +114,15 @@
                 <Mask>/^[\s,]*([tqd][0-9a-z]{2}[di][0-9]{4}[0-9A-Za-z]{2}_[0-9a-f]{12}_[0-9a-f]{12}([\s,]+[tqd][0-9a-z]{2}[di][0-9]{4}[0-9A-Za-z]{2}_[0-9a-f]{12}_[0-9a-f]{12}){0,199})?[\s,]*$/</Mask>
                 <ValidationMessage>JA4 fingerprints, as t13d1516h2_8daaf6152771_e5627efa2ab1, separated by commas or new lines.</ValidationMessage>
             </cut_ja4>
+            <!-- Suricata's IPS drops cut (ff-10, 2026-11-14): every alert the Intrusion Detection logs
+                 as blocked cuts its connection as a listed fingerprint does - its pf states killed,
+                 and with cut_in_hardware its flow dropped on the coprocessor first - by
+                 scripts/xgs/ja4_cut.py, every two seconds. Acts only in IPS mode. Off: a new choice,
+                 and an installed appliance keeps what it saved. -->
+            <cut_ips_drops type="BooleanField">
+                <Required>Y</Required>
+                <Default>0</Default>
+            </cut_ips_drops>
             <!-- Cut in hardware (discovery 3, 2026-10-23): plain connections made with the microflow
                  action IPS and the fast path's IPS switch on (dp.mflow_action / flow.mflow_action,
                  offload.sh), so a connection the two cuts above cut is dropped on the coprocessor by
@@ -119,14 +132,27 @@
                 <Required>Y</Required>
                 <Default>1</Default>
             </cut_in_hardware>
+            <!-- Flood cut (svc-2-05): the pf tables OPNsense's own rules fill when a source passes a
+                 rule's connection limits - virusprot, and a rule's own overload table - watched by
+                 scripts/xgs/lists_cut.py like a block list, so what such a source has open is cut,
+                 in hardware first where "Cut in hardware" is on. The coprocessor's DoS table cannot
+                 do it: it dispatches none of its commands (docs/measurements/dos-probe-2026-10-19.md).
+                 On in a new install since 2026-11-14. -->
+            <flood_cut type="BooleanField">
+                <Required>Y</Required>
+                <Default>1</Default>
+            </flood_cut>
             <!-- Inspect, then hardware (discovery 4, 2026-10-23): the marker
                  /var/db/os-xgs-npu/inspector-vf, which has the driver make the coprocessor's
                  inspector function at boot; dp.ips_new / flow.ips_new; and oxips0 added to the
-                 Intrusion Detection by the template overlay OPNsense/IDS/xgs-inspector.yaml. Off by
-                 default: an experiment. -->
+                 Intrusion Detection by the template overlay OPNsense/IDS/xgs-inspector.yaml. On in a
+                 new install since 2026-11-14 (svc-2-06), off until then. It does nothing while the
+                 Intrusion Detection is off or in IDS mode: nothing reads oxips0, and the drivers hand
+                 each frame straight back and set its connection to forward (failclose leaves them
+                 so). The inspector's function is made at the boot after it is first on. -->
             <inspect_then_hardware type="BooleanField">
                 <Required>Y</Required>
-                <Default>0</Default>
+                <Default>1</Default>
             </inspect_then_hardware>
             <!-- Let rejected TCP segments through (issue 1148, measured 2026-11-12): while "Inspect,
                  then hardware" is on, the template overlay OPNsense/IDS/xgs-inspector.yaml writes
@@ -137,6 +163,19 @@
                 <Required>Y</Required>
                 <Default>0</Default>
             </inspect_pass_invalid>
+            <!-- Drop when the inspection stops (svc-5-04): while "Inspect, then hardware" is on and
+                 the Intrusion Detection is enabled in IPS mode, a frame the fast path sends the
+                 inspector with nothing reading oxips0 is dropped (dp.ips_loop 0, ips.loop 0) instead
+                 of passed with its connection set to forward. Any other time the drivers' own 1
+                 stands, so a fresh install with the Intrusion Detection off drops nothing.
+                 scripts/xgs/failclose.py keeps the knob in step with the configuration (apply, boot,
+                 and every two seconds from cron.d/xgs-failclose). On in a new install since
+                 2026-11-14; an appliance installed before gets 0 from Migrations/M1_3_0.php, its
+                 behaviour until then. -->
+            <failclose type="BooleanField">
+                <Required>Y</Required>
+                <Default>1</Default>
+            </failclose>
             <!-- Copies for packet capture (discoveries 12 and 17, 2026-10-25): the fast path's
                  FP_PKT_DUMP bit, 0x10 of its configuration word, written by offload.sh with the gate;
                  the copies it then sends (control message type 6) go to the port's BPF in the
@@ -146,24 +185,29 @@
                 <Default>0</Default>
             </capture_copies>
             <!-- Unusual traffic reported, never blocked: scripts/xgs/anomaly.py, every minute from
-                 cron.d/xgs-anomaly, which ends at once while this is off. -->
+                 cron.d/xgs-anomaly, which ends at once while this is off. Each alert also goes to
+                 /var/db/os-xgs-npu/anomaly/alerts.jsonl for os-netreport to send. On in a new install
+                 since 2026-11-14 (svc-2-23), off until then. -->
             <anomaly_watch type="BooleanField">
                 <Required>Y</Required>
-                <Default>0</Default>
+                <Default>1</Default>
             </anomaly_watch>
             <!-- IPsec associations to the coprocessor's engine: the loader tunable hw.octep.ipsec_on
-                 or hw.npuep.ipsec_on, read when the driver attaches - a reboot takes it. -->
+                 or hw.npuep.ipsec_on, read when the driver attaches - a reboot takes it. On in a new
+                 install since 2026-11-14 (hw-02); the tunable is written by the first apply of the
+                 settings page, and the reboot after it takes it. -->
             <ipsec_offload type="BooleanField">
                 <Required>Y</Required>
-                <Default>0</Default>
+                <Default>1</Default>
             </ipsec_offload>
             <!-- An association's flows forwarded by the coprocessor itself: hw.octep.ipsec_flows=1
                  on the OCTEON TX, hw.npuep.ipsec_flows=1 on the ARMADA (since 2026-10-20). The
                  OCTEON TX driver's value 2 is never offered: it forwards matching clear text that
-                 arrives on the tunnel's port. -->
+                 arrives on the tunnel's port. On in a new install since 2026-11-14, with
+                 ipsec_offload, and taken by a reboot as it is. -->
             <ipsec_flows type="BooleanField">
                 <Required>Y</Required>
-                <Default>0</Default>
+                <Default>1</Default>
             </ipsec_flows>
             <!-- ARMADA only: keep IPsec's software sessions off the host's AMD ccp(4) (issue 399). -->
             <ipsec_soft_crypto type="BooleanField">
@@ -264,6 +308,19 @@
                 <Mask>/^([0-9]{1,2}(,[0-9]{1,2}){0,15})?$/</Mask>
                 <ValidationMessage>Front port labels, separated by commas.</ValidationMessage>
             </poe_af>
+            <!--
+                The coprocessor's memory: corrected errors (its EDAC counters, scripts/xgs/health.py,
+                every five minutes) that raise an alert - in the system log, and for os-netreport to
+                send. Counted again from each alert, and from each start of the coprocessor; an error
+                not corrected always raises one. 0, no alert for corrected errors. Only the XGS 3300
+                registers these counters; the ARMADA family has none.
+            -->
+            <ecc_alert type="IntegerField">
+                <Required>Y</Required>
+                <Default>10</Default>
+                <MinimumValue>0</MinimumValue>
+                <MaximumValue>1000000</MaximumValue>
+            </ecc_alert>
         </general>
         <!--
             Problem reports (scripts/xgs/reporter.py, docs/problem-reports.md): what goes wrong on

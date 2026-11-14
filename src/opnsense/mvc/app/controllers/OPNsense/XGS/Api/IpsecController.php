@@ -29,6 +29,7 @@ namespace OPNsense\XGS\Api;
 
 use OPNsense\Base\ApiControllerBase;
 use OPNsense\Core\Backend;
+use OPNsense\XGS\XGS;
 
 /**
  * IPsec in the coprocessor's engine, as the script reports it. Read-only.
@@ -41,6 +42,17 @@ class IpsecController extends ApiControllerBase
         if ($decoded === null) {
             return ['present' => false, 'message' => gettext('the backend returned nothing readable')];
         }
+        /*
+         * What Settings asks for against what the driver was started with: the tunable is read
+         * when the driver attaches, so a change waits for the next reboot, and the page says so.
+         */
+        $mdl = new XGS();
+        $decoded['setting'] = [
+            'ipsec_offload' => (string)$mdl->general->ipsec_offload,
+            'ipsec_flows' => (string)$mdl->general->ipsec_flows,
+        ];
+        $booted = (string)($decoded['tunable']['value'] ?? '0') === '1' ? '1' : '0';
+        $decoded['reboot_pending'] = !empty($decoded['family']) && $decoded['setting']['ipsec_offload'] !== $booted;
         return $decoded;
     }
 
@@ -66,6 +78,39 @@ class IpsecController extends ApiControllerBase
                 'packets' => isset($r['packets']) ? (int)$r['packets'] : null,
                 'hw_packets' => isset($r['hw_packets']) ? (int)$r['hw_packets'] : null,
                 'note' => (string)($r['note'] ?? ''),
+                'cipher' => (string)($r['cipher'] ?? ''),
+                'mode' => (string)($r['mode'] ?? ''),
+                'reason' => (string)($r['reason'] ?? ''),
+                'reason_word' => (string)($r['reason_word'] ?? ''),
+            ];
+        }
+        return $this->searchRecordsetBase($rows);
+    }
+
+    /**
+     * The encryption profile as OPNsense configured it under VPN: IPsec, one row per child: its
+     * ESP proposals, whether the engine takes them, its mode, the connection's IKE proposals and
+     * dead peer detection. Read from the swanctl.conf OPNsense writes; nothing is set here.
+     */
+    public function profileAction()
+    {
+        $d = $this->getAction();
+        $rows = [];
+        foreach (($d['profile'] ?? []) as $i => $p) {
+            $esp = [];
+            foreach (($p['esp'] ?? []) as $e) {
+                $esp[] = (string)($e['proposal'] ?? '') . '=' . (string)($e['verdict'] ?? '');
+            }
+            $rows[] = [
+                'id' => (string)$i,
+                'connection' => (string)($p['connection'] ?? ''),
+                'child' => (string)($p['child'] ?? ''),
+                'mode' => (string)($p['mode'] ?? ''),
+                'esp' => implode(',', $esp),
+                'verdict' => (string)($p['verdict'] ?? ''),
+                'ike' => (string)($p['ike'] ?? ''),
+                'dpd' => (string)($p['dpd'] ?? ''),
+                'rekey' => (string)($p['rekey'] ?? ''),
             ];
         }
         return $this->searchRecordsetBase($rows);

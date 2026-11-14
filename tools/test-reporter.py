@@ -1011,6 +1011,23 @@ class ReporterTest(unittest.TestCase):
         self.assertIn('vendor build 20.0.0.222, fast path 43e1f0dc (PROD), read by the driver as vendor version 21',
                       row)
 
+    def test_a_report_carries_the_coprocessor_s_memory_errors_and_its_u_boot_check(self):
+        # svc-5-09, 2026-11-14: the EDAC counters health.py keeps, and a U-Boot that does not match.
+        self.write('/var/db/os-xgs-npu/coprocessor.json', json.dumps({'at': 1, 'software': {
+            'sfversion': '22.0.2.546', 'uboot_check': {'state': 'other_sdk', 'flash': '2019.10-10.21.01',
+                                                        'expected_sdk': '10.22.03'}}}))
+        self.write('/var/db/os-xgs-npu/health.json', json.dumps({'at': 1, 'uptime_s': 7300,
+                                                                  'edac': {'counters': 19, 'corrected': 3, 'uncorrected': 0}}))
+        table = self.reporter.system_table({'coprocessor': {'software': self.reporter.coprocessor_software(),
+                                                            'memory_errors': self.reporter.coprocessor_memory()}})
+        row = next(line for line in table.splitlines() if 'Coprocessor software' in line)
+        self.assertIn("U-Boot in the flash 2019.10-10.21.01, not from the running copy's SDK 10.22.03", row)
+        row = next(line for line in table.splitlines() if 'Coprocessor memory errors' in line)
+        self.assertIn('3 corrected, 0 uncorrected (19 counters, the coprocessor up 2 h)', row)
+        self.write('/var/db/os-xgs-npu/health.json', json.dumps({'at': 1, 'edac': {'counters': 0, 'corrected': 0,
+                                                                                    'uncorrected': 0}}))
+        self.assertEqual(self.reporter.coprocessor_memory(), 'not read on this model')
+
     def test_failed_update(self):
         self.write('/var/db/os-xgs-npu/update/apply.json',
                    json.dumps({'status': 'failed', 'message': 'the build <b>failed</b>', 'target': 'abcdef1234567890'}))

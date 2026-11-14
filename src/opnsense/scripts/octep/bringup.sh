@@ -196,7 +196,7 @@ idle*)
 	# 2026-11-06 the inspector's function and ring 0 were taken at every boot after, with the setting
 	# off on the page. And one restored with it on waited for an Apply nobody knew was due. A
 	# configuration that cannot be read leaves the marker as it is.
-	case "$(/usr/local/bin/php -r 'require_once("config.inc"); $g = $config["OPNsense"]["XGS"]["general"] ?? []; echo (($g["inspect_then_hardware"] ?? "0") === "1") ? "1" : "0";' 2>/dev/null)" in
+	case "$(/usr/local/bin/php -r 'require_once("config.inc"); $g = $config["OPNsense"]["XGS"]["general"] ?? []; echo (($g["inspect_then_hardware"] ?? "1") === "1") ? "1" : "0";' 2>/dev/null)" in
 	1)	if [ ! -e /var/db/os-xgs-npu/inspector-vf ]; then
 			mkdir -p /var/db/os-xgs-npu && : > /var/db/os-xgs-npu/inspector-vf &&
 			    log "the configuration has inspect, then hardware: its marker made"
@@ -715,7 +715,7 @@ done > /var/db/os-xgs-npu/labels.new 2>/dev/null && mv /var/db/os-xgs-npu/labels
 # driver rather than trusting that a message arrived.
 if [ -x /usr/local/opnsense/scripts/xgs/offload.sh ] && [ -x /usr/local/bin/php ]; then
 	WANT=$(/usr/local/bin/php -r \
-	    'require_once("config.inc"); echo empty($config["OPNsense"]["XGS"]["general"]["offload"]) ? "off" : "on";' \
+	    'require_once("config.inc"); echo (($config["OPNsense"]["XGS"]["general"]["offload"] ?? "1") === "1") ? "on" : "off";' \
 	    2>/dev/null)
 	case ${WANT} in
 	on|off)
@@ -735,8 +735,8 @@ if [ -x /usr/local/opnsense/scripts/xgs/offload.sh ] && [ -x /usr/local/bin/php 
 		log "never offloaded: $(/usr/local/bin/php /usr/local/opnsense/scripts/xgs/flow_exclude.php 2>/dev/null)"
 	fi
 	# The flow maker, from the same page: dp.auto puts established connections in hardware on its
-	# own. Off unless the owner turned it on there.
-	AUTO=$(/usr/local/bin/php -r 	    'require_once("config.inc"); echo empty($config["OPNsense"]["XGS"]["general"]["flow_auto"]) ? "0" : "1";' 	    2>/dev/null)
+	# own. As saved there, and on where nothing is saved (the model's default since 2026-11-14).
+	AUTO=$(/usr/local/bin/php -r 	    'require_once("config.inc"); echo (($config["OPNsense"]["XGS"]["general"]["flow_auto"] ?? "1") === "1") ? "1" : "0";' 	    2>/dev/null)
 	case ${AUTO} in
 	0|1) sysctl -q dev.octep.0.dp.auto=${AUTO} > /dev/null 2>&1 && log "automatic acceleration ${AUTO}" ;;
 	esac
@@ -754,11 +754,14 @@ if [ -x /usr/local/opnsense/scripts/xgs/offload.sh ] && [ -x /usr/local/bin/php 
 	rm -f /var/run/os-xgs-npu.oxips0
 	if ifconfig oxips0 > /dev/null 2>&1; then
 		touch /var/run/os-xgs-npu.oxips0
-		INSPECT=$(/usr/local/bin/php -r 'require_once("config.inc"); echo empty($config["OPNsense"]["XGS"]["general"]["inspect_then_hardware"]) ? "0" : "1";' 2>/dev/null)
+		INSPECT=$(/usr/local/bin/php -r 'require_once("config.inc"); echo (($config["OPNsense"]["XGS"]["general"]["inspect_then_hardware"] ?? "1") === "1") ? "1" : "0";' 2>/dev/null)
 		if [ "${INSPECT}" = "1" ]; then
 			ifconfig oxips0 up
 			sysctl -q dev.octep.0.dp.ips_new=1 > /dev/null 2>&1 && log "inspect, then hardware: oxips0 up, new connections inspected"
 		fi
+		# Drop when the inspection stops: the knob as the setting and the Intrusion Detection say,
+		# before Suricata starts; cron keeps it after (scripts/xgs/failclose.py).
+		[ -x /usr/local/opnsense/scripts/xgs/failclose.py ] && log "$(/usr/local/opnsense/scripts/xgs/failclose.py 2>/dev/null)"
 	fi
 	# And the coprocessor's own counts of what it forwards, to pf's states and rules and to the
 	# interfaces' counters: on unless the owner turned them off on the same page.

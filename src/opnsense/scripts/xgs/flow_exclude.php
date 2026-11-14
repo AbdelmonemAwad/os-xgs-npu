@@ -139,7 +139,7 @@ function ipfw_keeps(array $config, array &$why): string
      * the file does not name, or any zone when it cannot be read, stays with the host.
      */
     $in_hw = [];
-    if ((string)($config['OPNsense']['XGS']['general']['cp_hardware'] ?? '0') === '1') {
+    if ((string)($config['OPNsense']['XGS']['general']['cp_hardware'] ?? '1') === '1') {
         $placed = json_decode((string)@file_get_contents('/var/db/os-xgs-npu/cp/zones.json'), true);
         foreach ((is_array($placed) ? ($placed['zones'] ?? []) : []) as $p) {
             if (is_array($p) && ($p['where'] ?? '') === 'hardware' && isset($p['zoneid'])) {

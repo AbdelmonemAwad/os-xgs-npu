@@ -94,7 +94,7 @@ def settings():
         root = ET.parse(CONFIG).getroot()
     except (OSError, ET.ParseError):
         return False, []
-    on = (root.findtext('OPNsense/XGS/general/cp_hardware') or '0') == '1'
+    on = (root.findtext('OPNsense/XGS/general/cp_hardware') or '1') == '1'
     # A RADIUS server sends the portal's accounting when it has an accounting port (Radius.php)
     accounting = {s.findtext('name'): s for s in root.findall('system/authserver')
                   if (s.findtext('type') or '') == 'radius' and (s.findtext('radius_acct_port') or '').strip()}

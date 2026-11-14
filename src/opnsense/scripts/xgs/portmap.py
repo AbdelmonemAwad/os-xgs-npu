@@ -26,6 +26,8 @@ except ImportError:
 PORTS_JSON = '/var/db/os-xgs-npu/ports.json'
 SWITCH_STATE = '/var/db/os-xgs-npu/switch-jumbo.state'
 LABELS = '/var/db/os-xgs-npu/labels'
+FTW_STATE = '/var/db/os-xgs-npu/ftw-normal.state'
+VLAN_LIF_MAX = 64
 # The XGS 3300's panel ports in the order bringup.sh creates them, oxp0 first: what a model the
 # table does not have is given.
 OCTEP_ORDER = ['F1', 'F2', 'Port1', 'Port2', 'Port3', 'Port4', 'Port5', 'Port6', 'Port7', 'Port8', 'F3', 'F4']
@@ -83,11 +85,16 @@ def interfaces(prefix):
     text = run(['/sbin/ifconfig', '-a'])
     ports = []
     members = {}
+    vlans = {}
     for block in re.split(r'\n(?=\S)', text):
         name = block.split(':', 1)[0]
         if name.startswith('bridge'):
             for m in re.findall(r'member: (\S+)', block):
                 members[m] = name
+        # a VLAN subinterface, by its parent (ifconfig: "vlan: 20 vlanproto: 802.1q ... parent interface: oxp1")
+        vlan = re.search(r'\bvlan: (\d+)\b.*\bparent interface: (\S+)', block)
+        if vlan:
+            vlans.setdefault(vlan.group(2), []).append({'device': name, 'tag': int(vlan.group(1))})
         if not re.match(prefix + r'[0-9]+$', name):
             continue
         mtu = re.search(r'\bmtu (\d+)', block)
@@ -107,6 +114,9 @@ def interfaces(prefix):
         })
     for p in ports:
         p['bridge'] = members.get(p['device'])
+        p['vlans'] = sorted(vlans.get(p['device'], []), key=lambda v: v['tag'])
+        for v in p['vlans']:
+            v['bridge'] = members.get(v['device'])
     ports.sort(key=lambda p: int(re.sub(r'\D', '', p['device']) or 0))
     return ports
 
@@ -172,6 +182,18 @@ def main():
     for p in ports:
         p['label'] = label(p, fam, saved, module, panel) or p['device']
         p['assigned'] = assigned.get(p['device'])
+        for v in p['vlans']:
+            v['assigned'] = assigned.get(v['device'])
+    # The drivers' table of VLAN subinterfaces on the front ports holds 64 (OCTEP_VLAN_LIF_MAX,
+    # NPUFLOW_VLAN_LIF_MAX); one on a bridge is not entered, and one past the 64th stays with the host.
+    vlans_used = sum(1 for p in ports for v in p['vlans'] if not v.get('bridge'))
+    # what the boot hook found of the XGS 3300's fail-to-wire pair (scripts/xgs/ftw-normal.sh)
+    ftw_boot = None
+    try:
+        with open(FTW_STATE, encoding='utf-8') as f:
+            ftw_boot = f.read().strip() or None
+    except OSError:
+        pass
     switch = None
     try:
         with open(SWITCH_STATE, encoding='utf-8') as f:
@@ -187,7 +209,8 @@ def main():
     except (ImportError, OSError, ValueError):
         overlaps, mgmt_mixed = [], []
     print(json.dumps({'family': fam, 'model': model, 'ports': ports, 'module': module, 'switch': switch,
-                      'overlaps': overlaps, 'mgmt_mixed': mgmt_mixed}))
+                      'overlaps': overlaps, 'mgmt_mixed': mgmt_mixed, 'vlans_used': vlans_used,
+                      'vlans_max': VLAN_LIF_MAX, 'ftw_boot': ftw_boot}))
     return 0
 
 

@@ -108,8 +108,8 @@ after_ports() {
     if [ -f /usr/local/opnsense/scripts/xgs/flow_exclude.php ]; then
         log "never offloaded: $(/usr/local/bin/php /usr/local/opnsense/scripts/xgs/flow_exclude.php 2>/dev/null)"
     fi
-    # The flow maker, from the same settings page: off unless turned on there.
-    AUTO=$(/usr/local/bin/php -r 'require_once("config.inc"); echo empty($config["OPNsense"]["XGS"]["general"]["flow_auto"]) ? "0" : "1";' 2>/dev/null)
+    # The flow maker, from the same settings page: as saved there, on where nothing is saved.
+    AUTO=$(/usr/local/bin/php -r 'require_once("config.inc"); echo (($config["OPNsense"]["XGS"]["general"]["flow_auto"] ?? "1") === "1") ? "1" : "0";' 2>/dev/null)
     case ${AUTO} in
     0|1) /sbin/sysctl -q dev.npuep.0.flow.auto=${AUTO} > /dev/null 2>&1 && log "automatic acceleration ${AUTO}" ;;
     esac
@@ -127,11 +127,14 @@ after_ports() {
     /bin/rm -f /var/run/os-xgs-npu.oxips0
     if /sbin/ifconfig oxips0 > /dev/null 2>&1; then
         /usr/bin/touch /var/run/os-xgs-npu.oxips0
-        INSPECT=$(/usr/local/bin/php -r 'require_once("config.inc"); echo empty($config["OPNsense"]["XGS"]["general"]["inspect_then_hardware"]) ? "0" : "1";' 2>/dev/null)
+        INSPECT=$(/usr/local/bin/php -r 'require_once("config.inc"); echo (($config["OPNsense"]["XGS"]["general"]["inspect_then_hardware"] ?? "1") === "1") ? "1" : "0";' 2>/dev/null)
         if [ "${INSPECT}" = "1" ]; then
             /sbin/ifconfig oxips0 up
             /sbin/sysctl -q dev.npuep.0.flow.ips_new=1 > /dev/null 2>&1 && log "inspect, then hardware: oxips0 up, new connections inspected"
         fi
+        # Drop when the inspection stops: the knob as the setting and the Intrusion Detection say,
+        # before Suricata starts; cron keeps it after (scripts/xgs/failclose.py).
+        [ -x /usr/local/opnsense/scripts/xgs/failclose.py ] && log "$(/usr/local/opnsense/scripts/xgs/failclose.py 2>/dev/null)"
     fi
     # And the coprocessor's own counts of what it forwards, to pf's states and rules and to the
     # interfaces' counters: on unless the owner turned them off on the same page.
@@ -256,7 +259,7 @@ fi
 # published at every boot after, with the setting off on the page; and one restored with it on waited
 # for an Apply. A configuration that cannot be read leaves the marker as it is. On the console as well,
 # as above: syslog does not run yet.
-case "$(/usr/local/bin/php -r 'require_once("config.inc"); $g = $config["OPNsense"]["XGS"]["general"] ?? []; echo (($g["inspect_then_hardware"] ?? "0") === "1") ? "1" : "0";' 2>/dev/null)" in
+case "$(/usr/local/bin/php -r 'require_once("config.inc"); $g = $config["OPNsense"]["XGS"]["general"] ?? []; echo (($g["inspect_then_hardware"] ?? "1") === "1") ? "1" : "0";' 2>/dev/null)" in
 1)  if [ ! -e /var/db/os-xgs-npu/inspector-vf ]; then
         mkdir -p /var/db/os-xgs-npu && : > /var/db/os-xgs-npu/inspector-vf &&
             echo "npuep: the configuration has inspect, then hardware: its marker made"

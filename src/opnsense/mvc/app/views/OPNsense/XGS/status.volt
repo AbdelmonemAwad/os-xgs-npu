@@ -366,9 +366,10 @@
             return '<div class="alert alert-warning" role="alert" style="margin: 15px 15px 0;">' + text + '</div>';
         }
 
-        /* What the Hardware offloading card's Off means. Both settings are off after an install
-           (XGS.xml: offload and flow_auto default 0), and until both are on no connection runs in
-           hardware: what the coprocessor can do for a connection waits for them. Said in a sentence,
+        /* What the Hardware offloading card's Off means. Both settings are on in a new install
+           since 2026-11-14 (XGS.xml), and an appliance installed before keeps what it saved; until
+           both are on no connection runs in hardware: what the coprocessor can do for a connection
+           waits for them. Said in a sentence,
            because a grey card does not say it. Each paragraph takes its direction from its own
            text (dir="auto"): a sentence not yet translated keeps its full stop at its end on a
            right-to-left page. */
@@ -386,6 +387,73 @@
             return '<div class="alert alert-info" role="alert" style="margin: 15px 15px 0;">' + text + '</div>';
         }
 
+        /* The fast path's share of the frames that arrived on the front ports, since the driver
+           attached, and each reason the flow maker left a connection with this firewall, as the
+           driver counts it (status.py, fastpath_share): only the counters this family's driver has. */
+        const REASONS = {
+            excluded: "{{ lang._('Never offloaded, as set on XGS: Settings') }}",
+            netmap: "{{ lang._('On a port the Intrusion Detection reads in IPS mode') }}",
+            netmap_cut: "{{ lang._('Inspected, on a port the Intrusion Detection reads in IPS mode') }}",
+            ipv6: "{{ lang._('IPv6 that pf translates') }}",
+            ipsec: "{{ lang._('Covered by an IPsec policy') }}",
+            bridged: "{{ lang._('Bridged, and not a pair the coprocessor can bridge') }}",
+            vlan: "{{ lang._('On a VLAN the coprocessor does not carry') }}",
+            dscp: "{{ lang._('A DSCP mark the coprocessor cannot write') }}",
+            table_full: "{{ lang._('The flow table was full') }}",
+            next_hops_full: "{{ lang._('The next-hop table was full') }}",
+            remake_held: "{{ lang._('Given back soon after it was made, held a while') }}",
+            refused: "{{ lang._('Refused by the coprocessor') }}"
+        };
+        function fastpath_card(fp) {
+            const s = fp && typeof fp.share === 'number' ? fp.share : null;
+            return card('', 'fa-tachometer', "{{ lang._('Fast path share') }}",
+                s === null ? '&mdash;' : (s * 100).toFixed(s > 0 && s < 0.01 ? 2 : 1) + ' %',
+                s === null ? "{{ lang._('nothing counted yet') }}" : "{{ lang._('of the frames since the driver started') }}");
+        }
+        function fastpath_rows(fp) {
+            if (!fp) {
+                return [];
+            }
+            const n = function (v) { return '<bdi dir="ltr">' + Number(v).toLocaleString() + '</bdi>'; };
+            const list = [];
+            if (fp.forwarded_frames !== null && fp.forwarded_frames !== undefined) {
+                list.push(["{{ lang._('Frames the coprocessor forwarded itself') }}", n(fp.forwarded_frames),
+                    typeof fp.share === 'number' ? fp.share : undefined]);
+            }
+            if (fp.host_frames !== null && fp.host_frames !== undefined) {
+                list.push(["{{ lang._('Frames handed to this firewall') }}", n(fp.host_frames)]);
+            }
+            (fp.reasons || []).forEach(function (r) {
+                list.push([(REASONS[r.key] || val(r.key)) + ' <small class="text-muted"><code>' + r.counter + '</code></small>',
+                    n(r.count) + ' ' + (r.unit === 'connections' ? "{{ lang._('connections') }}" : "{{ lang._('attempts') }}")]);
+            });
+            return list;
+        }
+
+        /*
+         * The coprocessor's memory errors (hw-10), in a block of its own under the cards: its EDAC
+         * counters as scripts/xgs/health.py reads them every five minutes - the errors corrected and
+         * the ones not - against XGS: Settings' alert. Only the XGS 3300 registers these counters; the
+         * ARMADA family none, so there they are not read.
+         */
+        function ecc_card(fam, h, g) {
+            const key = "{{ lang._('Memory errors (ECC)') }}";
+            if (fam === 'armada' || (h && h.edac && !h.edac.counters)) {
+                return card('', 'fa-shield', key, '&mdash;', "{{ lang._('not read on this model') }}");
+            }
+            if (!h || !h.edac) {
+                return card('', 'fa-shield', key, '&mdash;', "{{ lang._('not read yet') }}");
+            }
+            /* the settings are XGS: Settings' to read: without them the alert is not named */
+            const e = h.edac, known = g.ecc_alert !== undefined && g.ecc_alert !== '', limit = Number(g.ecc_alert);
+            const sub = (!known ? "{{ lang._('corrected / uncorrected') }}" :
+                limit > 0 ? "{{ lang._('corrected / uncorrected; alert at %s corrected') }}".replace('%s', limit) :
+                "{{ lang._('corrected / uncorrected; no alert for corrected errors') }}") +
+                (h.ecc_alert_at ? ' &middot; ' + "{{ lang._('last alert') }}" + ' ' + new Date(h.ecc_alert_at * 1000).toLocaleString() : '');
+            return card(e.uncorrected ? 'bad' : (h.ecc_alert_at || (known && limit > 0 && e.corrected >= limit) ? 'warn' : 'ok'),
+                'fa-shield', key, e.corrected + ' / ' + e.uncorrected, sub);
+        }
+
         function render(st, ports, ipsec, settings) {
             $('#xgs_ids').html(ids_note(st && st.intrusion_detection));
             $('#xgs_ids_mtu').html(mtu_note(st && st.intrusion_detection));
@@ -400,7 +468,8 @@
                     "{{ lang._('not attached') }}",
                     st && st.message ? st.message : "{{ lang._('the coprocessor driver is not attached') }}") +
                     appliance_card(st && st.appliance));
-                $('#xgs_link, #xgs_limits, #xgs_rpc, #xgs_raw, #xgs_offload').empty();
+                $('#xgs_link, #xgs_limits, #xgs_fastpath, #xgs_rpc, #xgs_raw, #xgs_offload, #xgs_ecc').empty();
+                $('#xgs_fastpath_head').hide();
                 return;
             }
             const b = st.board || {}, dr = st.driver || {}, hs = st.handshake || {},
@@ -429,6 +498,7 @@
                 offOn ? "{{ lang._('On') }}" : "{{ lang._('Off') }}",
                 /* with offloading off nothing is accelerated, whatever the flow maker's setting says */
                 offOn && g.flow_auto === '1' ? "{{ lang._('connections accelerated automatically') }}" : "{{ lang._('no automatic acceleration') }}");
+            cards += fastpath_card(st.fastpath);
             cards += card(ipsecOn ? 'ok' : 'off', 'fa-lock', "{{ lang._('IPsec engine') }}",
                 ipsecOn ? sas + ' ' + "{{ lang._('associations') }}" : "{{ lang._('Off') }}",
                 ipsecOn ? "{{ lang._('in the coprocessor') }}" : "{{ lang._('the host encrypts') }}");
@@ -445,6 +515,7 @@
             }
             cards += restart(st.reset);
             $('#xgs_cards').html(cards);
+            $('#xgs_ecc').html(ecc_card(b.family, st.health, g));
             $('#xgs_panel').html(panel(ports));
             rows($('#xgs_link'), [
                 ["{{ lang._('Board') }}", b.assembly ? (b.model ? b.model + ', ' : '') + 'AMDA0' + b.assembly + ' (' + family + ')' : null],
@@ -480,6 +551,9 @@
                     num(lim.made_at_most) + ' ' + (lim.made_per === 'second' ? "{{ lang._('a second') }}" : "{{ lang._('a sweep, one sweep a second') }}")],
                 ["{{ lang._('IPv6 connections left with the host') }}", num(lim.ipv6_refused)]
             ].filter(function (r) { return r[1] !== null && r[1] !== undefined; }));
+            const fp_rows = fastpath_rows(st.fastpath);
+            rows($('#xgs_fastpath'), fp_rows);
+            $('#xgs_fastpath_head').toggle(fp_rows.length > 0);
             rows($('#xgs_rpc'), [
                 ["{{ lang._('Control facility ready') }}", badge(rpc.ready === 1, "{{ lang._('yes') }}", "{{ lang._('no') }}")],
                 ["{{ lang._('Port control ready') }}", badge(nwa.ready === 1, "{{ lang._('yes') }}", "{{ lang._('no') }}")],
@@ -613,6 +687,90 @@
                 }
             }
         });
+
+        /* The recommended settings (XGS::RECOMMENDED): on in a new install since 2026-11-14, and an
+           appliance installed before keeps what it saved. While any of them differs here, a card says
+           so and lists them, each with its condition; Apply recommended sets exactly those, saves and
+           applies them (api/xgs/settings/applyRecommended), and says what it changed and what waits
+           for a reboot. Nothing changes until it is pressed. XGS: Settings' privilege: a refused read
+           shows no card. */
+        const RECOMMENDED = {
+            offload: ["{{ lang._('Hardware offloading') }}", "{{ lang._('a port the Intrusion Detection reads in IPS mode stays with this firewall') }}"],
+            flow_auto: ["{{ lang._('Accelerate connections automatically') }}", "{{ lang._('with Hardware offloading, on the same condition') }}"],
+            cut_in_hardware: ["{{ lang._('Cut in hardware') }}", ''],
+            flood_cut: ["{{ lang._('Cut floods by the firewall\'s own limits') }}", "{{ lang._('the limits are the rules\' own') }}"],
+            cp_hardware: ["{{ lang._('Captive Portal clients in hardware') }}", ''],
+            anomaly_watch: ["{{ lang._('Watch for unusual traffic') }}", "{{ lang._('reports, never blocks') }}"],
+            inspect_then_hardware: ["{{ lang._('Inspect, then hardware') }}", "{{ lang._('does nothing while the Intrusion Detection is off') }}"],
+            failclose: ["{{ lang._('Drop when the inspection stops') }}", "{{ lang._('acts only while the Intrusion Detection runs in IPS mode') }}"],
+            ipsec_offload: ["{{ lang._('IPsec in the coprocessor\'s engine') }}", ''],
+            ipsec_flows: ["{{ lang._('Outbound tunnel flows forwarded by the coprocessor') }}", '']
+        };
+        function decode(v) {
+            return $('<textarea/>').html(v).text();
+        }
+        function rec_item(f, reboot) {
+            const r = RECOMMENDED[f] || [f, ''];
+            const $li = $('<li dir="auto"/>').append($('<b/>').text(decode(r[0])));
+            if (r[1]) {
+                $li.append(document.createTextNode(' - ' + decode(r[1])));
+            }
+            if (reboot) {
+                $li.append(document.createTextNode(' - ' + decode("{{ lang._('takes effect after a reboot') }}")));
+            }
+            return $li;
+        }
+        function recommended() {
+            $.ajax({url: '/api/xgs/settings/recommended', dataType: 'json'}).done(function (d) {
+                const differ = (d && d.differ) || [];
+                if (!differ.length) {
+                    $('#xgs_recommended').empty();
+                    return;
+                }
+                const $ul = $('<ul/>');
+                differ.forEach(function (x) { $ul.append(rec_item(x.field, x.reboot)); });
+                const $box = $('<div class="alert alert-info" role="alert" style="margin: 15px 15px 0;"/>')
+                    .append($('<p dir="auto"/>').append($('<b/>').text(decode("{{ lang._('The recommended settings are on in new installs') }}"))))
+                    .append($('<p dir="auto"/>').text(decode("{{ lang._('This appliance keeps what it saved. These differ here, and Apply recommended turns on exactly these:') }}")))
+                    .append($ul)
+                    .append($('<button type="button" class="btn btn-primary btn-sm" id="xgs_rec_apply"/>')
+                        .text(decode("{{ lang._('Apply recommended') }}")))
+                    .append(' <a href="/ui/xgs/settings" style="margin-inline-start: 8px;">' + "{{ lang._('Choose each one on XGS: Settings') }}" + '</a>');
+                $('#xgs_recommended').empty().append($box);
+            }).fail(function () {
+                $('#xgs_recommended').empty();
+            });
+        }
+        $(document).on('click', '#xgs_rec_apply', function () {
+            const $b = $(this).prop('disabled', true);
+            $b.append(' <i class="fa fa-spinner fa-pulse"></i>');
+            ajaxCall('/api/xgs/settings/applyRecommended', {}, function (d) {
+                const ok = d && d.status === 'ok';
+                const $msg = $('<div/>');
+                if (ok) {
+                    const $ul = $('<ul/>');
+                    (d.changed || []).forEach(function (f) { $ul.append(rec_item(f, (d.reboot || []).indexOf(f) >= 0)); });
+                    $msg.append($('<p dir="auto"/>').text(decode("{{ lang._('Turned on and applied:') }}"))).append($ul);
+                    if ((d.reboot || []).length) {
+                        $msg.append($('<p dir="auto"/>').append($('<b/>').text(decode("{{ lang._('Reboot to finish: the settings marked so take effect after it.') }}"))));
+                    }
+                    if (d.apply && d.apply.message) {
+                        $msg.append($('<p dir="auto"/>').append($('<small/>').html(d.apply.message)));
+                    }
+                } else {
+                    $msg.text(decode("{{ lang._('Nothing was changed.') }}") + ' ' + (d && d.message ? decode(d.message) : ''));
+                }
+                BootstrapDialog.show({
+                    type: ok ? BootstrapDialog.TYPE_SUCCESS : BootstrapDialog.TYPE_WARNING,
+                    title: "{{ lang._('Apply recommended') }}",
+                    message: $msg,
+                    buttons: [{label: "{{ lang._('Close') }}", action: function (dialog) { dialog.close(); }}]
+                });
+                recommended();
+                refresh();
+            });
+        });
+        recommended();
 
         $('#refreshAct').click(function () {
             refresh();
@@ -901,17 +1059,20 @@
     <li class="active"><a data-toggle="tab" href="#status">{{ lang._('Status') }}</a></li>
     <li><a data-toggle="tab" href="#counters">{{ lang._('Datapath counters') }}</a></li>
     <li><a data-toggle="tab" href="#coprocessor">{{ lang._('Coprocessor') }}</a></li>
+    <li><a data-toggle="tab" href="#graphs">{{ lang._('Graphs') }}</a></li>
     <li><a data-toggle="tab" href="#details">{{ lang._('Technical details') }}</a></li>
 </ul>
 
 <div class="tab-content content-box">
     <div id="status" class="tab-pane active table-responsive">
         <div id="xgs_ask"></div>
+        <div id="xgs_recommended"></div>
         <div id="xgs_ids"></div>
         <div id="xgs_ids_mtu"></div>
         <div id="xgs_offload"></div>
         <div id="xgs_panel"></div>
         <div class="xgs-cards" id="xgs_cards"></div>
+        <div class="xgs-cards" id="xgs_ecc" style="padding-top: 0;"></div>
         <table class="table table-striped table-condensed">
             <thead>
                 <tr>
@@ -934,6 +1095,10 @@
                 <tr><th colspan="2"><div class="xgs-head"><b>{{ lang._('This board\'s limits') }}</b></div></th></tr>
             </thead>
             <tbody id="xgs_limits"></tbody>
+            <thead id="xgs_fastpath_head" style="display: none;">
+                <tr><th colspan="2"><div class="xgs-head"><b>{{ lang._('The fast path, and what stayed with this firewall') }}</b></div></th></tr>
+            </thead>
+            <tbody id="xgs_fastpath"></tbody>
             <thead>
                 <tr><th colspan="2"><div class="xgs-head"><b>{{ lang._('Control facility') }}</b></div></th></tr>
             </thead>
@@ -1045,6 +1210,108 @@
             <tbody id="xgs_raw"></tbody>
         </table>
     </div>
+
+    <!-- The Graphs tab (2026-11-14): its own block, with its own script below the page. -->
+    <div id="graphs" class="tab-pane">
+        <table class="table table-condensed">
+            <thead>
+                <tr>
+                    <th>
+                        <div class="xgs-head">
+                            <b>{{ lang._('Coprocessor load') }}</b>
+                            <button class="btn btn-default btn-xs pull-right" id="graphsReadAct" type="button"><i class="fa fa-refresh"></i></button>
+                        </div>
+                    </th>
+                </tr>
+            </thead>
+            <tbody><tr><td><div style="position: relative; height: 200px;"><canvas id="graph_load"></canvas></div></td></tr></tbody>
+            <thead><tr><th><div class="xgs-head"><b>{{ lang._('Coprocessor memory in use') }}</b></div></th></tr></thead>
+            <tbody><tr><td><div style="position: relative; height: 200px;"><canvas id="graph_memory"></canvas></div></td></tr></tbody>
+            <thead><tr><th><div class="xgs-head"><b>{{ lang._('Connections in hardware') }}</b></div></th></tr></thead>
+            <tbody><tr><td><div style="position: relative; height: 200px;"><canvas id="graph_flows"></canvas></div></td></tr></tbody>
+        </table>
+        <div class="text-muted" style="padding: 0 10px 10px;">
+            <small id="graphs_none" style="display: none;">{{ lang._('Nothing kept yet: the first reading comes within five minutes.') }}<br/></small>
+            <small>{{ lang._('Read every five minutes and kept for seven days. The same figures go to Reporting: Health, under System, while its collection is on (Reporting: Settings).') }}</small>
+        </div>
+    </div>
 </div>
+
+<!-- The Graphs tab's script: OPNsense's own Chart.js, as Reporting: Traffic loads it. -->
+<script src="{{ cache_safe('/ui/js/chart.umd.min.js') }}"></script>
+<script src="{{ cache_safe('/ui/js/moment-with-locales.min.js') }}"></script>
+<script src="{{ cache_safe('/ui/js/chartjs-adapter-moment.min.js') }}"></script>
+<script>
+    $(document).ready(function () {
+        /*
+         * The coprocessor's load, memory in use and connections in hardware, one sample every five
+         * minutes for seven days, as scripts/xgs/health.py keeps them ([time, load, memory %,
+         * connections]). A sample that could not be read, or one missing, is a gap, not a line
+         * drawn across it.
+         */
+        const charts = {};
+
+        function series(samples, index, step) {
+            const points = [];
+            let last = null;
+            samples.forEach(function (s) {
+                if (last !== null && s[0] - last > 2 * step) {
+                    points.push({x: (last + step) * 1000, y: null});
+                }
+                points.push({x: s[0] * 1000, y: s[index] === null || s[index] === undefined ? null : Number(s[index])});
+                last = s[0];
+            });
+            return points;
+        }
+
+        function draw(id, label, points, max) {
+            if (charts[id]) {
+                charts[id].data.datasets[0].data = points;
+                charts[id].update('none');
+                return;
+            }
+            charts[id] = new Chart(document.getElementById(id).getContext('2d'), {
+                type: 'line',
+                data: {datasets: [{label: label, data: points, borderColor: '#337ab7',
+                    backgroundColor: 'rgba(51, 122, 183, 0.15)', fill: true, borderWidth: 1.5,
+                    pointRadius: 0, spanGaps: false, tension: 0}]},
+                options: {
+                    animation: false, maintainAspectRatio: false, normalized: true,
+                    interaction: {mode: 'nearest', axis: 'x', intersect: false},
+                    plugins: {legend: {display: false}},
+                    scales: {
+                        x: {type: 'time', time: {tooltipFormat: 'lll'}},
+                        y: Object.assign({beginAtZero: true}, max ? {max: max} : {})
+                    }
+                }
+            });
+        }
+
+        function read_graphs() {
+            ajaxGet('/api/xgs/status/history', {}, function (d) {
+                const samples = (d && Array.isArray(d.samples)) ? d.samples : [];
+                const step = (d && d.step) ? Number(d.step) : 300;
+                $('#graphs_none').toggle(samples.length === 0);
+                draw('graph_load', "{{ lang._('Coprocessor load') }}", series(samples, 1, step));
+                draw('graph_memory', "{{ lang._('Coprocessor memory in use') }}", series(samples, 2, step), 100);
+                draw('graph_flows', "{{ lang._('Connections in hardware') }}", series(samples, 3, step));
+            });
+        }
+
+        /* drawn when the tab is first shown: a canvas in a hidden pane has no size */
+        let drawn = false;
+        $('a[href="#graphs"]').on('shown.bs.tab', function () {
+            if (!drawn) {
+                drawn = true;
+                read_graphs();
+            }
+        });
+        if (window.location.hash === '#graphs') {
+            drawn = true;
+            read_graphs();
+        }
+        $('#graphsReadAct').on('click', read_graphs);
+    });
+</script>
 
 {{ partial("OPNsense/XGS/credit") }}

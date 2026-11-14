@@ -1,0 +1,12 @@
+<?xml version="1.0"?>
+<!--
+    SPDX-License-Identifier: BSD-2-Clause
+    Copyright (c) 2026 Abdelmonem Awad <eg2@live.com>
+
+    Reporting: Health's description of system-xgs-flows.rrd (RRD/Types/XGSFlows.php).
+-->
+<systemhealth>
+    <file-match>system-xgs-flows$</file-match>
+    <title>XGS Coprocessor - Connections in Hardware</title>
+    <y-axis_label>Connections</y-axis_label>
+</systemhealth>

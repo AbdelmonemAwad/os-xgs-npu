@@ -74,7 +74,7 @@ worse than one that admits it cannot see.
 Intrusion Detection - listens on the host.** The flow maker hands a connection to the coprocessor
 after its first data, so what Suricata sees depends on how it runs:
 
-- **In IPS mode, with XGS: Settings "Inspect, then hardware" on** (off by default): each new
+- **In IPS mode, with XGS: Settings "Inspect, then hardware" on** (on in a new install since 2026-11-14): each new
   connection goes through Suricata first. It sees the first megabyte - its own default stream depth -
   and drops what its rules block, and then the hardware carries the rest. Measured on both
   appliances: a new TCP stream inspected, then forwarded in hardware at 3.82 to 3.85 Gbit/s on the

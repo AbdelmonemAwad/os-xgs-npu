@@ -67,7 +67,7 @@ if [ -z "${want}" ]; then
 		exit 1
 	fi
 	want=$("${CONFIG_READER}" -r \
-	    'require_once("config.inc"); echo empty($config["OPNsense"]["XGS"]["general"]["offload"]) ? 0 : 1;' \
+	    'require_once("config.inc"); echo (($config["OPNsense"]["XGS"]["general"]["offload"] ?? "1") === "1") ? 1 : 0;' \
 	    2>/dev/null)
 	case ${want} in
 	0|1)	;;

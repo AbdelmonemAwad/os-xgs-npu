@@ -68,6 +68,9 @@
                         return row.assigned ? row.assigned + ' <small class="text-muted">(' + row.key + ')</small>' :
                             '<span class="text-muted">' + "{{ lang._('not assigned') }}" + '</span>';
                     },
+                    vlans: function (column, row) {
+                        return row.vlans ? '<small>' + row.vlans + '</small>' : '';
+                    },
                     speed: function (column, row) {
                         return row.status === 'up' ? (row.speed || "{{ lang._('up') }}") : '';
                     }
@@ -156,6 +159,8 @@
             const assigned = plist.filter(function (p) { return p.assigned && (p.assigned.key || p.assigned.descr); }).length;
             const fitted = Object.keys(slots);
             const swText = (data && data.switch) || '';
+            const vUsed = Number((data && data.vlans_used) || 0), vMax = Number((data && data.vlans_max) || 64);
+            $('#row_ftw').toggle(!!(data && data.family === 'octeontx'));
             $('#xgs_cards').html(
                 card(up > 0 ? 'ok' : 'warn', 'fa-plug', "{{ lang._('Front ports') }}", up + ' / ' + plist.length,
                     "{{ lang._('with link') }}") +
@@ -168,7 +173,14 @@
                 card(swText.indexOf('10,240') >= 0 || swText.indexOf('network agent') >= 0 ? 'ok' : '', 'fa-sitemap', "{{ lang._('Switch chip') }}",
                     swText.indexOf('network agent') >= 0 ? "{{ lang._('Follows the MTU') }}" :
                     swText.indexOf('10,240') >= 0 ? "{{ lang._('Jumbo frames') }}" : "{{ lang._('2,048 bytes') }}",
-                    swText ? swText.split(' ').slice(0, 3).join(' ') : "{{ lang._('set at the end of each boot') }}"));
+                    swText ? swText.split(' ').slice(0, 3).join(' ') : "{{ lang._('set at the end of each boot') }}") +
+                /* the drivers' table of VLAN subinterfaces on the front ports: 64, the rest stay with the host */
+                card(vUsed > vMax ? 'warn' : (vUsed ? 'ok' : ''), 'fa-tag', "{{ lang._('VLANs in hardware') }}",
+                    Math.min(vUsed, vMax) + ' / ' + vMax,
+                    vUsed > vMax ? (vUsed - vMax) + ' ' + "{{ lang._('more stay with the host') }}" :
+                    "{{ lang._('VLAN interfaces on the front ports') }}"));
+            /* what the boot hook found of the fail-to-wire pair, if this board has one */
+            $('#xgs_ftw_boot').text(data && data.ftw_boot ? plain(data.ftw_boot) : '');
             const bays = Object.keys(slots).map(function (bay) {
                 const s = slots[bay];
                 return "{{ lang._('bay') }}" + ' ' + bay + ': ' + (s['assembly.partno'] || '?') +
@@ -184,6 +196,32 @@
                 "{{ lang._('2,048 bytes') }}") + ' <small class="text-muted">' + sw + '</small>' :
                 '<span class="text-muted">' + "{{ lang._('set at the end of each boot') }}" + '</span>');
         });
+        /* the fail-to-wire pair, read on a click: one session through the coprocessor's console */
+        $('#xgs_ftw_read').click(function () {
+            const btn = $(this).prop('disabled', true);
+            $('#xgs_ftw').html('<i class="fa fa-spinner fa-pulse"></i>');
+            ajaxGet('/api/xgs/ports/ftw', {}, function (r) {
+                btn.prop('disabled', false);
+                r = r || {};
+                if (r.relay !== '1') {
+                    $('#xgs_ftw').html('<span class="text-muted"></span>').find('span').text(
+                        plain("{{ lang._('not read') }}") + (r.reason ? ': ' + plain(r.reason) : ''));
+                    return;
+                }
+                const bypass = r.mode === 'bypass';
+                const armed = r.armed === '1';
+                $('#xgs_ftw').html(
+                    '<span class="label label-' + (bypass ? 'danger' : 'success') + '"></span> ' +
+                    '<span class="label label-' + (armed ? 'warning' : 'default') + '"></span> ' +
+                    '<small class="text-muted"></small> ');
+                $('#xgs_ftw .label').eq(0).text(bypass ? plain("{{ lang._('bypass: the two ports are joined') }}") :
+                    (r.mode === 'normal' ? plain("{{ lang._('normal') }}") : plain("{{ lang._('not read') }}")));
+                $('#xgs_ftw .label').eq(1).text(armed ? plain("{{ lang._('armed') }}") :
+                    (r.armed === '0' ? plain("{{ lang._('not armed') }}") : plain("{{ lang._('not read') }}")));
+                $('#xgs_ftw small').text((r.pair || '') + (r.cause_text ? ' - ' + r.cause_text : ''));
+            });
+        });
+
         /*
          * Power over Ethernet, in a tab of its own: where the appliance has it (labels 11 and 12 on
          * the XGS 136) read from the controller each time the page opens, through the coprocessor;
@@ -432,6 +470,7 @@
                     <th data-column-id="media" data-type="string" data-visible="false">{{ lang._('Media') }}</th>
                     <th data-column-id="mtu" data-type="string" data-width="6em">{{ lang._('MTU') }}</th>
                     <th data-column-id="bridge" data-type="string" data-width="7em">{{ lang._('Bridge') }}</th>
+                    <th data-column-id="vlans" data-formatter="vlans" data-type="string">{{ lang._('VLANs') }}</th>
                     <th data-column-id="device" data-identifier="true" data-type="string" data-width="7em">{{ lang._('Device') }}</th>
                 </tr>
             </thead>
@@ -448,6 +487,17 @@
                 <tr>
                     <td><i class="fa fa-info-circle fa-fw text-muted"></i> <b>{{ lang._('Switch chip') }}</b></td>
                     <td id="xgs_switch">&hellip;</td>
+                </tr>
+                <tr id="row_ftw" style="display: none;">
+                    <td><i class="fa fa-info-circle fa-fw text-muted"></i> <b>{{ lang._('Fail-to-wire') }}</b></td>
+                    <td>
+                        <span id="xgs_ftw"><span class="text-muted">{{ lang._('Port1 and Port2 behind relays that join them when the appliance fails, if armed.') }}</span></span>
+                        <button class="btn btn-xs btn-default" id="xgs_ftw_read" type="button"><i class="fa fa-fw fa-refresh"></i> {{ lang._('Read the relay') }}</button>
+                        <br/><small class="text-muted" id="xgs_ftw_boot"></small>
+                    </td>
+                </tr>
+                <tr>
+                    <td colspan="2" class="text-muted"><small>{{ lang._('Interfaces, VLANs and bridges are set in OPNsense (Interfaces: Assignments, Interfaces: Devices); this page shows them on each front port. The coprocessor carries the VLAN interfaces of up to 64 front-port VLANs, not those in a bridge; the host forwards the rest.') }}</small></td>
                 </tr>
             </tbody>
         </table>

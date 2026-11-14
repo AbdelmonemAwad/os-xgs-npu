@@ -93,6 +93,14 @@ class TransceiversController extends ApiControllerBase
                 'bias' => isset($dom['bias_ma']) ? sprintf('%.2f', $dom['bias_ma']) : '',
                 'tx' => isset($dom['tx_dbm']) ? sprintf('%.2f', $dom['tx_dbm']) : (isset($dom['tx_mw']) ? '-inf' : ''),
                 'rx' => isset($dom['rx_dbm']) ? sprintf('%.2f', $dom['rx_dbm']) : (isset($dom['rx_mw']) ? '-inf' : ''),
+                /*
+                 * Forward error correction, read only and never written. No path reads it safely yet:
+                 * the network agent's port attribute 0x0b is FEC, and asking it once - a GET - stopped
+                 * the agent until the coprocessor restarted, so both drivers refuse it (octep_nwa.c,
+                 * docs/families/octeon-tx.md, docs/npuep/netagent.md). Empty is "not read"; a reading
+                 * the transceivers script gives one day ('fec') is shown as it comes.
+                 */
+                'fec' => (string)($m['fec'] ?? ''),
             ];
         }
         return $this->searchRecordsetBase($rows);

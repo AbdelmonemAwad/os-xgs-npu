@@ -567,7 +567,34 @@ def coprocessor_software():
     return {'vendor_build': software.get('sfversion') or '',
             'fastpath': ('%s (%s)' % (fastpath['build'], fastpath.get('kind', ''))) if fastpath.get('build') else '',
             'driver_reads': driver_reading(software.get('generation'), software.get('cmd_shift')),
-            'sdk_differ': ('U-Boot of SDK %s, system copies of another: %s' % (sdk.get('uboot'), differ)) if differ else ''}
+            'sdk_differ': ('U-Boot of SDK %s, system copies of another: %s' % (sdk.get('uboot'), differ)) if differ else '',
+            'uboot_check': uboot_check_text(software.get('uboot_check'))}
+
+
+def uboot_check_text(check):
+    """The U-Boot match check (coprocessor.py, uboot_check), said only when it does not match."""
+    check = check or {}
+    if check.get('state') == 'other_sdk':
+        return "U-Boot in the flash %s, not from the running copy's SDK %s" % (check.get('flash'), check.get('expected_sdk'))
+    if check.get('state') == 'flash_changed':
+        return 'U-Boot in the flash %s, last booted %s' % (check.get('flash'), check.get('booted'))
+    return ''
+
+
+def coprocessor_memory():
+    """The coprocessor's memory errors as scripts/xgs/health.py last read its EDAC counters, every five
+    minutes (svc-5-09, 2026-11-14): 'not read on this model' where it registers none (the ARMADA family)."""
+    try:
+        health = json.loads(read('/var/db/os-xgs-npu/health.json') or '{}')
+    except ValueError:
+        health = {}
+    edac = health.get('edac') if isinstance(health, dict) else None
+    if not isinstance(edac, dict):
+        return 'not read yet'
+    if not edac.get('counters'):
+        return 'not read on this model'
+    return '%s corrected, %s uncorrected (%s counters, the coprocessor up %s h)' % (
+        edac.get('corrected'), edac.get('uncorrected'), edac.get('counters'), int(health.get('uptime_s') or 0) // 3600)
 
 
 def kernel_row(version, build):
@@ -649,6 +676,8 @@ def system_block():
             # the vendor build, and the build its fast path carries, which tells two appliances on
             # one vendor version apart (2026-10-29).
             'software': coprocessor_software(),
+            # its memory's error counters (scripts/xgs/health.py), since 2026-11-14
+            'memory_errors': coprocessor_memory(),
         },
         'expansion': expansion,
         'opnsense': run(['/usr/local/sbin/opnsense-version', '-v']).strip(),
@@ -699,7 +728,9 @@ def system_table(system):
             ('vendor build ' + soft['vendor_build']) if soft.get('vendor_build') else '',
             ('fast path ' + soft['fastpath']) if soft.get('fastpath') else '',
             soft.get('driver_reads', ''),
-            soft.get('sdk_differ', '')])) or 'not read yet'),
+            soft.get('sdk_differ', ''),
+            soft.get('uboot_check', '')])) or 'not read yet'),
+        ('Coprocessor memory errors', cop.get('memory_errors') or 'not read yet'),
         ('Expansion', ', '.join('bay %s: %s rev %s%s' % (e['bay'], e['part'], e['revision'],
                                                          (', vendor ' + e['vendor']) if e.get('vendor') else '')
                                 for e in system.get('expansion') or []) or 'none'),

@@ -20,7 +20,7 @@ routed connection, which pf keeps a state for on each interface, is not counted 
 3300, with "Count hardware traffic in pf" on, a state holds what the coprocessor forwarded too; on
 the XGS 136 a connection in hardware stops adding to its state, so the volumes there undercount and
 the connection patterns are what is complete. XGS: Settings, "Watch for unusual traffic", turns this
-on; it is off until then.
+on or off; on in a new install since 2026-11-14.
 
     anomaly.py --for 50     one window of 50 seconds (cron, every minute)
     anomaly.py --status     the last window, the hosts followed, the last alerts
@@ -41,6 +41,11 @@ CONFIG = '/conf/config.xml'
 STATE_DIR = '/var/db/os-xgs-npu/anomaly'
 STATUS = os.path.join(STATE_DIR, 'status.json')
 BASELINE = os.path.join(STATE_DIR, 'baseline.json')
+# Every alert, for os-netreport to send (svc-2-23): one JSON object a line, {"id", "at", "host", "kind",
+# "message", "source"}, "id" counting up from 1 and never reused, the last KEEP_ALERTS kept. A reader
+# keeps the last "id" it sent and sends what is above it; an "id" lower than its own means the file was
+# started again (its directory emptied), and it starts again from 0. Nothing is blocked either way.
+EXPORT = os.path.join(STATE_DIR, 'alerts.jsonl')
 PFCTL = '/sbin/pfctl'
 TAG = 'xgs-anomaly'
 
@@ -72,7 +77,7 @@ def enabled():
         root = ET.parse(CONFIG).getroot()
     except (OSError, ET.ParseError):
         return False
-    return (root.findtext('OPNsense/XGS/general/anomaly_watch') or '0') == '1'
+    return (root.findtext('OPNsense/XGS/general/anomaly_watch') or '1') == '1'
 
 
 def endpoint(tok):
@@ -231,6 +236,34 @@ def save(path, data):
     os.replace(tmp, path)
 
 
+def export(sent, path=None):
+    """Append the alerts just sent to EXPORT, numbered on from its last, keeping the last KEEP_ALERTS."""
+    path = path or EXPORT
+    if not sent:
+        return
+    lines = []
+    try:
+        with open(path, encoding='utf-8') as fh:
+            lines = [ln for ln in fh.read().splitlines() if ln.strip()]
+    except OSError:
+        pass
+    last = 0
+    for ln in reversed(lines):
+        try:
+            last = int(json.loads(ln).get('id', 0))
+            break
+        except (ValueError, AttributeError):
+            continue
+    for alert in sent:
+        last += 1
+        lines.append(json.dumps({'id': last, 'at': alert['at'], 'host': alert['host'], 'kind': alert['kind'],
+                                 'message': alert['message'], 'source': 'os-xgs-npu'}, sort_keys=True))
+    tmp = path + '.tmp'
+    with open(tmp, 'w', encoding='utf-8') as fh:
+        fh.write('\n'.join(lines[-KEEP_ALERTS:]) + '\n')
+    os.replace(tmp, path)
+
+
 def run(seconds, warmup=WARMUP):
     os.makedirs(STATE_DIR, exist_ok=True)
     status = load(STATUS, {})
@@ -272,6 +305,7 @@ def run(seconds, warmup=WARMUP):
         sent.append({'at': now, 'host': host, 'kind': kind, 'message': message})
     status['quiet'] = {k: t for k, t in quiet.items() if now - t < QUIET}
     status['alerts'] = (status.get('alerts', []) + sent)[-KEEP_ALERTS:]
+    export(sent)
     busiest = sorted(feats.items(), key=lambda kv: -(kv[1]['sent'] + kv[1]['received']))[:5]
     summary = {'run': now, 'window': seconds, 'hosts': len(feats), 'followed': len(baseline),
                'alerts': len(sent),
@@ -287,7 +321,7 @@ def run(seconds, warmup=WARMUP):
 
 
 def main(argv):
-    global STATE_DIR, STATUS, BASELINE
+    global STATE_DIR, STATUS, BASELINE, EXPORT
     if '--status' in argv:
         print(json.dumps(load(STATUS, {}), sort_keys=True))
         return 0
@@ -310,6 +344,7 @@ def main(argv):
             pass
         STATUS = os.path.join(STATE_DIR, 'status.json')
         BASELINE = os.path.join(STATE_DIR, 'baseline.json')
+        EXPORT = os.path.join(STATE_DIR, 'alerts.jsonl')
     try:
         # One run at a time. A run lasts its window and the time its six readings of pf take, so with
         # a big state table it can outlast the minute, and until 2026-11-06 the next minute's run then

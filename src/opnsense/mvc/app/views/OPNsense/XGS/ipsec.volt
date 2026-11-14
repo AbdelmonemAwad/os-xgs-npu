@@ -40,7 +40,8 @@
     /* As on the Ports page: a grid whose columns fill the width shows a one-pixel sideways bar
        when no vertical one takes the difference; wide screens never need to scroll it sideways. */
     @media (min-width: 768px) {
-        #grid-associations .tabulator-tableholder, #grid-counters .tabulator-tableholder { overflow-x: hidden; }
+        #grid-associations .tabulator-tableholder, #grid-counters .tabulator-tableholder,
+        #grid-profile .tabulator-tableholder { overflow-x: hidden; }
     }
 </style>
 
@@ -84,6 +85,15 @@
                             "{{ lang._('offers left to the host, those made to other ports included') }}" :
                             "{{ lang._('offers left to the host') }}"));
                 $('#xgs_engine').html(yes(d.tunable && d.tunable.value === '1'));
+                /* Settings asks for one thing and the driver was started with the other: the
+                   tunable is read when the driver attaches, so it waits for the next reboot */
+                if (d.reboot_pending) {
+                    $('#xgs_pending').text(d.setting && d.setting.ipsec_offload === '1' ?
+                        "{{ lang._('IPsec in the engine is turned on in Settings and takes effect at the next reboot.') }}" :
+                        "{{ lang._('IPsec in the engine is turned off in Settings and takes effect at the next reboot.') }}").show();
+                } else {
+                    $('#xgs_pending').hide();
+                }
                 /* both families since 2026-10-20: the XGS 136's driver carries tunnel flows too */
                 $('#row_flows').show();
                 /* what the driver does now; the setting takes effect at the next boot */
@@ -114,7 +124,7 @@
                             (row.direction === 'encrypt' ? "{{ lang._('encrypt') }}" : "{{ lang._('decrypt') }}") + '</span>';
                     },
                     mono: function (column, row) {
-                        return '<code>' + row[column.id] + '</code>';
+                        return row[column.id] ? '<code>' + row[column.id] + '</code>' : '';
                     },
                     counted: function (column, row) {
                         if (row.packets === null || row.packets === undefined) {
@@ -128,8 +138,60 @@
                             "{{ lang._('coprocessor') }}" + ' ' + Number(row.hw_packets).toLocaleString() + ')</small>' : '');
                     },
                     engine: function (column, row) {
-                        return row.engine === '1' ? "{{ lang._('in the engine') }}" :
-                            '<span class="text-muted">' + "{{ lang._('with the host') }}" + '</span>';
+                        return row.engine === '1' ? '<span class="label label-success">' + "{{ lang._('hardware') }}" + '</span>' :
+                            '<span class="label label-default">' + "{{ lang._('kernel') }}" + '</span>';
+                    },
+                    /* why an association stays in the kernel: the engine off, or the drivers' own
+                       rules (tunnel-mode ESP, AES-GCM-16 or AES-CBC with HMAC SHA-1/256/384/512),
+                       or what the drivers count without naming it per association */
+                    reason: function (column, row) {
+                        if (row.engine === '1') {
+                            return '';
+                        }
+                        const why = {
+                            engine_off: "{{ lang._('IPsec in the engine is off') }}",
+                            protocol: "{{ lang._('protocol %s: the engine takes ESP only') }}",
+                            mode: "{{ lang._('mode %s: the engine takes tunnel mode only') }}",
+                            cipher: "{{ lang._('cipher %s: the engine takes AES-GCM-16 and AES-CBC') }}",
+                            auth: "{{ lang._('HMAC %s: the engine takes SHA-1, SHA-256, SHA-384 and SHA-512') }}",
+                            keylen: "{{ lang._('a key of %s bits: the engine takes 128, 192 and 256') }}",
+                            not_offered: "{{ lang._('not in the driver list of offers: it came before the driver loaded, or the list (the last sixteen) moved on') }}",
+                            not_on_port: "{{ lang._('its local address is on %s, not on a front port: the driver takes only an association whose address is on its port') }}",
+                            esn: "{{ lang._('extended sequence numbers inbound, left to the kernel') }}",
+                            window: "{{ lang._('replay window %s: not a power of two, or above 4096') }}",
+                            engine_refused: "{{ lang._('the engine refused it') }}",
+                            port_took: "{{ lang._('the kernel says port %s took it; it is not in the engine list') }}",
+                            other: "{{ lang._('allowed by the rules; not taken for a reason the counters show (a route by another interface, a VLAN, the coprocessor not ready)') }}"
+                        }[row.reason] || '';
+                        return '<span class="text-muted">' + why.replace('%s', '<code>' + row.reason_word + '</code>') + '</span>';
+                    }
+                }
+            }
+        });
+
+        /* the encryption profile as OPNsense configured it: shown, set under VPN: IPsec */
+        function verdict_label(v) {
+            return '<span class="label label-' + (v === 'all' ? 'success' : (v === 'some' ? 'warning' : 'default')) + '">' +
+                (v === 'all' ? "{{ lang._('hardware') }}" : (v === 'some' ? "{{ lang._('depends on the peer') }}" :
+                "{{ lang._('kernel') }}")) + '</span>';
+        }
+
+        $('#grid-profile').UIBootgrid({
+            search: '/api/xgs/ipsec/profile',
+            options: {
+                selection: false,
+                formatters: {
+                    proposals: function (column, row) {
+                        return (row.esp || '').split(',').filter(Boolean).map(function (pair) {
+                            const at = pair.lastIndexOf('=');
+                            return '<code>' + pair.substring(0, at) + '</code> ' + verdict_label(pair.substring(at + 1));
+                        }).join('<br/>');
+                    },
+                    verdict: function (column, row) {
+                        return verdict_label(row.verdict);
+                    },
+                    mono: function (column, row) {
+                        return row[column.id] ? '<code>' + row[column.id] + '</code>' : '';
                     }
                 }
             }
@@ -161,6 +223,7 @@
         $('#refreshAct').click(function () {
             show_state();
             $('#grid-associations').bootgrid('reload');
+            $('#grid-profile').bootgrid('reload');
             $('#grid-counters').bootgrid('reload');
         });
 
@@ -178,13 +241,15 @@
 
 <ul class="nav nav-tabs" data-tabs="tabs" id="maintabs">
     <li class="active"><a data-toggle="tab" href="#status">{{ lang._('Status') }}</a></li>
-    <li><a data-toggle="tab" href="#associations">{{ lang._('Associations in the engine') }}</a></li>
+    <li><a data-toggle="tab" href="#associations">{{ lang._('Associations') }}</a></li>
+    <li><a data-toggle="tab" href="#profile">{{ lang._('Encryption profile') }}</a></li>
     <li><a data-toggle="tab" href="#counters">{{ lang._('Counters') }}</a></li>
 </ul>
 
 <div class="tab-content content-box">
     <div id="status" class="tab-pane active table-responsive">
         <div class="xgs-cards" id="xgs_cards"></div>
+        <div class="alert alert-warning" id="xgs_pending" style="display: none; margin: 0 15px 15px;"></div>
         <table class="table table-striped table-condensed">
             <tbody>
                 <tr>
@@ -228,9 +293,34 @@
                     <th data-column-id="port" data-type="string" data-width="7em">{{ lang._('Port') }}</th>
                     <th data-column-id="window" data-type="numeric" data-width="9em">{{ lang._('Replay window') }}</th>
                     <th data-column-id="engine" data-formatter="engine" data-type="string" data-width="9em">{{ lang._('Encrypted by') }}</th>
+                    <th data-column-id="cipher" data-formatter="mono" data-type="string">{{ lang._('Cipher') }}</th>
+                    <th data-column-id="reason" data-formatter="reason" data-type="string">{{ lang._('Why in the kernel') }}</th>
                     <th data-column-id="counted" data-formatter="counted" data-type="string" data-sortable="false">{{ lang._('Counted') }}</th>
                     <th data-column-id="handle" data-type="string" data-width="6em">{{ lang._('Handle') }}</th>
                     <th data-column-id="note" data-type="string" data-visible="false">{{ lang._('Note') }}</th>
+                </tr>
+            </thead>
+            <tbody></tbody>
+            <tfoot></tfoot>
+        </table>
+    </div>
+
+    <div id="profile" class="tab-pane">
+        <div class="text-muted" style="padding: 10px 15px 0;">
+            <small>{{ lang._('The proposals, Diffie-Hellman groups (PFS), dead peer detection and rekeying are set under VPN: IPsec; this shows them and what the engine makes of each ESP proposal. The engine takes ESP in tunnel mode with AES-GCM-16, or AES-CBC with HMAC SHA-1, SHA-256, SHA-384 or SHA-512, keys of 128, 192 or 256 bits; the Diffie-Hellman group does not change it. Every other association is encrypted by the kernel.') }}</small>
+        </div>
+        <table id="grid-profile" class="table table-condensed table-hover table-striped table-responsive">
+            <thead>
+                <tr>
+                    <th data-column-id="id" data-type="string" data-identifier="true" data-visible="false">#</th>
+                    <th data-column-id="connection" data-type="string">{{ lang._('Connection') }}</th>
+                    <th data-column-id="child" data-type="string">{{ lang._('Child') }}</th>
+                    <th data-column-id="mode" data-type="string" data-width="7em">{{ lang._('Mode') }}</th>
+                    <th data-column-id="esp" data-formatter="proposals" data-type="string" data-sortable="false">{{ lang._('ESP proposals') }}</th>
+                    <th data-column-id="verdict" data-formatter="verdict" data-type="string" data-width="11em">{{ lang._('Encrypted by') }}</th>
+                    <th data-column-id="ike" data-formatter="mono" data-type="string" data-visible="false">{{ lang._('IKE proposals') }}</th>
+                    <th data-column-id="dpd" data-type="string" data-width="6em">DPD</th>
+                    <th data-column-id="rekey" data-type="string" data-width="7em" data-visible="false">{{ lang._('Rekey') }}</th>
                 </tr>
             </thead>
             <tbody></tbody>

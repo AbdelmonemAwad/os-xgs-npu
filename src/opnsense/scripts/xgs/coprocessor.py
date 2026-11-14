@@ -4,7 +4,8 @@
 # Copyright (c) 2026 Abdelmonem Awad <eg2@live.com>
 #
 """The coprocessor itself - its software and its versions, the chips around it, its flash and its
-eMMC with what each partition holds - for the Coprocessor tab of XGS: Overview.
+eMMC with what each partition holds - for the Coprocessor tab of XGS: Overview, and its software with
+the U-Boot match check (uboot_check) for the Coprocessor tab of XGS: Updates.
 
     coprocessor.py collect   read the coprocessor now, keep it, print it
     coprocessor.py slots     the same, and open each eMMC partition nothing has mounted - the root
@@ -402,6 +403,65 @@ def sdk_match(facts, fw, disks):
             'differ': sorted(p for p, v in systems.items() if v != m.group(1))}
 
 
+def uboot_check(facts, fw):
+    """The U-Boot match check (hw-15), for XGS: Updates: what the flash holds against what is expected
+    of it, made at every read and so at every boot (rc.syshook.d/start/73-xgs-coprocessor).
+
+    Expected is the SDK the running system copy was built from, which its kernel's release ends in -
+    the U-Boot that boots a copy is expected to come from that copy's SDK, as sdk_match() reads it. The
+    flash's U-Boot is the string the flash itself holds, read now; the one the coprocessor last booted
+    is its console banner, when the console logger saw that boot. So the state is one of:
+      match         the flash's U-Boot comes from the running copy's SDK
+      other_sdk     it comes from another SDK: the next start of the coprocessor boots it all the same
+      flash_changed the flash holds another U-Boot than the one the coprocessor last booted: it was
+                    written since, and the next start of the coprocessor boots the new one
+      unknown       a version without an SDK in it, on either side
+      unread        the flash was not read
+    Read only, as everything here: nothing writes U-Boot. A write needs a path this plugin does not
+    have - the flash written over the coprocessor's own Linux, with the image and a backup read back
+    first - and it is not offered."""
+    m = re.search(r'U-Boot (20\d\d\.\d\d\S*)', facts.get('ubootflash', ''))
+    flash = m.group(1) if m else None
+    booted = (fw.get('uboot') or '').split(' ')[0] or None
+    k = SDK.search(facts.get('kernel', ''))
+    expected = k.group(1) if k else None
+    f = SDK.search(flash or '')
+    flash_sdk = f.group(1) if f else None
+    if not flash:
+        state = 'unread'
+    elif booted and booted != flash:
+        state = 'flash_changed'
+    elif not expected or not flash_sdk:
+        state = 'unknown'
+    else:
+        state = 'match' if flash_sdk == expected else 'other_sdk'
+    return {'state': state, 'flash': flash, 'flash_sdk': flash_sdk, 'booted': booted, 'expected_sdk': expected,
+            'write': False}
+
+
+def boottime():
+    """This host's boot, in seconds since the epoch, from kern.boottime; 0 when it cannot be read."""
+    m = re.search(r'sec = (\d+)', sysctl('kern.boottime'))
+    return int(m.group(1)) if m else 0
+
+
+def say_uboot(check, before):
+    """A U-Boot that does not match said in the system log once a boot, and again when the state
+    changes: the first reading since this host booted, or a state other than the last good reading's."""
+    if not check or check.get('state') not in ('other_sdk', 'flash_changed'):
+        return
+    last = ((before or {}).get('software') or {}).get('uboot_check') or {}
+    if last.get('state') == check['state'] and (before or {}).get('at', 0) >= boottime():
+        return
+    if check['state'] == 'other_sdk':
+        text = 'U-Boot in the coprocessor\'s flash (%s) is not from the SDK of the system copy it runs (%s)' % (
+            check.get('flash'), check.get('expected_sdk'))
+    else:
+        text = 'the coprocessor\'s flash holds U-Boot %s, and it last booted %s: the flash was written since' % (
+            check.get('flash'), check.get('booted'))
+    run(['/usr/bin/logger', '-t', 'xgs-coprocessor', '-p', 'daemon.warning', text], timeout=10)
+
+
 def span(labels):
     """'Port1-8, F3, F4' from the labels: the ports first, then the cages, three or more in a row as
     a range."""
@@ -507,6 +567,8 @@ def collect(slots=False):
             answer['slots_at'] = last['slots_at']
         # after the closed copies' contents are in, from this look or the last
         answer['software']['sdk'] = sdk_match(facts, fw, answer['emmc'])
+        answer['software']['uboot_check'] = uboot_check(facts, fw) if 'flash' in answered else None
+        say_uboot(answer['software']['uboot_check'], last)
     write(STATE, answer)
     if 'error' not in answer:
         write(LAST_GOOD, answer)

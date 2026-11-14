@@ -128,6 +128,7 @@ rm -f "${PREFIX}/opnsense/scripts/xgs/apply.php" "${PREFIX}/opnsense/scripts/xgs
     "${PREFIX}/etc/cron.d/xgs-ja4" \
     "${PREFIX}/opnsense/scripts/xgs/anomaly.py" "${PREFIX}/opnsense/scripts/xgs/ids_mtu.py" \
     "${PREFIX}/etc/cron.d/xgs-anomaly" \
+    "${PREFIX}/opnsense/scripts/xgs/failclose.py" "${PREFIX}/etc/cron.d/xgs-failclose" \
     "${PREFIX}/opnsense/scripts/xgs/count.py" \
     "${PREFIX}/etc/cron.d/xgs-count"
 rm -f /var/db/os-xgs-npu/transceivers.json /var/db/os-xgs-npu/fastpath.json /var/db/os-xgs-npu/sensor-flags \
@@ -146,6 +147,16 @@ rm -f "${PREFIX}/opnsense/scripts/xgs/switch.sh" /var/db/os-xgs-npu/switch.state
 rm -f "${PREFIX}/opnsense/www/js/widgets/XGSCoprocessor.js" "${PREFIX}/opnsense/www/js/widgets/XGSPorts.js" \
     "${PREFIX}/opnsense/www/js/widgets/XGSIpsec.js" "${PREFIX}/opnsense/www/js/widgets/XGSFlows.js" \
     "${PREFIX}/opnsense/www/js/widgets/Metadata/XGS.xml"
+# Reporting: Health's collector and descriptions. The figures already written stay in /var/db/rrd,
+# OPNsense's own, until they are deleted there (Reporting: Health, or Reporting: Settings).
+rm -f "${PREFIX}/opnsense/scripts/health/library/OPNsense/RRD/Stats/XGSCoprocessor.php" \
+    "${PREFIX}/opnsense/scripts/health/library/OPNsense/RRD/Types/XGSCoprocessor.php" \
+    "${PREFIX}/opnsense/scripts/health/library/OPNsense/RRD/Types/XGSFlows.php" \
+    "${PREFIX}/opnsense/scripts/health/definitions/system-xgs-coprocessor.xml" \
+    "${PREFIX}/opnsense/scripts/health/definitions/system-xgs-flows.xml" \
+    /var/db/os-xgs-npu/health-history.json
+# Offloaded Flows' record of the connections that left hardware (scripts/xgs/flows.py).
+rm -f /var/db/os-xgs-npu/flows-seen.json /var/db/os-xgs-npu/flows-gone.json
 # The GUI translations' merge, its hook and its trigger, from a version before 2026-10-22 (since
 # then the Arabic is in opnsense-arabic's catalogue). The strings already merged stay in the
 # catalogues until a catalogue is written again.
@@ -178,6 +189,12 @@ rm -f "${PREFIX}/opnsense/scripts/xgs/npu-clock.sh" "${PREFIX}/etc/rc.syshook.d/
 # (syslog-ng is restarted below); the log kept so far stays in /var/log/xgs/coprocessor.
 rm -f "${PREFIX}/opnsense/scripts/xgs/npu-log.sh" "${PREFIX}/etc/rc.syshook.d/start/72-xgs-npu-log" \
     "${PREFIX}/etc/syslog-ng.conf.d/xgs-coprocessor.conf"
+# and its way to the remote servers: the overlay, and what it wrote, which names that source and
+# would stop syslog-ng without it
+rm -f "${PREFIX}/opnsense/service/templates/OPNsense/Syslog/+TARGETS.D/xgs.TARGET" \
+    "${PREFIX}/opnsense/service/templates/OPNsense/Syslog/xgs-coprocessor-remote.conf" \
+    "${PREFIX}/etc/syslog-ng.conf.d/xgs-coprocessor-remote.conf"
+rmdir "${PREFIX}/opnsense/service/templates/OPNsense/Syslog/+TARGETS.D" 2>/dev/null || true
 # The coprocessor's software no longer read at boot; its record, coprocessor.json, went above.
 rm -f "${PREFIX}/etc/rc.syshook.d/start/73-xgs-coprocessor"
 # The XGS 3300's fail-to-wire relay no longer read, nor put back to normal at boot: the two scripts,

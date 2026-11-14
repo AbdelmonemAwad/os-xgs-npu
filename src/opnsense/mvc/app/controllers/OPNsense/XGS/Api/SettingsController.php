@@ -81,6 +81,68 @@ class SettingsController extends ApiMutableModelControllerBase
     }
 
     /**
+     * The saved settings as strings, field by field, for XGS::differing().
+     */
+    private function savedGeneral(): array
+    {
+        $general = [];
+        foreach (array_keys(\OPNsense\XGS\XGS::RECOMMENDED) as $field) {
+            $general[$field] = (string)$this->getModel()->general->$field;
+        }
+        return $general;
+    }
+
+    /**
+     * The recommended settings that differ on this appliance (XGS::RECOMMENDED), for the card on
+     * XGS: Overview. Reads only.
+     */
+    public function recommendedAction()
+    {
+        return ['status' => 'ok', 'differ' => \OPNsense\XGS\XGS::differing($this->savedGeneral())];
+    }
+
+    /**
+     * Apply recommended: set exactly the recommended settings that differ now - nothing else of
+     * xgs.general - save, and apply them as the page's own Apply does (configd xgs apply). Says what
+     * it changed, which of those wait for a reboot, and the apply's own report. POST only, and only
+     * on the owner's press: nothing calls it by itself.
+     */
+    public function applyRecommendedAction()
+    {
+        if (!$this->request->isPost()) {
+            return ['status' => 'failed', 'message' => gettext('this endpoint is POST only')];
+        }
+        Config::getInstance()->lock();
+        $differ = \OPNsense\XGS\XGS::differing($this->savedGeneral());
+        if (empty($differ)) {
+            return ['status' => 'ok', 'changed' => [], 'reboot' => [], 'apply' => null];
+        }
+        $general = $this->getModel()->general;
+        foreach ($differ as $d) {
+            $field = $d['field'];
+            $general->$field = $d['recommended'];
+        }
+        $result = $this->validate();
+        if (!empty($result['result'])) {
+            return ['status' => 'failed', 'message' => gettext('the settings did not validate'),
+                'validations' => $result['validations'] ?? []];
+        }
+        $saved = $this->save(false, true);
+        if (($saved['result'] ?? '') !== 'saved') {
+            return ['status' => 'failed', 'message' => gettext('the settings were not saved')];
+        }
+        $apply = json_decode((new \OPNsense\Core\Backend())->configdRun('xgs apply'), true);
+        return [
+            'status' => 'ok',
+            'changed' => array_column($differ, 'field'),
+            'reboot' => array_column(array_filter($differ, function ($d) {
+                return $d['reboot'];
+            }), 'field'),
+            'apply' => is_array($apply) ? $apply : null,
+        ];
+    }
+
+    /**
      * Let the next boot assign the front ports again: remove the first-boot assignment's mark.
      * The assignment itself still only acts on a box whose front ports are all unassigned.
      */
