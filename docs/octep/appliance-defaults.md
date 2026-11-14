@@ -57,6 +57,21 @@ Before this, the installer loaded amdtemp from a line it wrote in `loader.conf.l
 that line out once OPNsense's setting carries the module - on the XGS 3300 only, because the XGS
 136's `loader.conf.local` was written by hand and is the owner's.
 
+## IPsec in the engine: its loader tunables
+
+XGS: Settings offers IPsec in the engine and its tunnel flows on by default since 2026-11-14, and the
+driver reads both from loader tunables - rows of System: Settings: Tunables, `hw.octep.ipsec_on` and
+`hw.octep.ipsec_flows` on the XGS 3300, `hw.npuep.*` on the XGS 136 - which `scripts/xgs/apply.php`
+wrote, at the owner's first Apply. Until then a new install showed IPsec on and ran without it.
+
+So the rows are written where no row sets them and the plugin's settings are not saved yet: by the
+model's migration to 1.3.0 on a new install, which runs before `defaults.php`, and by `defaults.php`
+at the first boot after a factory reset, when no migration runs - once, recorded as `ipsec_tunables`
+in `/conf/os-xgs-npu-defaults`. A row already there, and an appliance whose settings are saved, are
+left as they are; XGS: Overview offers the recommended settings there. The driver has them from its
+next load (`tunables-kenv.sh`). Tried on both appliances on 2026-11-14 in memory, with the
+configuration never saved.
+
 ## PowerD, measured
 
 Off is OPNsense's default, and both appliances run that way: `hwpstate` holds the CPU at its top
