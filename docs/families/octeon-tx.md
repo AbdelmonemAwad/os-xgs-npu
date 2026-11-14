@@ -2321,6 +2321,18 @@ Implemented on SET: `STATE`, `MTU`, `MAC`, `AUTONEG`, `SPEED`, `DUPLEX`, `PROMIS
 Implemented on GET: `STATE`, `MTU`, `SPEED`, `AUTONEG`, `DUPLEX`, `TYPE`, `STATS`, `PAUSE`,
 `KSETTINGS`.
 
+**`KSETTINGS` is how a switch socket's speed and duplex are set, measured 2026-11-14** on the second
+XGS 3300's Port3, cabled to a gigabit adapter that negotiates. A GET of it answered three words,
+autonegotiation, speed and duplex: `1 / 1000 / 1`. A GET of `0x43`, which had never been sent to
+these boxes, answered `0x6f` - Linux's ethtool link-mode bits for 10 and 100 half and full, 1000 full
+and autonegotiation, what the port advertises - and the agent kept answering after each. A SET of
+`KSETTINGS` took effect on the wire every time: `0 / 100 / 1` and `0 / 10 / 1`, the partner then at
+100 and 10 half (Ethernet's parallel detection against a forced end); `1 / 1000 / 1` with `0x43` set
+to `0x60`, 1000 full; and `0x6f` again for autoselect. Forced to 100 and 10 half, routed TCP crossed
+at 88.5 and 8.45 Mbit/s, in hardware. Since then the driver offers a switch socket those media
+(`octep_dp_media_change` in `contrib/octep/octep_dp.c`); a cage keeps autoselect. `LINK_MODE`
+(`0x09`) is refused either way and is not the attribute.
+
 `FEC` is in neither, and in this source an unimplemented attribute falls to a `default:` that
 returns `NWA_MSG_ACK_FAILED` - a clean refusal, not a hang. So the incident in which `0x0b` stopped
 the handler for good is **not** explained by this source, and that is the one place where the twenty

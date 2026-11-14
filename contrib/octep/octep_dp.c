@@ -12813,16 +12813,57 @@ octep_dp_if_init(void *arg)
 /*
  * Media, which exists so that something can report a link at all.
  *
- * There is nothing to choose: the speed is settled on the far side, by the switch for a panel port
- * and by the cage for a direct one, and this driver has no way to ask for a different one. So the
- * only medium offered is auto, a change request is accepted and ignored, and the whole point of
- * the pair is the status callback - without it ifconfig prints no status line, and a firewall that
- * reads the status line to decide whether to run a DHCP client on an interface will never run one.
+ * A cage's speed is its module's, settled on the far side, so a cage offers auto alone and a change
+ * request for it is accepted and ignored. A switch socket - PortN - offers what the SDK's own host
+ * lets ethtool set (since 2026-11-14): auto, 1000baseT full, and 100 and 10 half and full, sent as
+ * one KSETTINGS SET and, for auto and 1000baseT, what autonegotiation then advertises
+ * (octep_nwa_port_media). A gigabit copper link is never forced: 1000baseT is autonegotiation with
+ * 1000 full alone advertised. And 10 or 100 forced against a partner that negotiates gives that
+ * partner half duplex - Ethernet's parallel detection, not this driver. A refusal or a timeout is
+ * returned, so ifmedia puts back the medium the port had. The status callback matters as much: without
+ * it ifconfig prints no status line, and a firewall that reads the status line to decide whether to
+ * run a DHCP client on an interface will never run one.
  */
 static int
-octep_dp_media_change(if_t ifp __unused)
+octep_dp_media_change(if_t ifp)
 {
+	struct octep_dp_if *dif = if_getsoftc(ifp);
+	uint32_t an, speed, fdx, adv;
+	int m, err;
 
+	if (dif == NULL)
+		return (ENXIO);
+	m = dif->media.ifm_media;
+	if (IFM_TYPE(m) != IFM_ETHER)
+		return (EINVAL);
+	if (dif->cage)
+		return (IFM_SUBTYPE(m) == IFM_AUTO ? 0 : ENODEV);
+	fdx = (m & IFM_FDX) != 0;
+	switch (IFM_SUBTYPE(m)) {
+	case IFM_AUTO:
+		an = 1, speed = 1000, fdx = 1, adv = OCTEP_NWA_ADV_ALL;
+		break;
+	case IFM_1000_T:
+		if (!fdx)
+			return (EINVAL);
+		an = 1, speed = 1000, adv = OCTEP_NWA_ADV_1000F;
+		break;
+	case IFM_100_TX:
+		an = 0, speed = 100, adv = 0;
+		break;
+	case IFM_10_T:
+		an = 0, speed = 10, adv = 0;
+		break;
+	default:
+		return (EINVAL);
+	}
+	err = octep_nwa_port_media(dif->sc, dif->nwaport, an, speed, fdx, adv);
+	if (err != 0) {
+		if_printf(ifp, "medium not changed: the switch %s (%d)\n", err == EOPNOTSUPP ?
+		    "refused it" : "did not answer", err);
+		return (err);
+	}
+	dif->media_half = !fdx;
 	return (0);
 }
 
@@ -12849,7 +12890,8 @@ octep_dp_media_status(if_t ifp, struct ifmediareq *ifmr)
 	ifmr->ifm_status = IFM_AVALID;
 	if (dif != NULL && dif->link == 1) {
 		ifmr->ifm_status |= IFM_ACTIVE;
-		ifmr->ifm_active |= IFM_FDX;
+		/* Forced half is half; anything negotiated has been full on every port seen. */
+		ifmr->ifm_active |= dif->media_half ? IFM_HDX : IFM_FDX;
 		switch (dif->speed) {
 		case 10:
 			ifmr->ifm_active |= IFM_10_T;
@@ -13694,6 +13736,14 @@ octep_dp_if_attach(struct octep_softc *sc, uint16_t tag)
 		}
 		/* Only the switch's sockets are RJ45; a cage, or a port with no name, is not known. */
 		dif->cage = (label == NULL || strncmp(label, "Port", 4) != 0);
+	}
+	/* And a socket's speed and duplex can be chosen: see octep_dp_media_change. */
+	if (!dif->cage) {
+		ifmedia_add(&dif->media, IFM_ETHER | IFM_1000_T | IFM_FDX, 0, NULL);
+		ifmedia_add(&dif->media, IFM_ETHER | IFM_100_TX | IFM_FDX, 0, NULL);
+		ifmedia_add(&dif->media, IFM_ETHER | IFM_100_TX, 0, NULL);	/* half: no IFM_FDX */
+		ifmedia_add(&dif->media, IFM_ETHER | IFM_10_T | IFM_FDX, 0, NULL);
+		ifmedia_add(&dif->media, IFM_ETHER | IFM_10_T, 0, NULL);
 	}
 
 	/*

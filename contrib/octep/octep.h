@@ -1324,6 +1324,19 @@ struct octep_ips_ent {
 #define	  OCTEP_NWA_AUTONEG_ON		1
 
 /*
+ * A switch socket's speed and duplex: KSETTINGS, the one attribute the SDK's own host sends for an
+ * ethtool -s, with three payload words from the request's 0x10 - autonegotiation 0 or 1, the speed
+ * in Mbit/s, the duplex 0 half or 1 full. Read on Port3 2026-11-14: {1, 1000, 1}. And what
+ * autonegotiation advertises, a bitmap in Linux's ethtool link-mode numbering across two words:
+ * 0x6f read back on Port3, which is 10 and 100 half and full, 1000 full, and autonegotiation
+ * itself. LINK_MODE (0x09), which the plan first named, is refused by the far side either way.
+ */
+#define	  OCTEP_NWA_SUB_KSETTINGS	0x55
+#define	  OCTEP_NWA_SUB_ADV		0x43
+#define	  OCTEP_NWA_ADV_ALL		0x6f	/* 10H 10F 100H 100F 1000F and autonegotiation */
+#define	  OCTEP_NWA_ADV_1000F		0x60	/* 1000F and autonegotiation */
+
+/*
  * The reply to a discover measured 2020 bytes here, so 64 words truncated it badly. 512 words is that
  * with room; it is not a protocol limit - the target advertises a maximum request near 32 KB.
  */
@@ -2521,6 +2534,7 @@ struct octep_dp_if {
 	 * it there and writes these in dp.module_media.
 	 */
 	uint8_t			 cage;
+	uint8_t			 media_half;	/* a socket forced to half duplex (media_change) */
 	u_int			 mod_media[2];
 	uint8_t			 mac[6];
 	uint64_t		 rx_packets;
@@ -4404,6 +4418,7 @@ struct octep_softc {
 	uint32_t		 nwa_req_port;
 	uint32_t		 nwa_req_param;
 	uint32_t		 nwa_req_param2;
+	uint32_t		 nwa_req_param3;
 	uint32_t		 dp_meta_mode;
 	uint32_t		 dp_meta_mode_set;
 	uint32_t		 dp_sib_base;
@@ -4569,6 +4584,10 @@ struct octep_nwa_reply {
 };
 int	octep_nwa_request(struct octep_softc *sc, uint32_t op, uint32_t sub, uint32_t port,
 	    uint32_t param, uint32_t param2, struct octep_nwa_reply *out);
+int	octep_nwa_request3(struct octep_softc *sc, uint32_t op, uint32_t sub, uint32_t port,
+	    uint32_t param, uint32_t param2, uint32_t param3, struct octep_nwa_reply *out);
+int	octep_nwa_port_media(struct octep_softc *sc, uint32_t port, uint32_t autoneg,
+	    uint32_t speed, uint32_t duplex, uint32_t adv);
 void	octep_nwa_add_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
 	    struct sysctl_oid_list *top);
 

@@ -617,15 +617,18 @@ octep_sysctl_nwa_ports(SYSCTL_HANDLER_ARGS)
  * exactly what it is told to and reports exactly what came back, rather than one that assumes an
  * encoding.
  *
- * SET IS REFUSED BY NAME, WITH TWO EXCEPTIONS. op 0x03 changes a port's administrative state, MTU,
+ * SET IS REFUSED BY NAME, WITH EXCEPTIONS. op 0x03 changes a port's administrative state, MTU,
  * address or filtering, and there is no reason for this driver to do most of that while it is still
- * finding out what the far side accepts. Two attributes are allowed and are named where the request
- * is built: 0x00, the administrative state, which is what raises a front port; and 0x45,
- * promiscuous mode. Everything else is refused, so the tool can still be pointed at anything.
+ * finding out what the far side accepts. The attributes allowed are named where the request is
+ * built - the administrative state, promiscuous mode, all-multicast, the port's own address,
+ * autonegotiation, and a switch socket's speed and duplex and what it advertises - each with the
+ * values it may carry. Everything else is refused, so the tool can still be pointed at anything.
+ *
+ * param3 is the third payload word, at 0x18; only the speed-and-duplex SET carries one.
  */
 int
-octep_nwa_request(struct octep_softc *sc, uint32_t op, uint32_t sub, uint32_t port,
-    uint32_t param, uint32_t param2, struct octep_nwa_reply *out)
+octep_nwa_request3(struct octep_softc *sc, uint32_t op, uint32_t sub, uint32_t port,
+    uint32_t param, uint32_t param2, uint32_t param3, struct octep_nwa_reply *out)
 {
 	uint32_t rq[OCTEP_NWA_REQ_SIZE / 4];
 	int error, n;
@@ -668,14 +671,48 @@ octep_nwa_request(struct octep_softc *sc, uint32_t op, uint32_t sub, uint32_t po
 		 */
 		if (sub != OCTEP_NWA_SUB_STATE && sub != OCTEP_NWA_SUB_PROMISC &&
 		    sub != OCTEP_NWA_SUB_MAC && sub != OCTEP_NWA_SUB_ALLMULTI &&
-		    sub != OCTEP_NWA_SUB_AUTONEG) {
+		    sub != OCTEP_NWA_SUB_AUTONEG && sub != OCTEP_NWA_SUB_KSETTINGS &&
+		    sub != OCTEP_NWA_SUB_ADV) {
 			device_printf(sc->dev, "nwa: SET sub 0x%02x refused; only 0x00, the "
 			    "administrative state, 0x45, promiscuous, 0x46, all-multicast, "
-			    "0x03, the port's own address, and 0x0c, autonegotiation, are "
+			    "0x03, the port's own address, 0x0c, autonegotiation, 0x55, a "
+			    "switch socket's speed and duplex, and 0x43, what it advertises, are "
 			    "allowed from here\n",
 			    sub);
 			mtx_unlock(&sc->mtx);
 			return (EPERM);
+		}
+		/*
+		 * Speed, duplex and the advertisement: a switch socket's only (tags 0x8100 to
+		 * 0x8800, PortN). A cage's speed is its module's, and on a coprocessor cage a speed
+		 * change retrains the SerDes; nothing here asks for that. And only what the SDK's
+		 * own host would send: autonegotiation 0 or 1, 10, 100 or 1000 Mbit/s, half duplex
+		 * at 10 or 100 only; an advertisement inside 10/100 half and full, 1000 full and
+		 * autonegotiation (0x6f, what Port3 read back).
+		 */
+		if ((sub == OCTEP_NWA_SUB_KSETTINGS || sub == OCTEP_NWA_SUB_ADV) &&
+		    (port < 0x8100 || port > 0x8800 || (port & 0xff) != 0)) {
+			device_printf(sc->dev, "nwa: SET sub 0x%02x refused on port 0x%04x; only "
+			    "a switch socket, 0x8100 to 0x8800\n", sub, port);
+			mtx_unlock(&sc->mtx);
+			return (EPERM);
+		}
+		if (sub == OCTEP_NWA_SUB_KSETTINGS && (param > 1 ||
+		    (param2 != 10 && param2 != 100 && param2 != 1000) || param3 > 1 ||
+		    (param3 == 0 && param2 > 100))) {
+			device_printf(sc->dev, "nwa: SET speed and duplex %u/%u/%u refused; pass "
+			    "autonegotiation 0 or 1, 10, 100 or 1000, and duplex 0 half or 1 full, "
+			    "half at 10 or 100 only\n", param, param2, param3);
+			mtx_unlock(&sc->mtx);
+			return (EINVAL);
+		}
+		if (sub == OCTEP_NWA_SUB_ADV && (param == 0 ||
+		    (param & ~(uint32_t)OCTEP_NWA_ADV_ALL) != 0 || param2 != 0)) {
+			device_printf(sc->dev, "nwa: SET advertisement 0x%x 0x%x refused; pass a "
+			    "part of 0x%x in the first word and 0 in the second\n", param, param2,
+			    OCTEP_NWA_ADV_ALL);
+			mtx_unlock(&sc->mtx);
+			return (EINVAL);
 		}
 		if (sub == OCTEP_NWA_SUB_STATE && param > OCTEP_NWA_STATE_UP) {
 			device_printf(sc->dev, "nwa: SET state %u refused; pass 0 for down or 1 "
@@ -760,6 +797,7 @@ octep_nwa_request(struct octep_softc *sc, uint32_t op, uint32_t sub, uint32_t po
 	 * changes shape.
 	 */
 	rq[OCTEP_NWA_RQ_PAYLOAD / 4 + 1] = param2;
+	rq[OCTEP_NWA_RQ_PAYLOAD / 4 + 2] = param3;
 
 	sc->nwa_last_op = op;
 	sc->nwa_last_sub = sub;
@@ -792,8 +830,18 @@ octep_nwa_request(struct octep_softc *sc, uint32_t op, uint32_t sub, uint32_t po
 	return (error);
 }
 
+/* Every request with two payload words or fewer: the third is zero, as it always was. */
+int
+octep_nwa_request(struct octep_softc *sc, uint32_t op, uint32_t sub, uint32_t port,
+    uint32_t param, uint32_t param2, struct octep_nwa_reply *out)
+{
+
+	return (octep_nwa_request3(sc, op, sub, port, param, param2, 0, out));
+}
+
 /*
- * The hand instrument: issue whatever nwa.op, nwa.sub, nwa.port, nwa.param and nwa.param2 hold.
+ * The hand instrument: issue whatever nwa.op, nwa.sub, nwa.port, nwa.param, nwa.param2 and
+ * nwa.param3 hold.
  * The staged words are read under the lock and passed as arguments, so a request built by hand
  * and one made by the link poll can no longer be assembled from each other's fields - which is
  * what the staging block allowed, and what issue #224 was about.
@@ -801,7 +849,7 @@ octep_nwa_request(struct octep_softc *sc, uint32_t op, uint32_t sub, uint32_t po
 static int
 octep_nwa_do_request(struct octep_softc *sc)
 {
-	uint32_t op, sub, port, param, param2;
+	uint32_t op, sub, port, param, param2, param3;
 
 	mtx_lock(&sc->mtx);
 	op = sc->nwa_req_op;
@@ -809,8 +857,9 @@ octep_nwa_do_request(struct octep_softc *sc)
 	port = sc->nwa_req_port;
 	param = sc->nwa_req_param;
 	param2 = sc->nwa_req_param2;
+	param3 = sc->nwa_req_param3;
 	mtx_unlock(&sc->mtx);
-	return (octep_nwa_request(sc, op, sub, port, param, param2, NULL));
+	return (octep_nwa_request3(sc, op, sub, port, param, param2, param3, NULL));
 }
 
 static int
@@ -823,6 +872,33 @@ octep_sysctl_nwa_request(SYSCTL_HANDLER_ARGS)
 	if (error != 0 || req->newptr == NULL)
 		return (error);
 	return (octep_nwa_do_request(sc));
+}
+
+/*
+ * A switch socket's speed and duplex, set as the SDK's own host sets them for an ethtool -s: one
+ * KSETTINGS SET of autonegotiation, speed and duplex, and, when adv is not 0, what autonegotiation
+ * is to advertise after it - 1000 full alone for 1000baseT, since a gigabit copper link is never
+ * forced; everything for autoselect. A refusal by the far side is EOPNOTSUPP, so ifmedia keeps the
+ * medium the port had. The caller must not hold sc->mtx: octep_nwa_request3() sleeps.
+ */
+int
+octep_nwa_port_media(struct octep_softc *sc, uint32_t port, uint32_t autoneg, uint32_t speed,
+    uint32_t duplex, uint32_t adv)
+{
+	struct octep_nwa_reply r;
+	int err;
+
+	err = octep_nwa_request3(sc, OCTEP_NWA_OP_SET, OCTEP_NWA_SUB_KSETTINGS, port, autoneg,
+	    speed, duplex, &r);
+	if (err == 0 && r.status != 0)
+		err = EOPNOTSUPP;
+	if (err == 0 && adv != 0) {
+		err = octep_nwa_request3(sc, OCTEP_NWA_OP_SET, OCTEP_NWA_SUB_ADV, port, adv, 0, 0,
+		    &r);
+		if (err == 0 && r.status != 0)
+			err = EOPNOTSUPP;
+	}
+	return (err);
 }
 
 /*
@@ -1237,6 +1313,11 @@ octep_nwa_add_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
 	    "the second payload word, at request offset 0x14. Only op 0x03 sub 0x03 uses it: a "
 	    "port address is six bytes in transmission order across these two words, so octets 0 "
 	    "to 3 go in param and octets 4 and 5 in the low half of this one");
+	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "param3",
+	    CTLFLAG_RW, &sc->nwa_req_param3, 0,
+	    "the third payload word, at request offset 0x18. Only op 0x03 sub 0x55 uses it: a "
+	    "switch socket's duplex, 0 half or 1 full, after autonegotiation in param and the "
+	    "speed in Mbit/s in param2");
 	SYSCTL_ADD_PROC(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "request",
 	    CTLTYPE_INT | CTLFLAG_WR | CTLFLAG_NEEDGIANT, sc, 0,
 	    octep_sysctl_nwa_request, "I",

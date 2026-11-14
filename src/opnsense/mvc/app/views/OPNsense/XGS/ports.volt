@@ -72,7 +72,13 @@
                         return row.vlans ? '<small>' + row.vlans + '</small>' : '';
                     },
                     speed: function (column, row) {
-                        return row.status === 'up' ? (row.speed || "{{ lang._('up') }}") : '';
+                        /* half duplex and a speed fixed on the interface's page are said; full and negotiated are the rule */
+                        if (row.status !== 'up') {
+                            return '';
+                        }
+                        return (row.speed || "{{ lang._('up') }}") +
+                            (row.duplex === 'half' ? ', ' + "{{ lang._('half duplex') }}" : '') +
+                            (row.fixed ? ' <small class="text-muted">' + "{{ lang._('fixed') }}" + '</small>' : '');
                     }
                 }
             }
@@ -466,7 +472,7 @@
                     <th data-column-id="assigned" data-formatter="assigned" data-type="string">{{ lang._('Assigned as') }}</th>
                     <th data-column-id="address" data-type="string">{{ lang._('Address') }}</th>
                     <th data-column-id="mac" data-type="string" data-width="11em">{{ lang._('MAC address') }}</th>
-                    <th data-column-id="speed" data-formatter="speed" data-type="string" data-width="6em">{{ lang._('Speed') }}</th>
+                    <th data-column-id="speed" data-formatter="speed" data-type="string" data-width="9em">{{ lang._('Speed') }}</th>
                     <th data-column-id="media" data-type="string" data-visible="false">{{ lang._('Media') }}</th>
                     <th data-column-id="mtu" data-type="string" data-width="6em">{{ lang._('MTU') }}</th>
                     <th data-column-id="bridge" data-type="string" data-width="7em">{{ lang._('Bridge') }}</th>

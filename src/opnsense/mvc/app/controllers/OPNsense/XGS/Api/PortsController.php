@@ -117,7 +117,24 @@ class PortsController extends ApiControllerBase
         }
         $rows = [];
         foreach (($decoded['ports'] ?? []) as $p) {
-            $media = preg_replace('/^Ethernet\s+autoselect\s*/i', '', (string)($p['media'] ?? ''));
+            /*
+             * ifconfig's line is the medium asked for, then what the link runs at in brackets when
+             * the two differ: "Ethernet autoselect (1000baseT <full-duplex>)", "Ethernet 100baseTX
+             * (100baseTX <half-duplex>)", or "Ethernet 100baseTX <full-duplex>" alone when they are
+             * the same. A switch socket's speed and duplex can be chosen since 2026-11-14, so the
+             * speed is read from the running part, and the port says when it was fixed by hand.
+             */
+            $line = trim((string)($p['media'] ?? ''));
+            $asked = $line;
+            $running = $line;
+            if (preg_match('/^(.*?)\s*\((.*)\)\s*$/', $line, $mm)) {
+                $asked = $mm[1];
+                $running = $mm[2];
+            }
+            $fixed = $line !== '' && stripos($asked, 'autoselect') === false && stripos($asked, 'none') === false;
+            $duplex = stripos($running, 'half-duplex') !== false ? 'half' :
+                (stripos($running, 'full-duplex') !== false ? 'full' : '');
+            $media = preg_replace('/^Ethernet\s+/i', '', $running);
             $media = trim(preg_replace('/\s+/', ' ', str_replace(['(', ')', '<', '>'], ' ', $media)));
             $speed = '';
             if (preg_match('/^(\d+)(G|M)?base/i', $media, $m)) {
@@ -134,6 +151,8 @@ class PortsController extends ApiControllerBase
                 'address' => (string)($a['address'] ?? ''),
                 'status' => strpos((string)($p['status'] ?? ''), 'active') === 0 ? 'up' : 'down',
                 'speed' => $speed,
+                'duplex' => $duplex,
+                'fixed' => $fixed,
                 'media' => $media === 'none' ? '' : $media,
                 'mtu' => (string)($p['mtu'] ?? ''),
                 'mac' => (string)($p['mac'] ?? ''),
