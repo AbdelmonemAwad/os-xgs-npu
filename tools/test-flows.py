@@ -170,12 +170,12 @@ octep_rows = fl.octep('   5 rev 3  proto 6  sweep asks pf with the orig tuple, l
                       'nhop 2  in oxp1 (tag 0x0001)  punts 0\n')
 check('XGS 3300: each direction\'s next hop', octep_rows[0]['nhop'], [4, 2])
 check('XGS 136: each direction\'s next hop', npuep_rows[0]['nhop'], [2, 1])
-fl.run = lambda argv: '? (192.0.2.1) at 00:11:22:33:44:55 on igc0 expires in 1180 seconds [ethernet]\n' \
+fl.run = lambda argv: '? (192.0.2.1) at de:ad:be:ef:00:01 on igc0 expires in 1180 seconds [ethernet]\n' \
     if argv[0] == '/usr/sbin/arp' else ''
-hops = fl.next_hops('  4 rev 1  refs 2  iface 1  to 00:11:22:33:44:55  from 00:aa:bb:cc:dd:ee  mtu 1500\n'
-                    '  2 rev 1  refs 1  iface 0  to 66:77:88:99:aa:bb  from 00:aa:bb:cc:dd:ef  mtu 1500  vlan 20\n')
+hops = fl.next_hops('  4 rev 1  refs 2  iface 1  to de:ad:be:ef:00:01  from de:ad:be:ef:00:02  mtu 1500\n'
+                    '  2 rev 1  refs 1  iface 0  to de:ad:be:ef:00:03  from de:ad:be:ef:00:04  mtu 1500  vlan 20\n')
 check('the next hop table: the neighbour\'s address behind its MAC',
-      hops['4'], {'mac': '00:11:22:33:44:55', 'mtu': 1500, 'vlan': 0, 'address': '192.0.2.1'})
+      hops['4'], {'mac': 'de:ad:be:ef:00:01', 'mtu': 1500, 'vlan': 0, 'address': '192.0.2.1'})
 check('the next hop table: a VLAN, and no address known', (hops['2']['vlan'], hops['2']['address']), (20, ''))
 
 # Left hardware: a connection in the last listing and not in this one, with what pf says of it now.

@@ -32,14 +32,14 @@ def check(what, got, want):
 
 IFCONFIG = """oxp0: flags=1008843<UP,BROADCAST,RUNNING,SIMPLEX,MULTICAST,LOWER_UP> metric 0 mtu 1500
 \tdescription: LAN
-\tether 00:1a:8c:00:00:01
+\tether 02:00:00:00:00:01
 \tmedia: Ethernet autoselect (1000baseT <full-duplex>)
 \tstatus: active
 oxp1: flags=1008843<UP,BROADCAST,RUNNING,SIMPLEX,MULTICAST,LOWER_UP> metric 0 mtu 1500
-\tether 00:1a:8c:00:00:02
+\tether 02:00:00:00:00:02
 \tstatus: no carrier
 vlan20: flags=1008843<UP,BROADCAST,RUNNING,SIMPLEX,MULTICAST,LOWER_UP> metric 0 mtu 1500
-\tether 00:1a:8c:00:00:01
+\tether 02:00:00:00:00:01
 \tgroups: vlan
 \tvlan: 20 vlanproto: 802.1q vlanpcp: 0 parent interface: oxp0
 vlan5: flags=1008843<UP,BROADCAST,RUNNING,SIMPLEX,MULTICAST,LOWER_UP> metric 0 mtu 1500

@@ -168,13 +168,13 @@ fd99:136::1 fd99:23::1
 """
 # A link-local end carries its scope (seen on the XGS 3300 after a rekey, 2026-11-14): the block is read
 # like any other, the scope left out of the address.
-SETKEY_SCOPED = """fd99:23::1 fe80::7e5a:1cff:feb4:ef97%oxp9
+SETKEY_SCOPED = """fd99:23::1 fe80::dcad:beff:feef:1%oxp9
 \tesp mode=tunnel spi=3487353563(0xcfdccadb) reqid=1(0x00000001)
 \tE: aes-gcm-16  00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
 \t00000000
 \tseq=0x00000000 replay=0 flags=0x00000000 state=mature
 \tsadb_seq=1 pid=4242 refcnt=1
-fe80::7e5a:1cff:feb4:ef97%oxp9[4500] fd99:23::1[4500]
+fe80::dcad:beff:feef:1%oxp9[4500] fd99:23::1[4500]
 \tesp-udp mode=tunnel spi=3387257334(0xc9e571f6) reqid=1(0x00000001)
 \tE: aes-gcm-16  00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
 \t00000000
@@ -186,7 +186,7 @@ ip.run = lambda argv: SETKEY_SCOPED if argv[:2] == ['/sbin/setkey', '-D'] else N
 scoped = ip.kernel_detail()
 check('a scoped end: both blocks read', sorted(scoped), ['c9e571f6', 'cfdccadb'])
 check('a scoped end: the address without its scope', (scoped['cfdccadb']['dst'], scoped['c9e571f6']['src']),
-      ('fe80::7e5a:1cff:feb4:ef97', 'fe80::7e5a:1cff:feb4:ef97'))
+      ('fe80::dcad:beff:feef:1', 'fe80::dcad:beff:feef:1'))
 check('a scoped end with a port: read, and the port taken', scoped['c9e571f6']['hw_if'], 'oxp9')
 check('a scoped end: the kernel view of its SPIs', sorted(ip.kernel_sas()), ['c9e571f6', 'cfdccadb'])
 

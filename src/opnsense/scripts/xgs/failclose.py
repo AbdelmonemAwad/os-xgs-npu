@@ -63,7 +63,7 @@ def wanted(root):
 
 def sysctl_get(oid):
     try:
-        r = subprocess.run(['/sbin/sysctl', '-n', oid], capture_output=True, text=True, timeout=5)
+        r = subprocess.run(['/sbin/sysctl', '-n', oid], capture_output=True, text=True, errors='replace', timeout=5)
     except (OSError, subprocess.SubprocessError):
         return None
     return r.stdout.strip() if r.returncode == 0 else None
