@@ -24,7 +24,18 @@ on the 136 it counted every association since boot as held (14 where the kernel 
               declined: what was offered and not taken, and what that count includes
               encrypted, decrypted: frames through the engine either way since the driver loaded
 
-Read-only: sysctl reads, kenv and setkey -D.
+Each association the kernel has and the engine does not is a row too, with the reason it stays in
+the kernel (2026-11-14): the engine off, a protocol, mode, cipher, HMAC or key length the drivers'
+rules refuse (octep_ipsec_sa_newkey, npuipsec_alg_of: tunnel-mode ESP with AES-GCM-16, or AES-CBC
+with HMAC SHA-1/256/384/512, keys of 128, 192 or 256 bits), on the XGS 136 never offered to a front
+port, or "other" - what the drivers count without naming per association (a route by another
+interface or a VLAN, a replay window, inbound extended sequence numbers, the coprocessor not ready).
+
+    profile   the encryption profile as OPNsense configured it, from the swanctl.conf it writes:
+              each child's ESP proposals and whether the engine takes them, its mode, the IKE
+              proposals and dead peer detection. Shown here; it is set under VPN: IPsec.
+
+Read-only: sysctl reads, kenv, setkey -D, ifconfig, swanctl.conf and config.xml.
 """
 
 import json
@@ -114,6 +125,218 @@ def kernel_counts():
     return found
 
 
+KERNEL_HEAD = re.compile(r'^\s*(esp|esp-udp|ah|ipcomp|tcp)\s+mode=(\S+)\s+spi=\d+\(0x([0-9a-f]+)\)', re.I)
+KERNEL_ALG = re.compile(r'^\s*([EA]):\s+(\S+)((?:\s+[0-9a-f]+)*)\s*$', re.I)
+# setkey's names (libipsec's pfkey_dump) for what both drivers take: AES-GCM with a 16-byte ICV, and
+# AES-CBC - printed "rijndael-cbc" for SADB_X_EALG_AES, "aes-cbc" by some builds - with an HMAC of
+# SHA-1, SHA-256, SHA-384 or SHA-512 (octep_ipsec_sa_newkey, npuipsec_alg_of).
+GCM16 = ('aes-gcm-16',)
+CBC = ('rijndael-cbc', 'aes-cbc')
+HMACS = ('hmac-sha1', 'hmac-sha2-256', 'hmac-sha2-384', 'hmac-sha2-512', 'hmac-sha256', 'hmac-sha384',
+         'hmac-sha512')
+
+
+def kernel_detail():
+    """Every association the kernel has, {spi: {...}} from setkey -D: its two ends, its protocol and
+    mode, its cipher and key length, its HMAC. What the rules below need, and nothing of the keys."""
+    found, ends, spi = {}, None, None
+    for line in (run(['/sbin/setkey', '-D']) or '').splitlines():
+        m = KERNEL_ENDS.match(line)
+        if m:
+            ends = (m.group(1), m.group(2))
+            spi = None
+            continue
+        m = KERNEL_HEAD.match(line)
+        if m and ends:
+            spi = m.group(3).rjust(8, '0')
+            found[spi] = {'src': ends[0], 'dst': ends[1], 'proto': m.group(1).lower(),
+                          'mode': m.group(2).lower(), 'enc': '', 'keylen': 0, 'auth': ''}
+            continue
+        m = KERNEL_ALG.match(line)
+        if m and spi:
+            if m.group(1) == 'E':
+                found[spi]['enc'] = m.group(2).lower()
+                found[spi]['keylen'] = len(''.join(m.group(3).split())) // 2
+            else:
+                found[spi]['auth'] = m.group(2).lower()
+    return found
+
+
+def rule_reason(sa):
+    """Why the engine cannot take this association by the drivers' own rules, as a code and the
+    word it is about, or None when the rules allow it - then whatever kept it in the kernel is
+    something the drivers count without naming it per association."""
+    if sa['proto'] not in ('esp', 'esp-udp'):
+        return 'protocol', sa['proto']
+    if sa['mode'] != 'tunnel':
+        return 'mode', sa['mode']
+    if sa['enc'] in GCM16:
+        keylen = sa['keylen'] - 4               # the 4-byte salt rides at the end of the key
+    elif sa['enc'] in CBC:
+        if sa['auth'] not in HMACS:
+            return 'auth', sa['auth'] or 'none'
+        keylen = sa['keylen']
+    else:
+        return 'cipher', sa['enc'] or 'none'
+    if sa['keylen'] and keylen not in (16, 24, 32):
+        return 'keylen', str(keylen * 8)
+    return None
+
+
+def local_addresses():
+    """The addresses this host owns, to tell a kernel-only association's direction."""
+    found = set()
+    for line in (run(['/sbin/ifconfig', '-a']) or '').splitlines():
+        parts = line.split()
+        if len(parts) > 1 and parts[0] in ('inet', 'inet6'):
+            found.add(parts[1].split('%')[0])
+    return found
+
+
+def kernel_rows(rows, detail, engine_on, family):
+    """Add a row for every association the kernel has and the engine does not, each with the reason
+    it stays there: the engine off, the drivers' rules, on the XGS 136 never offered to a front
+    port; and give every row its algorithms."""
+    ours = local_addresses()
+    seen = set()
+    for r in rows:
+        key = r['spi'].lower()[2:].rjust(8, '0')
+        seen.add(key)
+        sa = detail.get(key)
+        if sa:
+            r['cipher'] = sa['enc'] + (' / ' + sa['auth'] if sa['auth'] else '')
+            r['mode'] = sa['mode']
+        if not r['engine'] and not r.get('reason'):
+            why = rule_reason(sa) if sa else None
+            r['reason'], r['reason_word'] = why if why else ('engine_off' if not engine_on else 'other', '')
+    for key, sa in sorted(detail.items()):
+        if key in seen:
+            continue
+        why = rule_reason(sa)
+        if why is None:
+            why = ('engine_off', '') if not engine_on else \
+                (('not_offered', '') if family != 'octeontx' else ('other', ''))
+        direction = 'encrypt' if sa['src'] in ours else ('decrypt' if sa['dst'] in ours else '')
+        rows.append({'direction': direction, 'spi': '0x' + key, 'tunnel': sa['src'] + ' -> ' + sa['dst'],
+                     'port': '', 'window': '', 'handle': '', 'engine': False, 'note': '',
+                     'cipher': sa['enc'] + (' / ' + sa['auth'] if sa['auth'] else ''), 'mode': sa['mode'],
+                     'reason': why[0], 'reason_word': why[1]})
+    return rows
+
+
+SWANCTL = '/usr/local/etc/swanctl/swanctl.conf'
+CONFIG = '/conf/config.xml'
+ENC_GCM16 = re.compile(r'^aes(128|192|256)gcm(16|128)$')
+ENC_CBC = re.compile(r'^aes(128|192|256)(cbc)?$')
+INTEG_OK = ('sha1', 'sha256', 'sha384', 'sha512', 'sha2_256', 'sha2_384', 'sha2_512')
+INTEG_ANY = re.compile(r'^(md5|sha|aesxcbc|aescmac|aes\d*gmac)')
+ENC_ANY = re.compile(r'^(aes|3des|des|cast|blowfish|camellia|chacha|null|serpent|twofish)')
+
+
+def proposal_verdict(text):
+    """What the engine makes of one ESP proposal as strongSwan writes it (aes256gcm16-modp2048,
+    aes128-sha256-ecp256): 'all' when every cipher it allows is one the engine takes, 'some' when
+    the peer's choice decides, 'none' when none is - and the parts it judged by. The Diffie-Hellman
+    group (PFS) and esn/noesn do not change it."""
+    if text == 'default':
+        return 'some', [], []
+    encs, integs = [], []
+    for word in text.lower().split('-'):
+        if ENC_ANY.match(word) and not INTEG_ANY.match(word):
+            encs.append(word)
+        elif INTEG_ANY.match(word):
+            integs.append(word)
+    ok = []
+    for enc in encs or ['?']:
+        if ENC_GCM16.match(enc):
+            ok.append(True)
+        elif ENC_CBC.match(enc):
+            ok.extend(i in INTEG_OK for i in (integs or ['none']))
+        else:
+            ok.append(False)
+    verdict = 'all' if all(ok) else ('some' if any(ok) else 'none')
+    return verdict, encs, integs
+
+
+def swanctl_blocks(text):
+    """swanctl.conf as nested dicts: `name { ... }` a section, `key = value` a setting."""
+    root, stack = {}, []
+    cur = root
+    for raw in text.splitlines():
+        line = raw.split('#', 1)[0].strip()
+        if not line:
+            continue
+        if line.endswith('{'):
+            node = {}
+            cur[line[:-1].strip()] = node
+            stack.append(cur)
+            cur = node
+        elif line == '}':
+            cur = stack.pop() if stack else root
+        elif '=' in line:
+            key, _, value = line.partition('=')
+            cur[key.strip()] = value.strip()
+    return root
+
+
+def descriptions():
+    """The descriptions OPNsense keeps for its IPsec connections and children, {uuid: text}."""
+    found = {}
+    try:
+        import xml.etree.ElementTree as ET
+        tree = ET.parse(CONFIG)
+    except Exception:
+        return found
+    for node in tree.iter():
+        if node.tag.lower() != 'swanctl':
+            continue
+        for item in node.iter():
+            uuid = item.get('uuid')
+            if uuid:
+                d = item.find('description')
+                if d is not None and (d.text or '').strip():
+                    found[uuid] = d.text.strip()
+    return found
+
+
+def profile():
+    """The encryption profile as OPNsense configured it (VPN: IPsec), read from the swanctl.conf it
+    writes: each child's ESP proposals with what the engine makes of them, its mode, and the
+    connection's IKE proposals and dead peer detection. Shown, never written."""
+    try:
+        with open(SWANCTL, encoding='utf-8', errors='replace') as f:
+            conf = swanctl_blocks(f.read())
+    except OSError:
+        return None
+    names = descriptions()
+    out = []
+    for cname, conn in sorted((conf.get('connections') or {}).items()):
+        if not isinstance(conn, dict):
+            continue
+        for chname, child in sorted((conn.get('children') or {}).items()):
+            if not isinstance(child, dict):
+                continue
+            mode = child.get('mode', 'tunnel')
+            props = []
+            for p in [x.strip() for x in child.get('esp_proposals', 'default').split(',') if x.strip()]:
+                verdict, _, _ = proposal_verdict(p)
+                if mode != 'tunnel':
+                    verdict = 'none'
+                props.append({'proposal': p, 'verdict': verdict})
+            verdicts = {p['verdict'] for p in props}
+            out.append({
+                'connection': names.get(cname, cname),
+                'child': names.get(chname, chname),
+                'mode': mode,
+                'esp': props,
+                'verdict': verdicts.pop() if len(verdicts) == 1 else 'some',
+                'ike': conn.get('proposals', 'default'),
+                'dpd': conn.get('dpd_delay', ''),
+                'rekey': child.get('rekey_time', ''),
+            })
+    return out
+
+
 def sas_rows(text, kernel):
     """The XGS 136's ipsec.sas: every association offered since the driver loaded; only the ones
     the kernel still has are kept, each saying whether the engine took it."""
@@ -128,6 +351,14 @@ def sas_rows(text, kernel):
                      'port': m.group(1), 'window': m.group(5) or '', 'handle': '',
                      'engine': 'accepted by the engine' in note,
                      'note': note + (' | extended sequence numbers' if m.group(6) else '')})
+        # what the driver says of this one association, when it says why the engine did not take it
+        if not rows[-1]['engine']:
+            if 'extended sequence numbers inbound' in note:
+                rows[-1]['reason'], rows[-1]['reason_word'] = 'esn', ''
+            elif 'window refused' in note:
+                rows[-1]['reason'], rows[-1]['reason_word'] = 'window', rows[-1]['window']
+            elif 'SA_ADD refused' in note:
+                rows[-1]['reason'], rows[-1]['reason_word'] = 'engine_refused', ''
     return rows
 
 
@@ -180,6 +411,7 @@ def main():
         if 'offered' in counters and installed is not None:
             declined = max(0, counters['offered'] - installed)
         declined_note = 'front ports only'
+    rows = kernel_rows(rows, kernel_detail(), out['tunable']['value'] == '1', fam)
     counts = kernel_counts()
     for r in rows:
         r.update(counts.get(r['spi'].lower()[2:].rjust(8, '0'), {}))
@@ -192,6 +424,7 @@ def main():
         live_enc = max(0, counters.get('accepted_encrypt', 0) - counters.get('removed_encrypt', 0))
         live_dec = max(0, counters['accepted'] - counters['removed'])
     out['rows'] = rows
+    out['profile'] = profile()
     out['summary'] = {
         'live_encrypt': live_enc,
         'live_decrypt': live_dec,
