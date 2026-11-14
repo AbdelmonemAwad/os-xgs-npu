@@ -28,8 +28,8 @@
 <script>
     $(document).ready(function () {
         /* A ping sent by the coprocessor itself, over the management link (scripts/npuctl/mgmt-link.sh
-           ping): what its own Linux reaches, which a ping from this firewall cannot tell. The answer is
-           what the coprocessor's ping printed, shown as text. */
+           ping): its Linux has that link alone, so it tests the link and the coprocessor's network
+           stack. The answer is what the coprocessor's ping printed, shown as text, and how it ended. */
         function plain(value) {
             return $('<textarea/>').html(value === null || value === undefined ? '' : String(value)).text();
         }
@@ -64,8 +64,8 @@
             <tr>
                 <td style="width: 25%;">{{ lang._('Address or host name') }}</td>
                 <td>
-                    <input type="text" id="ping_address" maxlength="253" style="max-width: 360px;" autocomplete="off"/>
-                    <div class="text-muted"><small>{{ lang._('Sent by the coprocessor\'s own Linux over the management link, so it tells what the coprocessor reaches from its own ports, not what this firewall reaches. A name is resolved by the coprocessor.') }}</small></div>
+                    <input type="text" id="ping_address" maxlength="253" style="max-width: 360px;" autocomplete="off" value="169.254.254.1"/>
+                    <div class="text-muted"><small>{{ lang._('Sent by the coprocessor\'s own Linux. Its one network is the management link, 169.254.254.0/30, with no route beyond it: it reaches this firewall\'s end, 169.254.254.1, and any other address answers "Network is unreachable". The front ports carry traffic in its data path, not in its Linux. So this tests the link and the coprocessor\'s network stack.') }}</small></div>
                 </td>
             </tr>
             <tr>

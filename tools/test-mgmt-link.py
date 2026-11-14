@@ -278,12 +278,12 @@ class Ping(unittest.TestCase):
         os.chmod(path, 0o755)
         return path
 
-    def ping(self, *args):
+    def ping(self, *args, ssh='echo "64 bytes from x"; exit 0', link=True):
         stubs = {'/usr/local/opnsense/scripts/xgs/board.sh': self.stub('board', 'echo "201 armada"'),
                  '/usr/bin/logger': self.stub('logger', 'exit 0'),
-                 '/sbin/ifconfig': self.stub('ifconfig', 'exit 0'),
+                 '/sbin/ifconfig': self.stub('ifconfig', 'exit %d' % (0 if link else 1)),
                  '/usr/bin/timeout': self.stub('timeout', 'shift; exec "$@"')}
-        self.stub('ssh', 'echo "64 bytes from x"; exit 0')
+        self.stub('ssh', ssh)
         with open(SCRIPT, encoding='utf-8') as f:
             text = f.read()
         for real, fake in stubs.items():
@@ -301,8 +301,25 @@ class Ping(unittest.TestCase):
         done, sent = self.ping('192.0.2.1', '3')
         self.assertEqual(done.returncode, 0)
         self.assertIn('64 bytes from x', done.stdout)
+        self.assertEqual(done.stdout.splitlines()[-1], 'ping: answered')
         self.assertEqual(len(sent), 1)
         self.assertTrue(sent[0].endswith('root@169.254.254.2 ping -c 3 -w 8 192.0.2.1'), sent[0])
+
+    def test_what_did_not_answer_is_said_and_the_exit_is_0(self):
+        # configd shows a script's output only when it exits 0: until 2026-11-14 an address that did
+        # not answer read "Execute error" on the page, and what ping printed was lost
+        for body, last in (('echo "2 packets transmitted, 0 received"; exit 1', 'ping: no answer'),
+                           ('echo "connect: Network is unreachable"; exit 2', 'ping: not sent'),
+                           ('exit 255', 'ping: the coprocessor could not be reached over mvmgmt0')):
+            done, sent = self.ping('192.0.2.1', '1', ssh=body)
+            self.assertEqual(done.returncode, 0, body)
+            self.assertEqual(done.stdout.splitlines()[-1], last, body)
+        self.assertIn('Network is unreachable', self.ping('192.0.2.1', '1', ssh=(
+            'echo "connect: Network is unreachable"; exit 2'))[0].stdout)
+
+    def test_no_link_is_said_without_ssh(self):
+        done, sent = self.ping('169.254.254.1', '1', link=False)
+        self.assertEqual((done.returncode, done.stdout.strip(), sent), (0, 'ping: no mvmgmt0 on this machine', []))
 
     def test_an_ipv6_address_is_pinged_with_ping6(self):
         done, sent = self.ping('2001:db8::1', '1')

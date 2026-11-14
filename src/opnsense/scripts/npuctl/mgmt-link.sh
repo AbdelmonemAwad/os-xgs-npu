@@ -288,13 +288,18 @@ ssh)
 	exec ssh -i "${KEY}" -o BatchMode=yes -o ConnectTimeout=8 "root@${NPU_ADDR}" "$@"
 	;;
 ping)
-	# A ping sent by the coprocessor itself, over the link (svc-1-10, 2026-11-14): what its own
-	# Linux reaches - a front port's network, its gateway - which this host's ping cannot tell. The
-	# address or name and the count are checked here before anything is sent, for they become part
-	# of a command line on the coprocessor: letters, digits, dots, colons and hyphens only, not
-	# starting with a hyphen, 253 characters at most; a count of 1 to 10. An address with a colon is
-	# IPv6: ping6, or ping -6 where the coprocessor has no ping6. Each ping waits its count and five
-	# seconds more at most, and the session twenty more than that.
+	# A ping sent by the coprocessor itself, over the link (svc-1-10, 2026-11-14). Its own Linux has
+	# one network on both families, this link (169.254.254.2/30, no default route - read on the XGS
+	# 3300 and the 136, 2026-11-14): it reaches this host's end and nothing beyond, for the front
+	# ports carry traffic in its data path, not in its Linux. So this tests the link and the
+	# coprocessor's network stack; any other address answers "Network is unreachable". The address or
+	# name and the count are checked here before anything is sent, for they become part of a command
+	# line on the coprocessor: letters, digits, dots, colons and hyphens only, not starting with a
+	# hyphen, 253 characters at most; a count of 1 to 10. An address with a colon is IPv6: ping6, or
+	# ping -6 where the coprocessor has no ping6. Each ping waits its count and five seconds more at
+	# most, and the session twenty more than that. What ping printed is the answer, and how it ended
+	# is its last line; the exit is 0 whatever ping said, for configd shows a script's output only
+	# when it exits 0 - until then an address that did not answer read "Execute error" on the page.
 	TARGET=${2:-}
 	COUNT=${3:-4}
 	case "${TARGET}" in
@@ -305,14 +310,24 @@ ping)
 	''|*[!0-9]*) echo "a count is 1 to 10"; exit 2 ;;
 	esac
 	[ "${COUNT}" -ge 1 ] && [ "${COUNT}" -le 10 ] || { echo "a count is 1 to 10"; exit 2; }
-	have_link || { echo "no ${LINK} on this machine"; exit 1; }
+	have_link || { echo "ping: no ${LINK} on this machine"; exit 0; }
 	DEADLINE=$((COUNT + 5))
 	case "${TARGET}" in
 	*:*) REMOTE="ping6 -c ${COUNT} -w ${DEADLINE} ${TARGET} 2>/dev/null || ping -6 -c ${COUNT} -w ${DEADLINE} ${TARGET}" ;;
 	*) REMOTE="ping -c ${COUNT} -w ${DEADLINE} ${TARGET}" ;;
 	esac
-	exec /usr/bin/timeout $((DEADLINE + 20)) ssh -i "${KEY}" -o BatchMode=yes -o ConnectTimeout=8 \
+	/usr/bin/timeout $((DEADLINE + 20)) ssh -i "${KEY}" -o BatchMode=yes -o ConnectTimeout=8 \
 	    "root@${NPU_ADDR}" "${REMOTE}" < /dev/null 2>&1
+	RC=$?
+	case ${RC} in
+	0) echo "ping: answered" ;;
+	1) echo "ping: no answer" ;;
+	2) echo "ping: not sent" ;;
+	124) echo "ping: no word from the coprocessor in $((DEADLINE + 20)) seconds" ;;
+	255) echo "ping: the coprocessor could not be reached over ${LINK}" ;;
+	*) echo "ping: ended with ${RC}" ;;
+	esac
+	exit 0
 	;;
 *)
 	echo "usage: $0 assign|early|start|coprocessor|trust|status|ssh [command]|ping address [count]"
