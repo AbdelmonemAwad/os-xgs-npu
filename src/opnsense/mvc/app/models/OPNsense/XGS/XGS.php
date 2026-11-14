@@ -81,4 +81,41 @@ class XGS extends BaseModel
         }
         return $out;
     }
+
+    /**
+     * The driver's IPsec loader tunables where no row sets them (2026-11-14): the family's ipsec_on
+     * and ipsec_flows rows of System: Settings: Tunables, from $model's ipsec_offload and ipsec_flows
+     * - on a new install their defaults, on. The driver reads them when it loads (tunables-kenv.sh
+     * puts the rows in its environment first), and until now only scripts/xgs/apply.php wrote them, at
+     * the owner's first Apply: a new install showed IPsec in the engine on and ran without it. A row
+     * already there - the owner's, or apply.php's - is left as it is. Called by the migration to 1.3.0
+     * on a new install, and by scripts/xgs/defaults.php at the first boot after a factory reset; it
+     * serializes the Tunables model, and the caller saves the configuration. Returns name => value for
+     * each row written, [] when none was.
+     */
+    public static function ipsecTunablesWhereNone(XGS $model, string $family): array
+    {
+        $prefix = ['octeontx' => 'hw.octep.', 'armada' => 'hw.npuep.'][$family] ?? null;
+        if ($prefix === null) {
+            return [];
+        }
+        $want = [
+            $prefix . 'ipsec_on' => (string)$model->general->ipsec_offload === '1' ? '1' : '0',
+            $prefix . 'ipsec_flows' => (string)$model->general->ipsec_flows === '1' ? '1' : '0',
+        ];
+        $tunables = new \OPNsense\Core\Tunables();
+        foreach ($tunables->item->iterateItems() as $item) {
+            unset($want[(string)$item->tunable]);
+        }
+        foreach ($want as $name => $value) {
+            $row = $tunables->item->Add();
+            $row->tunable = $name;
+            $row->value = $value;
+            $row->descr = 'XGS coprocessor - set on its settings page';
+        }
+        if (count($want)) {
+            $tunables->serializeToConfig();
+        }
+        return $want;
+    }
 }
