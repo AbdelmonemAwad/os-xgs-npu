@@ -224,6 +224,11 @@ jobs:
       - name: The Overview's graphs
         run: python3 tools/test-health.py
 
+      # The Ports page's VLANs: each front port's VLAN subinterfaces from ifconfig, with their bridge.
+      # tools/test-portmap.py.
+      - name: The Ports page's VLANs
+        run: python3 tools/test-portmap.py
+
       # The offload gate and a counter read through the XGS 3300 driver's one set of rpc sysctls, each
       # under the same lock: the gate's own command is the one posted for it, and the read's after it
       # (flock stands in for lockf). tools/test-rpc-lock.py.

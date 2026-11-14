@@ -45,6 +45,24 @@ class PortsController extends ApiControllerBase
     }
 
     /**
+     * The XGS 3300's fail-to-wire pair, read now through the coprocessor (scripts/xgs/ftw-status.sh
+     * -k): armed or not, normal or bypass, the relay's watchdog and what last triggered it. Read only,
+     * and on a click: over the coprocessor's console it is one session of up to twenty seconds.
+     */
+    public function ftwAction()
+    {
+        $out = (string)(new Backend())->configdRun('xgs ftwstatus');
+        $kv = [];
+        foreach (explode("\n", $out) as $line) {
+            $at = strpos($line, '=');
+            if ($at !== false) {
+                $kv[trim(substr($line, 0, $at))] = trim(substr($line, $at + 1));
+            }
+        }
+        return $kv ?: ['relay' => '', 'reason' => trim($out)];
+    }
+
+    /**
      * Power over Ethernet on the ports that carry it, read from the controller now
      * (scripts/xgs/poe.py show). Switching a port is Api/PoeController's, under XGS: Settings.
      */
@@ -120,6 +138,11 @@ class PortsController extends ApiControllerBase
                 'mtu' => (string)($p['mtu'] ?? ''),
                 'mac' => (string)($p['mac'] ?? ''),
                 'bridge' => (string)($p['bridge'] ?? ''),
+                /* each VLAN on the port: its OPNsense name, or its device, and tag; set in Interfaces: Devices: VLAN */
+                'vlans' => implode(', ', array_map(function ($v) {
+                    $name = (string)($v['assigned']['descr'] ?? '') !== '' ? (string)$v['assigned']['descr'] : (string)($v['device'] ?? '');
+                    return $name . ' (' . (int)($v['tag'] ?? 0) . ')' . (!empty($v['bridge']) ? ' ' . (string)$v['bridge'] : '');
+                }, $p['vlans'] ?? [])),
                 /* the bay alone: the module in it is named once, under the table */
                 'bay' => $x !== null ? (string)($x['slot'] ?? '') : '',
             ];
