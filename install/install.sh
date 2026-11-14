@@ -135,7 +135,7 @@ install -m 0755 "${SRC}/src/opnsense/scripts/xgs/countdown.py" "${PREFIX}/opnsen
 # OPNsense's own pages, the runner other plugins use to reach the coprocessor (npu-run.sh) and the
 # coprocessor's console it finds by its address (console-dev.sh), and the driver's settings put where
 # it reads them before the early hooks load it (tunables-kenv.sh).
-for f in apply.php portmap.py ipsec.py reassign.sh defaults.php npu-run.sh console-dev.sh tunables-kenv.sh temperatures.sh watchdog.sh transceivers.py bundle.py flows.py flow_exclude.php lists_cut.py ja4_cut.py hwdrop.py anomaly.py poe.py plugins.py health.py portstats.py models.py portcheck.py fastpath.py recover.sh cp_users.py cp_overlay.py coprocessor.py fpcounters.py console_log.py feeder.py npu-sysrq.sh subnets.py npu-clock.sh npu-log.sh; do
+for f in apply.php portmap.py ipsec.py reassign.sh defaults.php npu-run.sh console-dev.sh tunables-kenv.sh temperatures.sh watchdog.sh transceivers.py bundle.py flows.py flow_exclude.php lists_cut.py ja4_cut.py hwdrop.py anomaly.py poe.py plugins.py health.py portstats.py models.py portcheck.py fastpath.py recover.sh cp_users.py cp_overlay.py coprocessor.py fpcounters.py console_log.py feeder.py npu-sysrq.sh subnets.py npu-clock.sh npu-log.sh ftw-status.sh ftw-normal.sh; do
     install -S -m 0755 "${SRC}/src/opnsense/scripts/xgs/${f}" "${PREFIX}/opnsense/scripts/xgs/${f}"
 done
 # Jumbo frames through the coprocessor's switch chip at every boot, on both families: the script,
@@ -443,6 +443,10 @@ install -m 0755 "${SRC}/src/etc/rc.syshook.d/start/72-xgs-npu-log" "${PREFIX}/et
 # What the coprocessor runs - its vendor build, its fast path's build - read once at the end of every
 # boot (scripts/xgs/coprocessor.py), for the problem reports and the support bundle.
 install -m 0755 "${SRC}/src/etc/rc.syshook.d/start/73-xgs-coprocessor" "${PREFIX}/etc/rc.syshook.d/start/73-xgs-coprocessor"
+# The XGS 3300's fail-to-wire relay pair put back to normal at every boot where it is found in bypass
+# or with a trigger latched (scripts/xgs/ftw-normal.sh, read by ftw-status.sh); on any other board the
+# hook does nothing, and with xgs.ftw.boot=0 from the loader nothing at all.
+install -m 0755 "${SRC}/src/etc/rc.syshook.d/start/10-xgs-ftw" "${PREFIX}/etc/rc.syshook.d/start/10-xgs-ftw"
 install -m 0644 "${SRC}/src/opnsense/mvc/app/controllers/OPNsense/XGS/ReportsController.php" \
     "${PREFIX}/opnsense/mvc/app/controllers/OPNsense/XGS/ReportsController.php"
 install -m 0644 "${SRC}/src/opnsense/mvc/app/controllers/OPNsense/XGS/Api/ReportsController.php" \

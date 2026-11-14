@@ -176,6 +176,10 @@ rm -f "${PREFIX}/opnsense/scripts/xgs/npu-log.sh" "${PREFIX}/etc/rc.syshook.d/st
     "${PREFIX}/etc/syslog-ng.conf.d/xgs-coprocessor.conf"
 # The coprocessor's software no longer read at boot; its record, coprocessor.json, went above.
 rm -f "${PREFIX}/etc/rc.syshook.d/start/73-xgs-coprocessor"
+# The XGS 3300's fail-to-wire relay no longer read, nor put back to normal at boot: the two scripts,
+# the start hook and the last outcome kept. The relay keeps what it was last set to.
+rm -f "${PREFIX}/opnsense/scripts/xgs/ftw-status.sh" "${PREFIX}/opnsense/scripts/xgs/ftw-normal.sh" \
+    "${PREFIX}/etc/rc.syshook.d/start/10-xgs-ftw" /var/db/os-xgs-npu/ftw-normal.state
 # A bridge's link no longer acted on: OPNsense's own devd rules again, for Ethernet and 802.11 only.
 rm -f "${PREFIX}/etc/devd/xgs-bridge.conf"
 /usr/sbin/service devd restart > /dev/null 2>&1 || true

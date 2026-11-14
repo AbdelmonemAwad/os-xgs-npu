@@ -448,6 +448,14 @@ jobs:
       - name: The coprocessor's clock over a slow link
         run: python3 tools/test-npu-clock.py
 
+      # ftw-status.sh and ftw-normal.sh against a stand-in coprocessor that keeps the XGS 3300's three
+      # relay registers as they behaved on 2026-11-11: the status reads and writes nothing; a pair in
+      # bypass put back with the tool's own -t disable and -d, never armed; nothing at all with
+      # xgs.ftw.boot=0; a coprocessor that never answers asked twenty times and said once.
+      # tools/test-ftw.py.
+      - name: The fail-to-wire relay's status, and its return to normal at boot
+        run: python3 tools/test-ftw.py
+
       # apply.php's ipsec_soft_crypto on and off, with PHP and no OPNsense: off gives back what a boot
       # leaves (until 2026-11-06 it wrote nothing). And the rows of System: Settings: Tunables an apply
       # removes: the flow maker's own among them, which OPNsense set over the page's setting at every
