@@ -10,7 +10,8 @@
 #
 # THE TRANSPORT. The coprocessor's sshd over the PCIe management link (scripts/npuctl/mgmt-link.sh),
 # when the link is up and its ssh answers - the XGS 136's mvmgmt0, and the XGS 3300's oxmgmt0 since
-# 2026-10-23. Otherwise its root console on /dev/cuau2: logged in only if the console asks,
+# 2026-10-23. Otherwise its root console, the host's UART at I/O port 0x3e8 (console-dev.sh: /dev/cuau2
+# on the XGS 136 r1 and the XGS 3300): logged in only if the console asks,
 # the command sent between two markers that are each written in two quoted halves (the console
 # echoes the command line, and the echo must not match), the output cut out between them, logged out
 # again if this logged in. <seconds> is how long the console is read for at most, so it has to cover the
@@ -25,10 +26,10 @@
 # showed no Linux prompt, 1 on another transport that did not answer, 64 on a usage error.
 
 LIB=/usr/local/opnsense/scripts
-DEV=/dev/cuau2
 LOCK=/var/run/xgs-npu-console.lock
 URGENT=/var/run/xgs-npu-console.urgent
 TMP=/var/run/xgs-npu-run.$$
+REFUSED=/var/run/xgs-npu-console.refused
 
 case ${1:-} in
 ''|*[!0-9]*) echo "usage: npu-run.sh <seconds> <command>" >&2; exit 64 ;;
@@ -136,7 +137,43 @@ if wanted; then
 	echo "the console is kept for the watch over the coprocessor" >&2
 	exit 75
 fi
-# (the two refusals below let the logger back in as well, before the trap that would is set)
+# The console's device, by its address: the host's UART at I/O port 0x3e8 as console-dev.sh finds it
+# among the kernel's devices - uart2 on the XGS 136 r1 and the XGS 3300, another unit where the
+# chipset's own UARTs are numbered first (an XGS 107, the XGS 136 r2 of #601). BY says how: 0 at that
+# address; 1 nothing known of this host's UARTs, or console-dev.sh's knob at 0, and /dev/cuau2 as
+# before; 2 no UART at that address, and /dev/cuau2 all the same - which is then not the console's
+# port, and is refused before anything opens it (NOT THE CONSOLE'S PORT, below).
+FOUND=$(/bin/sh ${LIB}/xgs/console-dev.sh -v 2>/dev/null)
+BY=$?
+DEV=$(printf '%s\n' "${FOUND}" | sed -n 1p)
+case ${BY} in
+0|1|2) [ -n "${DEV}" ] || { DEV=/dev/cuau2; BY=1; } ;;
+*) DEV=/dev/cuau2; BY=1 ;;
+esac
+# NOT THE CONSOLE'S PORT. No UART is at I/O port 0x3e8, and DEV is /dev/cuau2 only for want of one:
+# whatever that unit is on this board - an XGS 136 r2's uart2 is the chipset's own UART, memory-mapped
+# at 0xfedc9000 (#601) - the carriage return, root and the command typed into it would go to a port
+# with no coprocessor on it, and a UART that brings no interrupt for want of one would be detached
+# and attached again at every look: #601's log has that 9 times, 11 to 25 s apart, about the spacing
+# of feeder.py's looks. Refused before DEV is opened, with exit 1, which feeder.py takes as saying
+# nothing of the coprocessor; counted in REFUSED, this boot's since /var/run is emptied at boot; and
+# said once a boot in the XGS section's log (xgs-console), with what console-dev.sh found. Its knob
+# (kenv xgs.console.by_address=0) gives /dev/cuau2 as before, for a board where that is wanted.
+if [ ${BY} = 2 ]; then
+	rm -f /var/run/xgs-console-log.pause
+	n=$(cat "${REFUSED}" 2>/dev/null)
+	case ${n} in
+	''|*[!0-9]*) n=0 ;;
+	esac
+	n=$((n + 1))
+	echo ${n} > "${REFUSED}"
+	why=$(printf '%s\n' "${FOUND}" | sed -n 2p)
+	[ ${n} = 1 ] && /usr/bin/logger -t xgs-console -p daemon.notice \
+	    "the coprocessor's console is not used: ${why} (said once a boot; ${REFUSED} counts them)"
+	echo "the coprocessor's console is not used, nothing was opened: ${why}" >&2
+	exit 1
+fi
+# (the refusals below let the logger back in as well, before the trap that would is set)
 [ -c "${DEV}" ] || { rm -f /var/run/xgs-console-log.pause; echo "no ${DEV}" >&2; exit 1; }
 /bin/pgrep -f "cat ${DEV}" > /dev/null 2>&1 &&
     { rm -f /var/run/xgs-console-log.pause; echo "another reader holds ${DEV}" >&2; exit 75; }
@@ -155,9 +192,22 @@ ended() {
 }
 trap ended EXIT
 
-UNIT=${DEV#/dev/cuau}
-# The host's UART's interrupts so far: a byte written to it is followed by at least one.
-irqs() { /usr/bin/vmstat -i 2>/dev/null | /usr/bin/awk -v u="uart${UNIT}" '$2 == u {print $3}'; }
+UNIT=${DEV##*/cuau}
+# The host's UART's interrupts so far: a byte written to it is followed by at least one. For the UART
+# found by its address (BY 0) its name is looked for among every name on its interrupt's line, whose
+# total is the second last word: a line it shares reads "irq3: uart2 uart3", and where the console is
+# not uart2 it may share one with the chipset's own UART. Otherwise as before: the word after the
+# line's first name, the total only for a UART alone on its line - uart2, where this has run. On a
+# shared line it reads the next name, or nothing, neither of which moves, and every byte written
+# would read as a lost interrupt.
+irqs() {
+	if [ ${BY} = 0 ]; then
+		/usr/bin/vmstat -i 2>/dev/null | /usr/bin/awk -v u="uart${UNIT}" '
+		    {for (i = 2; i < NF - 1; i++) if ($i == u || $i == u "+") {print $(NF - 1); exit}}'
+	else
+		/usr/bin/vmstat -i 2>/dev/null | /usr/bin/awk -v u="uart${UNIT}" '$2 == u {print $3}'
+	fi
+}
 # A fresh read of the console, and a carriage return for it to answer - with "interrupt", a Ctrl-C a
 # second before the carriage return (the second ask, below).
 listen() {

@@ -12,9 +12,14 @@
 #   panel.sh say "top" "bottom"      init, clear, both lines
 #   panel.sh raw 0x28                one escaped instruction, for experimenting
 #
-# THE PORT. FreeBSD probes it as uart1 at 0x2f8 irq 4, which is byte for byte the /dev/ttyS1 the
-# vendor's lcdd drives, so it is cuau1 here. 2400 baud, raw. One process owns a UART at a time and
-# nothing on OPNsense claims this one.
+# THE PORT. The host's UART at I/O port 0x2f8, the /dev/ttyS1 the vendor's lcdd drives - found by
+# that address among the kernel's devices by xgs/console-dev.sh 0x2f8, as the coprocessor's console is
+# found at 0x3e8. FreeBSD probed it as uart1 (irq 4) where this has run, and cuau1 was written here;
+# but FreeBSD numbers its UARTs in the order it finds them, and where the chipset's own UARTs come
+# first (an XGS 107, an XGS 136 r2: #748, #601) uart1 is another port. /dev/cuau1 as before when
+# nothing can be said of the host's UARTs (its exit 1); none at all, and nothing written, when the
+# kernel's devices were read and no UART is at 0x2f8 (exit 2). PORT names one, and nothing is looked
+# for. 2400 baud, raw. One process owns a UART at a time and nothing on OPNsense claims this one.
 #
 # THE PROTOCOL, and every byte of it is read out of the vendor's own lcdd rather than guessed.
 # That binary is stripped, but the command bytes are not: they sit in .data and are written one at
@@ -48,7 +53,8 @@
 
 set -u
 
-: ${PORT:=/dev/cuau1}
+: ${PORT:=}
+: ${CONSOLE_DEV:=/usr/local/opnsense/scripts/xgs/console-dev.sh}
 : ${SPEED:=2400}
 : ${DELAY:=0.2}
 
@@ -58,6 +64,14 @@ usage() {
 }
 
 [ $# -ge 1 ] || usage
+if [ -z "${PORT}" ]; then
+	PORT=$(/bin/sh "${CONSOLE_DEV}" 0x2f8 2>/dev/null)
+	case $? in
+	0|1) [ -n "${PORT}" ] || PORT=/dev/cuau1 ;;
+	2) echo "no UART at I/O port 0x2f8 for the front panel; nothing written" >&2; exit 1 ;;
+	*) PORT=/dev/cuau1 ;;
+	esac
+fi
 [ -c "${PORT}" ] || { echo "${PORT} is not there" >&2; exit 1; }
 
 exec 3<> "${PORT}" || { echo "cannot open ${PORT}" >&2; exit 1; }

@@ -19,7 +19,8 @@ console says nothing while nothing happens - a minute of it read 0 bytes on the 
 stub, and the host froze tens of milliseconds later (#768): only what was on the disk by then was left
 (docs/measurements/console-logger-2026-10-25.md). So every read is written at once, with O_SYNC: a
 shell pipeline into dd did not do that - dd waits for a whole block - and kept nothing of a reset.
-HOW. It only reads DEV. A byte written there is a keystroke for the coprocessor's boot firmware, whose
+HOW. It only reads the console's device, the host's UART at I/O port 0x3e8 as console-dev.sh finds it
+(console_dev). A byte written there is a keystroke for the coprocessor's boot firmware, whose
 menus and countdown take one (npu-run.sh, #559), so nothing here writes to it. It holds the port under
 npu-run.sh's console lock (LOCK, flock - lockf(1)'s kind), and gives both up within half a second of
 a caller that needs the console - npu-run.sh when the management link does not answer, switch-jumbo.sh
@@ -43,13 +44,32 @@ import termios
 import time
 import tty
 
-DEV = '/dev/cuau2'
+CONSOLE_DEV = '/usr/local/opnsense/scripts/xgs/console-dev.sh'
+FALLBACK = '/dev/cuau2'
 LOCK = '/var/run/xgs-npu-console.lock'
 PAUSE = '/var/run/xgs-console-log.pause'
 PIDFILE = '/var/run/xgs-console-log.pid'
 LOG = '/var/log/xgs/npu-console.log'
 PAUSE_MAX = 300
 MAX = 1048576
+
+
+def console_dev():
+    """The coprocessor's console as console-dev.sh finds it among the kernel's devices, by its address -
+    the host's UART at I/O port 0x3e8: /dev/cuau2 on the XGS 136 r1 and the XGS 3300, another unit where
+    the chipset's own UARTs are numbered first and /dev/cuau2, which this read before, is one of them (an
+    XGS 107, the XGS 136 r2 of #601). FALLBACK when it cannot say. None where it exits 2 - no UART at
+    0x3e8, and /dev/cuau2 only for want of one - which is then not read, as npu-run.sh refuses it.
+    Asked at each hold of the port, as npu-run.sh asks at each session: nothing is kept."""
+    try:
+        done = subprocess.run(['/bin/sh', CONSOLE_DEV], stdin=subprocess.DEVNULL, capture_output=True,
+                              text=True, errors='replace', timeout=10)
+        out, rc = done.stdout.split(), done.returncode
+    except (OSError, subprocess.SubprocessError):
+        out, rc = [], 1
+    if rc == 2:
+        return None
+    return out[0] if out and out[0].startswith('/') else FALLBACK
 
 
 def paused():
@@ -153,10 +173,14 @@ def session():
         return False
     port = log = None
     try:
+        dev = console_dev()
+        if dev is None:
+            # said by run()'s handler, once a minute at most, and the lock let go meanwhile
+            raise OSError('no UART at I/O port 0x3e8: the coprocessor\'s console is not read')
         # 115200, raw, no echo - as npu-run.sh sets it, on the port's lock-in device too
-        subprocess.run(['/bin/stty', '-f', DEV + '.init', 'speed', '115200', 'raw', '-echo'],
+        subprocess.run(['/bin/stty', '-f', dev + '.init', 'speed', '115200', 'raw', '-echo'],
                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        port = os.open(DEV, os.O_RDONLY | os.O_NOCTTY | os.O_NONBLOCK)
+        port = os.open(dev, os.O_RDONLY | os.O_NOCTTY | os.O_NONBLOCK)
         # at once: setraw's default waits for what is queued to go out, and a UART that has lost its
         # interrupt sends nothing - the first XGS 3300's logger waited so on 2026-10-26 with the lock
         # held, and every caller of the console was refused (#768)
@@ -238,8 +262,11 @@ def main(what, args=()):
             return 64
         keep(args[0], args[1])
     elif what == 'start':
-        if not os.path.exists(DEV):
-            print('no console port %s: nothing to log' % DEV)
+        dev = console_dev()
+        if dev is None:
+            print('no UART at I/O port 0x3e8 for the coprocessor\'s console: nothing to log')
+        elif not os.path.exists(dev):
+            print('no console port %s: nothing to log' % dev)
         elif running():
             print('logging already')
         else:

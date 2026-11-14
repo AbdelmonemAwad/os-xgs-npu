@@ -111,7 +111,7 @@ rm -rf /var/db/os-xgs-npu/cp
 rm -f "${PREFIX}/opnsense/scripts/xgs/apply.php" "${PREFIX}/opnsense/scripts/xgs/portmap.py" \
     "${PREFIX}/opnsense/scripts/xgs/ipsec.py" "${PREFIX}/opnsense/scripts/xgs/reassign.sh" \
     "${PREFIX}/opnsense/scripts/xgs/defaults.php" "${PREFIX}/etc/rc.syshook.d/start/74-xgs-defaults" \
-    "${PREFIX}/opnsense/scripts/xgs/npu-run.sh" \
+    "${PREFIX}/opnsense/scripts/xgs/npu-run.sh" "${PREFIX}/opnsense/scripts/xgs/console-dev.sh" \
     "${PREFIX}/opnsense/scripts/xgs/tunables-kenv.sh" \
     "${PREFIX}/opnsense/scripts/xgs/temperatures.sh" "${PREFIX}/opnsense/scripts/xgs/transceivers.py" \
     "${PREFIX}/opnsense/scripts/xgs/bundle.py" "${PREFIX}/opnsense/scripts/xgs/flows.py" \

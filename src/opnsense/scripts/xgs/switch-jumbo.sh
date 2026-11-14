@@ -25,14 +25,15 @@
 # PCIe management link when its ssh answers (scripts/npuctl/mgmt-link.sh) - the XGS 136's from the
 # driver's load, the XGS 3300's since 2026-10-23 once its boot has given the coprocessor its
 # address, which is usually after this has run, and since 2026-11-04 waited for while the boot is
-# still giving it (#1018) - and its root console on /dev/cuau2 otherwise.
+# still giving it (#1018) - and its root console otherwise, the host's UART at I/O port 0x3e8
+# (console-dev.sh: /dev/cuau2 on the XGS 136 r1 and the XGS 3300).
 #
 # CAREFUL READS. The coprocessor's network agent polls the same MDIO bus, and about one read in ten
 # returns another transaction's data. So every port is read three times and only a value two reads
 # agree on is used; a port with no majority is left alone and tried again; the write keeps every
 # other bit of the register as read; and the result is read three times again.
 #
-# THE CONSOLE IS ALSO THE BOOT FIRMWARE'S. Until the coprocessor's own Linux runs, /dev/cuau2 is
+# THE CONSOLE IS ALSO THE BOOT FIRMWARE'S. Until the coprocessor's own Linux runs, its console is
 # answered by its boot firmware, whose menus take what is typed as choices; a keystroke can also
 # stop its countdown. So the console is used only once the driver has seen this boot's coprocessor
 # come up (the 3300's handshake completed, the 136's network agent ready), and only while it shows a
@@ -44,7 +45,11 @@ LIB=/usr/local/opnsense/scripts
 MVSW=${MVSW:-/usr/local/share/os-xgs-npu/mvsw}
 NPU_DIR=/persistent/os-xgs-npu
 NPU_MVSW=${NPU_DIR}/mvsw
-DEV=/dev/cuau2
+# console-dev.sh's exit, BY: 2 is no UART at 0x3e8, and /dev/cuau2 only for want of one - the console
+# is then not used (below), as npu-run.sh refuses it.
+DEV=$(/bin/sh ${LIB}/xgs/console-dev.sh 2>/dev/null)
+BY=$?
+[ -n "${DEV}" ] || DEV=/dev/cuau2
 TMP=/var/run/switch-jumbo.$$
 CHECK=0
 [ "${1:-}" = "--check" ] && CHECK=1
@@ -137,6 +142,11 @@ npu_up() {
 	esac
 	return 1
 }
+if [ ${USE_SSH} = 0 ] && [ ${BY} = 2 ]; then
+	log "no UART at I/O port 0x3e8 - ${DEV} is not the coprocessor's console, and the link does not answer; the ports stay as they were"
+	[ ${CHECK} = 0 ] && state "not set: no UART at I/O port 0x3e8 for the coprocessor's console"
+	exit 0
+fi
 if [ ${USE_SSH} = 0 ] && ! npu_up; then
 	log "the coprocessor has not come up on this boot - its console is left alone"
 	[ ${CHECK} = 0 ] && state "not set: the coprocessor did not come up on this boot"

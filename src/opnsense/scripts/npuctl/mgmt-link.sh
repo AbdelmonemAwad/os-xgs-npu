@@ -36,7 +36,7 @@ set -u
 : ${HOST_ADDR:=169.254.254.1}
 : ${NPU_ADDR:=169.254.254.2}
 : ${PREFIX_LEN:=30}
-: ${CONSOLE:=/dev/cuau2}
+: ${CONSOLE:=}
 : ${KEY:=/root/npu/id_ed25519_npu}
 : ${PHP:=/usr/local/bin/php}
 : ${ASSIGN:=/usr/local/opnsense/scripts/npuctl/mgmt-link.php}
@@ -56,6 +56,24 @@ log() { /usr/bin/logger -t npuctl -p daemon.notice "mgmt-link: $*"; echo "$*"; }
 say() { /usr/bin/logger -t npuctl -p daemon.notice "mgmt-link: $*"; echo "mgmt-link: $*"; }
 
 have_link() { /sbin/ifconfig "${LINK}" > /dev/null 2>&1; }
+
+# The coprocessor's console, for the two commands that tell the coprocessor something over it: the
+# host's UART at I/O port 0x3e8 as scripts/xgs/console-dev.sh finds it - /dev/cuau2 on the XGS 136 r1
+# and the XGS 3300, another unit where the chipset's own UARTs are numbered first (#601) - unless
+# CONSOLE names one. Found for those two alone: ssh, which every reader of the coprocessor runs
+# through npu-run.sh, needs no console. Fails (1, said in the log) where console-dev.sh exits 2 - no
+# UART at 0x3e8, and /dev/cuau2 only for want of one - as npu-run.sh refuses that port: the
+# coprocessor is then told nothing over it.
+console_dev() {
+	[ -n "${CONSOLE}" ] && return 0
+	CONSOLE=$(/bin/sh /usr/local/opnsense/scripts/xgs/console-dev.sh 2>/dev/null)
+	if [ $? = 2 ]; then
+		log "no UART at I/O port 0x3e8 - ${CONSOLE:-/dev/cuau2} is not the coprocessor's console"
+		CONSOLE=
+		return 1
+	fi
+	[ -n "${CONSOLE}" ] || CONSOLE=/dev/cuau2
+}
 
 # One command on the coprocessor's shell before the link carries ssh, through npu-run.sh on both
 # families, never blind: the console is also the boot firmware's menu (#559) and other readers
@@ -185,6 +203,7 @@ coprocessor)
 	fi
 	start_link || exit 0
 	have_link || exit 0
+	console_dev || exit 0
 	[ -c "${CONSOLE}" ] || { log "no ${CONSOLE} - the coprocessor cannot be told its address"; exit 0; }
 	if [ "${FAMILY}" = octeontx ]; then
 		assign_link || true
@@ -231,6 +250,7 @@ coprocessor)
 	;;
 trust)
 	have_link || exit 0
+	console_dev || exit 1
 	[ -c "${CONSOLE}" ] || { log "no ${CONSOLE}"; exit 1; }
 	if [ ! -f "${KEY}" ]; then
 		/bin/mkdir -p -m 700 "$(/usr/bin/dirname "${KEY}")" || exit 1

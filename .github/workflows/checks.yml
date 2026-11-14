@@ -252,10 +252,18 @@ jobs:
 
       # The coprocessor's watchdog feeder as scripts/xgs/feeder.py reads it, continues it and starts
       # it again, with the coprocessor's answers made up (#768). And npu-run.sh's console session in a
-      # copy with stand-ins: the console's logger let back in on every way out of it, and the session
-      # ended once its command has answered (the review of 2026-11-06, D2).
+      # copy with stand-ins: the console's logger let back in on every way out of it, the session
+      # ended once its command has answered (the review of 2026-11-06, D2), and a UART that is not the
+      # console's port not detached and attached again for an interrupt that does not come (#601).
       - name: The coprocessor's watchdog feeder
         run: python3 tools/test-feeder.py
+
+      # console-dev.sh, which every script that uses the coprocessor's console asks for its device: the
+      # host's UART at I/O port 0x3e8, from devinfo -rv or boot messages as FreeBSD 15.1 prints them -
+      # uart2 on the XGS 136 r1 and the XGS 3300, uart4 on an XGS 107 (#748's bundle), not the XGS 136
+      # r2's uart2, the chipset's own (#601) - and /dev/cuau2 where nothing better is known.
+      - name: The coprocessor console's device, by its address
+        run: python3 tools/test-console-dev.py
 
       # mgmt-link.sh coprocessor with npu-run.sh, ping and the rest made up: the address goes through
       # npu-run.sh under the console's lock, is told again while the link does not answer, and stops
