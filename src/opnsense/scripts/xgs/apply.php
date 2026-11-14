@@ -19,6 +19,8 @@
  *                      Detection's configuration through the template overlay OPNsense/IDS/xgs-inspector.yaml;
  *                      while on, the running driver's dp.ips_depth or flow.ips_depth a quarter over
  *                      Suricata's stream depth (xgs_ips_depth)
+ *   failclose          the running driver's dp.ips_loop or ips.loop, through failclose.py (and from cron)
+ *   flood_cut          lists_cut.py, which watches pf's overload tables as well while it is on
  *   inspect_pass_invalid  the same overlay (stream.drop-invalid: no), while inspect_then_hardware is on,
  *                      and the running driver's dp.netmap_gate_cut or flow.netmap_gate_cut, 1 while it
  *                      is on and 0 otherwise
@@ -356,6 +358,21 @@ if (sysctl_get($gate_cut_oid) === null) {
     $steps[] = 'let rejected TCP segments through: the driver refused ' . $gate_cut_oid . '=' . $gate_cut;
 }
 
+/*
+ * Drop when the inspection stops (failclose.py): the inspector's knob, dp.ips_loop or ips.loop, 0 only
+ * while the setting and "Inspect, then hardware" are on and the Intrusion Detection is on in IPS mode,
+ * 1 otherwise; cron keeps it so every two seconds, as the Intrusion Detection is turned on or off.
+ */
+$fc = json_decode((string)shell_exec('/usr/local/opnsense/scripts/xgs/failclose.py 2>/dev/null'), true);
+if (!is_array($fc)) {
+    $steps[] = 'drop when the inspection stops: no answer from failclose.py';
+} else {
+    if (empty($fc['applied'])) {
+        $ok = false;
+    }
+    $steps[] = $fc['message'];
+}
+
 /* The coprocessor's counts, to pf and to the interfaces: both drivers read them. */
 $cnt = $family === 'octeontx' ? 'dev.octep.0.dp.' : 'dev.npuep.0.flow.';
 foreach (['count_to_pf' => [$cnt . 'hw_to_pf', 'hardware traffic counted in pf'],
@@ -376,7 +393,7 @@ $cut = json_decode((string)shell_exec('/usr/local/opnsense/scripts/xgs/lists_cut
 $steps[] = is_array($cut) && isset($cut['message']) ? $cut['message'] : 'cut when listed: no answer from lists_cut.py';
 
 /* Unusual traffic, reported and never blocked - anomaly.py, every minute from cron while on. */
-$steps[] = 'watching for unusual traffic ' . ($get('anomaly_watch', '0') === '1' ? 'on, every minute' : 'off');
+$steps[] = 'watching for unusual traffic ' . ($get('anomaly_watch', '1') === '1' ? 'on, every minute' : 'off');
 
 /* The TLS fingerprints whose connections are cut - ja4_cut.py, also every two seconds from cron. */
 $ja4 = json_decode((string)shell_exec('/usr/local/opnsense/scripts/xgs/ja4_cut.py 2>/dev/null'), true);
@@ -386,7 +403,7 @@ $steps[] = is_array($ja4) && isset($ja4['message']) ? $ja4['message'] : 'cut by 
    the list below: it decides which zones run in hardware, which that list no longer keeps. */
 $cp = json_decode((string)shell_exec('/usr/local/opnsense/scripts/xgs/cp_users.py 2>/dev/null'), true);
 $steps[] = is_array($cp) && isset($cp['message']) ? $cp['message'] : 'Captive Portal clients in hardware: no answer from cp_users.py';
-if ($get('cp_hardware', '0') === '1') {
+if ($get('cp_hardware', '1') === '1') {
     /* watched from now, not from cron's next minute: a login and a logout can both fall before it */
     exec('/usr/sbin/daemon -f /usr/local/opnsense/scripts/xgs/cp_users.py --for 58');
 }

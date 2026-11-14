@@ -135,7 +135,7 @@ install -m 0755 "${SRC}/src/opnsense/scripts/xgs/countdown.py" "${PREFIX}/opnsen
 # OPNsense's own pages, the runner other plugins use to reach the coprocessor (npu-run.sh) and the
 # coprocessor's console it finds by its address (console-dev.sh), and the driver's settings put where
 # it reads them before the early hooks load it (tunables-kenv.sh).
-for f in apply.php portmap.py ipsec.py reassign.sh defaults.php npu-run.sh console-dev.sh tunables-kenv.sh temperatures.sh watchdog.sh transceivers.py bundle.py flows.py flow_exclude.php lists_cut.py ja4_cut.py hwdrop.py anomaly.py poe.py plugins.py health.py portstats.py models.py portcheck.py fastpath.py recover.sh fastpath-monit.sh ids-ports.sh cp_users.py cp_overlay.py coprocessor.py fpcounters.py console_log.py feeder.py npu-sysrq.sh subnets.py npu-clock.sh npu-log.sh ftw-status.sh ftw-normal.sh ids_mtu.py; do
+for f in apply.php portmap.py ipsec.py reassign.sh defaults.php npu-run.sh console-dev.sh tunables-kenv.sh temperatures.sh watchdog.sh transceivers.py bundle.py flows.py flow_exclude.php lists_cut.py ja4_cut.py hwdrop.py anomaly.py poe.py plugins.py health.py portstats.py models.py portcheck.py fastpath.py recover.sh fastpath-monit.sh ids-ports.sh cp_users.py cp_overlay.py coprocessor.py fpcounters.py console_log.py feeder.py npu-sysrq.sh subnets.py npu-clock.sh npu-log.sh ftw-status.sh ftw-normal.sh ids_mtu.py failclose.py; do
     install -S -m 0755 "${SRC}/src/opnsense/scripts/xgs/${f}" "${PREFIX}/opnsense/scripts/xgs/${f}"
 done
 # Jumbo frames through the coprocessor's switch chip at every boot, on both families: the script,
@@ -173,6 +173,9 @@ install -m 0644 "${SRC}/src/etc/cron.d/xgs-anomaly" "${PREFIX}/etc/cron.d/xgs-an
 # is on. The overlay on the portal's accounting (cp_overlay.py) is synced by it, by a boot hook and
 # by a pkg trigger that runs when an update writes the portal's directory, and synced once now.
 install -m 0644 "${SRC}/src/etc/cron.d/xgs-cp" "${PREFIX}/etc/cron.d/xgs-cp"
+# Drop when the inspection stops (scripts/xgs/failclose.py): the inspector's knob kept in step with
+# the setting and the Intrusion Detection, every two seconds.
+install -m 0644 "${SRC}/src/etc/cron.d/xgs-failclose" "${PREFIX}/etc/cron.d/xgs-failclose"
 install -m 0755 "${SRC}/src/etc/rc.syshook.d/start/67-xgs-cp-overlay" "${PREFIX}/etc/rc.syshook.d/start/67-xgs-cp-overlay"
 install -d -m 0755 "${PREFIX}/share/pkg/triggers"
 install -m 0644 "${SRC}/src/share/pkg/triggers/os-xgs-npu-cp.ucl" "${PREFIX}/share/pkg/triggers/os-xgs-npu-cp.ucl"
@@ -261,9 +264,12 @@ install -m 0644 "${SRC}/src/opnsense/mvc/app/models/OPNsense/XGS/Migrations/M1_1
     "${PREFIX}/opnsense/mvc/app/models/OPNsense/XGS/Migrations/M1_1_0.php"
 install -m 0644 "${SRC}/src/opnsense/mvc/app/models/OPNsense/XGS/Migrations/M1_2_0.php" \
     "${PREFIX}/opnsense/mvc/app/models/OPNsense/XGS/Migrations/M1_2_0.php"
+install -m 0644 "${SRC}/src/opnsense/mvc/app/models/OPNsense/XGS/Migrations/M1_3_0.php" \
+    "${PREFIX}/opnsense/mvc/app/models/OPNsense/XGS/Migrations/M1_3_0.php"
 # The model's migrations, as a package's install runs them: 1.1.0 reads into the settings page the
 # tunables a box had set by hand, so the page opens showing what the box does; 1.2.0 turns problem
-# reports to manual and the count off, and asks again. Only this model's.
+# reports to manual and the count off, and asks again; 1.3.0 gives an appliance installed before it
+# failclose 0, what it did until then. Only this model's.
 if [ -x "${PREFIX}/opnsense/mvc/script/run_migrations.php" ]; then
     "${PREFIX}/opnsense/mvc/script/run_migrations.php" OPNsense/XGS || true
 fi

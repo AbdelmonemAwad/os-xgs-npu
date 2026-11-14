@@ -128,6 +128,7 @@ rm -f "${PREFIX}/opnsense/scripts/xgs/apply.php" "${PREFIX}/opnsense/scripts/xgs
     "${PREFIX}/etc/cron.d/xgs-ja4" \
     "${PREFIX}/opnsense/scripts/xgs/anomaly.py" "${PREFIX}/opnsense/scripts/xgs/ids_mtu.py" \
     "${PREFIX}/etc/cron.d/xgs-anomaly" \
+    "${PREFIX}/opnsense/scripts/xgs/failclose.py" "${PREFIX}/etc/cron.d/xgs-failclose" \
     "${PREFIX}/opnsense/scripts/xgs/count.py" \
     "${PREFIX}/etc/cron.d/xgs-count"
 rm -f /var/db/os-xgs-npu/transceivers.json /var/db/os-xgs-npu/fastpath.json /var/db/os-xgs-npu/sensor-flags \

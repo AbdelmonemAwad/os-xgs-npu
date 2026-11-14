@@ -158,7 +158,7 @@ Two of the six coprocessor families answer now, on silicon that shares nothing.
   timeout takes them out at once. What the coprocessor carries is added to the portal's own counts,
   so its idle timeout and RADIUS accounting see it - by an overlay on one of the portal's files,
   changed only on the versions it knows ([measured on both](docs/measurements/cp-hardware-2026-10-24.md)).
-  Off by default.
+  On in a new install since 2026-11-14.
 - **Nothing leaves an appliance unless its owner chooses.** Problem reports wait for their Send and
   the appliance is not counted until its owner says so - XGS: Overview asks once
   ([problem-reports.md](docs/problem-reports.md#the-owner-decides)).

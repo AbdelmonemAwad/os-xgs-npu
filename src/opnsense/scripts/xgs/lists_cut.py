@@ -17,7 +17,16 @@ sweep, measured in docs/measurements/lists-cut-2026-10-19.md.
     lists_cut.py --status   print the last run's record
 
 The first run for a list takes everything in it as new, so turning the watch on cuts what the list
-already names. A state is killed by its id: `pfctl -k <host> -k <host>` kills nothing on this
+already names.
+
+FLOOD CUT (XGS: Settings, "Cut floods by the firewall's own limits", general.flood_cut, on unless
+turned off). A rule with "Max new connections" puts a source that passes it in a pf table -
+virusprot, or the rule's own overload table - and pf's "flush global" kills its states there and
+then. The tables are watched here like a list, so what such a source still has in the coprocessor is
+dropped there at once, both ways, when "Cut in hardware" is on, instead of waiting for the driver's
+next sweep; their states are killed again, which finds none or a few. The coprocessor's own DoS
+table cannot do it: it dispatches none of its commands (docs/measurements/dos-probe-2026-10-19.md).
+Within a minute of pf's own cut: this runs every minute. A state is killed by its id: `pfctl -k <host> -k <host>` kills nothing on this
 firewall. Never fails its caller; what it could not do is in the summary and in the XGS log.
 """
 import bisect
@@ -59,6 +68,23 @@ def watched_lists(path=CONFIG):
         if (alias.findtext('enabled') or '1') == '1' and alias.get('uuid'):
             names[alias.get('uuid')] = alias.findtext('name') or ''
     return [names[u] for u in want if names.get(u)]
+
+
+def flood_tables(path=CONFIG):
+    """The pf overload tables watched while the flood cut is on: virusprot, which OPNsense blocks
+    unless "Disable virusprot" is set, and every rule's own overload table, in that order."""
+    try:
+        root = ET.parse(path).getroot()
+    except (OSError, ET.ParseError):
+        return []
+    if (root.findtext('OPNsense/XGS/general/flood_cut') or '1').strip() != '1':
+        return []
+    names = ['virusprot']
+    for node in root.iter('overload'):
+        name = (node.text or '').strip()
+        if re.match(r'^[A-Za-z0-9_]{1,31}$', name) and name not in names:
+            names.append(name)
+    return names
 
 
 def table_entries(name):
@@ -172,11 +198,16 @@ def run():
     os.makedirs(STATE_DIR, exist_ok=True)
     status = load(STATUS, {})
     lists = watched_lists()
-    summary = {'lists': {}, 'cut': 0, 'run': int(time.time()), 'watched': lists}
+    floods = [t for t in flood_tables() if t not in lists]
+    summary = {'lists': {}, 'cut': 0, 'run': int(time.time()), 'watched': lists, 'flood': floods}
     added, current = {}, {}
-    for name in lists:
+    for name in lists + floods:
         now = table_entries(name)
         if now is None:
+            if name in floods:
+                # no rule has filled it since the rules were loaded, or the table is not in use
+                summary['lists'][name] = {'entries': 0, 'added': 0, 'cut': 0}
+                continue
             summary['lists'][name] = {'error': 'no pf table by this name - is the alias loaded?'}
             continue
         before = load(snapshot_path(name), None)
@@ -231,15 +262,21 @@ def run():
     for name, info in summary['lists'].items():
         totals[name] = totals.get(name, 0) + info.get('cut', 0)
     summary['totals'] = totals
+    if floods:
+        summary['flood_message'] = 'flood cut: ' + ', '.join(
+            f"{name} ({summary['lists'].get(name, {}).get('entries', 0)} sources, {totals.get(name, 0)} cut in all)"
+            for name in floods)
+    else:
+        summary['flood_message'] = 'flood cut: off'
     if not lists:
-        summary['message'] = 'cut when listed: no list watched'
+        summary['message'] = 'cut when listed: no list watched; ' + summary['flood_message']
     else:
         parts = []
         for name in lists:
             info = summary['lists'].get(name, {})
             parts.append(f"{name} ({info['error']})" if 'error' in info else
                          f"{name} ({info['entries']} entries, {info['cut']} cut now, {totals.get(name, 0)} in all)")
-        summary['message'] = 'cut when listed: ' + ', '.join(parts)
+        summary['message'] = 'cut when listed: ' + ', '.join(parts) + '; ' + summary['flood_message']
     save(STATUS, summary)
     return summary
 

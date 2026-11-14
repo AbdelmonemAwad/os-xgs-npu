@@ -759,6 +759,9 @@ if [ -x /usr/local/opnsense/scripts/xgs/offload.sh ] && [ -x /usr/local/bin/php 
 			ifconfig oxips0 up
 			sysctl -q dev.octep.0.dp.ips_new=1 > /dev/null 2>&1 && log "inspect, then hardware: oxips0 up, new connections inspected"
 		fi
+		# Drop when the inspection stops: the knob as the setting and the Intrusion Detection say,
+		# before Suricata starts; cron keeps it after (scripts/xgs/failclose.py).
+		[ -x /usr/local/opnsense/scripts/xgs/failclose.py ] && log "$(/usr/local/opnsense/scripts/xgs/failclose.py 2>/dev/null)"
 	fi
 	# And the coprocessor's own counts of what it forwards, to pf's states and rules and to the
 	# interfaces' counters: on unless the owner turned them off on the same page.

@@ -167,5 +167,25 @@ finally:
     (an.subprocess.run, an.time.sleep, an.time.monotonic, an.enabled, an.log, an.snapshot) = saved
     shutil.rmtree(work, ignore_errors=True)
 
+# What os-netreport reads: alerts.jsonl, numbered on from its last line, the last KEEP_ALERTS kept.
+work = tempfile.mkdtemp()
+try:
+    path = os.path.join(work, 'alerts.jsonl')
+    a = {'at': 1, 'host': '192.0.2.7', 'kind': 'scan', 'message': 'a scan'}
+    an.export([a, dict(a, kind='sweep')], path)
+    an.export([], path)
+    an.export([dict(a, at=2)], path)
+    with open(path) as fh:
+        rows = [json.loads(ln) for ln in fh]
+    check('export: numbered on from the last line', [r['id'] for r in rows], [1, 2, 3])
+    check('export: the fields os-netreport reads', sorted(rows[0]), ['at', 'host', 'id', 'kind', 'message', 'source'])
+    an.export([a] * (an.KEEP_ALERTS + 5), path)
+    with open(path) as fh:
+        rows = [json.loads(ln) for ln in fh]
+    check('export: the last KEEP_ALERTS kept, ids never reused', (len(rows), rows[-1]['id']),
+          (an.KEEP_ALERTS, an.KEEP_ALERTS + 8))
+finally:
+    shutil.rmtree(work, ignore_errors=True)
+
 print('all passed' if not failures else f'{failures} failed')
 sys.exit(1 if failures else 0)
