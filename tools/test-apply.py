@@ -8,7 +8,10 @@ what a boot leaves - the row's number, or the kernel's own hardware or software 
 setting holds them, and nothing else; until 2026-11-06 off wrote nothing, and the page said applied.
 And the rows of System: Settings: Tunables an apply removes: a sized tunable set to 0, and the flow
 maker's own two, which OPNsense set at each boot over the page's setting until 2026-11-06 (the review's
-G5). Reading the file through PHP also says the whole of apply.php parses.
+G5). And the inspector's depth a save sets while "Inspect, then hardware" is on: a quarter over
+Suricata's stream.reassembly.depth, so Suricata reaches its own depth and bypasses a connection before
+the driver puts it in hardware (issue 1148). Reading the file through PHP also says the whole of
+apply.php parses.
 
     python3 tools/test-apply.py"""
 import json
@@ -23,7 +26,9 @@ HARNESS = r'''
 putenv('XGS_APPLY_FUNCTIONS_ONLY=1');
 include $argv[1];
 $c = json_decode($argv[2], true);
-if (isset($c['rows'])) {
+if (array_key_exists('depth', $c)) {
+    echo json_encode(xgs_ips_depth($c['now'], $c['depth']));
+} elseif (isset($c['rows'])) {
     echo json_encode((object)xgs_rows_removed($c['rows'], $c['unset']));
 } else {
     echo json_encode(xgs_soft_crypto($c['on'], $c['now'], $c['row']));
@@ -51,6 +56,10 @@ def php(case):
 
 def written(on, now, row=None):
     return php({'on': on, 'now': now, 'row': row})
+
+
+def raised(now, depth):
+    return php({'depth': depth, 'now': now})
 
 
 def removed(rows, unset=()):
@@ -91,6 +100,19 @@ check('no row of its own: nothing removed',
       removed({'a1b2c3d4-0000-4000-8000-000000000002': 'hw.npuep.giu.poll_ms'}, ['hw.npuep.flow_max']), {})
 check('a row merely like the flow maker\'s stays',
       removed({'a1b2c3d4-0000-4000-8000-000000000006': 'dev.npuep.0.flow.auto_made'}), {})
+
+# The inspector's depth against Suricata's, as --dump-config prints it.
+check("OPNsense's 1mb, the driver's 1 MiB: raised a quarter", raised('1048576', '1mb'), '1310720')
+check('already a quarter over: left', raised('1310720', '1mb'), None)
+check("the owner's larger depth: left", raised('2097152', '1mb'), None)
+check('0, inspected for good: left', raised('0', '1mb'), None)
+check('Suricata without a depth: left, it never bypasses', raised('1048576', '0'), None)
+check('a depth in kb', raised('100000', '512kb'), '655360')
+check('a depth in bytes, rounded up', raised('1', '1000001'), '1250002')
+check('a depth in capitals with a space', raised('1048576', '2 MB'), '2621440')
+check('a depth this cannot read: left', raised('1048576', 'lots'), None)
+check('no depth read (no suricata): left', raised('1048576', None), None)
+check('no driver: left', raised(None, '1mb'), None)
 
 print('%d failure(s)' % failures)
 sys.exit(1 if failures else 0)
