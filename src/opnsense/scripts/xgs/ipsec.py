@@ -27,9 +27,12 @@ on the 136 it counted every association since boot as held (14 where the kernel 
 Each association the kernel has and the engine does not is a row too, with the reason it stays in
 the kernel (2026-11-14): the engine off, a protocol, mode, cipher, HMAC or key length the drivers'
 rules refuse (octep_ipsec_sa_newkey, npuipsec_alg_of: tunnel-mode ESP with AES-GCM-16, or AES-CBC
-with HMAC SHA-1/256/384/512, keys of 128, 192 or 256 bits), on the XGS 136 never offered to a front
-port, or "other" - what the drivers count without naming per association (a route by another
-interface or a VLAN, a replay window, inbound extended sequence numbers, the coprocessor not ready).
+with HMAC SHA-1/256/384/512, keys of 128, 192 or 256 bits), a port that took it by the kernel's word
+("hw offl if") though the engine's list lacks it, its local address on an interface that is not a
+front port (a loopback, a VLAN: both drivers take only an association whose address is on the port),
+on the XGS 136 not in the driver's list of offers, or "other" - what the drivers count without
+naming per association (a replay window, inbound extended sequence numbers, the coprocessor not
+ready).
 
     profile   the encryption profile as OPNsense configured it, from the swanctl.conf it writes:
               each child's ESP proposals and whether the engine takes them, its mode, the IKE
@@ -43,8 +46,12 @@ import re
 import subprocess
 import sys
 
+# The XGS 3300's ipsec.table prints an IPv4 association's ends as two hex words and an IPv6 one's as
+# text, and "no interface" where the port is gone (octep_ipsec.c); until 2026-11-14 only the hex form
+# was read, and an IPv6 association the engine held showed on the page as one in the kernel.
 TABLE_LINE = re.compile(r'^\s*\d+\s+handle\s+(\d+)\s+rev\s+\d+\s+(encrypt|decrypt)\s+spi\s+(0x[0-9a-f]+)\s+'
-                        r'(0x[0-9a-f]+)\s+->\s+(0x[0-9a-f]+)\s+lif\s+\S+\s+(\S+)\s+drv_spi\s+\d+\s+win\s+(\d+)', re.I)
+                        r'(0x[0-9a-f]{8}|[0-9a-f:.]+)\s+->\s+(0x[0-9a-f]{8}|[0-9a-f:.]+)\s+lif\s+\S+\s+'
+                        r'(.+?)\s+drv_spi\s+\d+\s+win\s+(\d+)', re.I)
 SAS_LINE = re.compile(r'^(\S+)\s+spi\s+(0x[0-9a-f]+)\s+(encrypt|decrypt)\s+(inet6?)\s+alg\s+\d+'
                       r'(?:\s+win\s+(\d+))?(\s+esn)?\s+-?\d+s ago\s*(?:\|\s*(.*))?$', re.I)
 KERNEL_SPI = re.compile(r'\bspi=\d+\(0x([0-9a-f]+)\)')
@@ -56,6 +63,11 @@ KERNEL_ENDS = re.compile(r'^([0-9a-fA-F.:]+)(?:\[\d+\])? ([0-9a-fA-F.:]+)(?:\[\d
 KERNEL_BYTES = re.compile(r'^\s*current: (\d+)\(bytes\)')
 KERNEL_ALLOC = re.compile(r'^\s*allocated: (\d+)')
 KERNEL_HW = re.compile(r'hw offl allocated: (\d+)\s+hw offl: (\d+)\(bytes\)')
+# setkey wraps a long key: the hex groups after the first line come on lines of their own (an
+# AES-256-GCM key and its 4-byte salt are 36 bytes - eight groups, then one).
+KERNEL_KEYMORE = re.compile(r'^\s+([0-9a-f]+(?:\s+[0-9a-f]+)*)\s*$', re.I)
+# The interface the kernel handed the association to for inline offload, when it did.
+KERNEL_HWIF = re.compile(r'hw offl if:\s*(\S+)')
 
 
 def run(argv):
@@ -71,6 +83,11 @@ def ipv4(word):
     return '.'.join(str((n >> s) & 0xff) for s in (24, 16, 8, 0))
 
 
+def end(word):
+    """One end of an association in ipsec.table: an IPv4 address as a hex word, an IPv6 one as text."""
+    return ipv4(word) if word.lower().startswith('0x') else word
+
+
 def table_rows(text):
     """The XGS 3300's ipsec.table: what the engine holds now, one line each."""
     rows = []
@@ -78,7 +95,7 @@ def table_rows(text):
         m = TABLE_LINE.match(line)
         if m:
             rows.append({'direction': m.group(2).lower(), 'spi': m.group(3).lower(),
-                         'tunnel': ipv4(m.group(4)) + ' -> ' + ipv4(m.group(5)), 'port': m.group(6),
+                         'tunnel': end(m.group(4)) + ' -> ' + end(m.group(5)), 'port': m.group(6),
                          'window': m.group(7), 'handle': m.group(1), 'engine': True, 'note': ''})
     return rows
 
@@ -138,27 +155,39 @@ HMACS = ('hmac-sha1', 'hmac-sha2-256', 'hmac-sha2-384', 'hmac-sha2-512', 'hmac-s
 
 def kernel_detail():
     """Every association the kernel has, {spi: {...}} from setkey -D: its two ends, its protocol and
-    mode, its cipher and key length, its HMAC. What the rules below need, and nothing of the keys."""
-    found, ends, spi = {}, None, None
+    mode, its cipher and key length - a long key's hex runs on to the next line - its HMAC, and the
+    port whose driver took it ("hw offl if"). What the rules below need, and nothing of the keys."""
+    found, ends, spi, key = {}, None, None, None
     for line in (run(['/sbin/setkey', '-D']) or '').splitlines():
         m = KERNEL_ENDS.match(line)
         if m:
             ends = (m.group(1), m.group(2))
-            spi = None
+            spi, key = None, None
             continue
         m = KERNEL_HEAD.match(line)
         if m and ends:
-            spi = m.group(3).rjust(8, '0')
+            spi, key = m.group(3).rjust(8, '0'), None
             found[spi] = {'src': ends[0], 'dst': ends[1], 'proto': m.group(1).lower(),
-                          'mode': m.group(2).lower(), 'enc': '', 'keylen': 0, 'auth': ''}
+                          'mode': m.group(2).lower(), 'enc': '', 'keylen': 0, 'auth': '', 'hw_if': ''}
             continue
         m = KERNEL_ALG.match(line)
         if m and spi:
-            if m.group(1) == 'E':
+            key = m.group(1)
+            if key == 'E':
                 found[spi]['enc'] = m.group(2).lower()
                 found[spi]['keylen'] = len(''.join(m.group(3).split())) // 2
             else:
                 found[spi]['auth'] = m.group(2).lower()
+            continue
+        m = KERNEL_KEYMORE.match(line)
+        if m and spi and key:
+            if key == 'E':
+                found[spi]['keylen'] += len(''.join(m.group(1).split())) // 2
+            continue
+        key = None
+        m = KERNEL_HWIF.search(line)
+        if m and spi:
+            found[spi]['hw_if'] = m.group(1)
     return found
 
 
@@ -183,21 +212,31 @@ def rule_reason(sa):
     return None
 
 
-def local_addresses():
-    """The addresses this host owns, to tell a kernel-only association's direction."""
-    found = set()
+def address_owners():
+    """{address: interface} for every address this host owns, from ifconfig -a: to tell a
+    kernel-only association's direction, and on which interface its local end is."""
+    found, ifname = {}, None
     for line in (run(['/sbin/ifconfig', '-a']) or '').splitlines():
+        if line and not line[0].isspace():
+            ifname = line.split(':', 1)[0]
+            continue
         parts = line.split()
         if len(parts) > 1 and parts[0] in ('inet', 'inet6'):
-            found.add(parts[1].split('%')[0])
+            found[parts[1].split('%')[0]] = ifname or ''
     return found
+
+
+# the front ports, whose driver takes an association: oxp* on the XGS 3300, npup* on the 136
+FRONT = {'octeontx': 'oxp', 'armada': 'npup'}
 
 
 def kernel_rows(rows, detail, engine_on, family):
     """Add a row for every association the kernel has and the engine does not, each with the reason
-    it stays there: the engine off, the drivers' rules, on the XGS 136 never offered to a front
-    port; and give every row its algorithms."""
-    ours = local_addresses()
+    it stays there: the drivers' rules, a port that took it by the kernel's word, the engine off,
+    its local address on an interface that is not a front port - both drivers take only an
+    association whose address is on the port itself (octep_ipsec_direction, npuipsec_direction) -
+    on the XGS 136 not in the driver's list of offers; and give every row its algorithms."""
+    ours = address_owners()
     seen = set()
     for r in rows:
         key = r['spi'].lower()[2:].rjust(8, '0')
@@ -212,13 +251,22 @@ def kernel_rows(rows, detail, engine_on, family):
     for key, sa in sorted(detail.items()):
         if key in seen:
             continue
+        local = sa['src'] if sa['src'] in ours else (sa['dst'] if sa['dst'] in ours else None)
+        on = ours.get(local, '') if local else ''
         why = rule_reason(sa)
-        if why is None:
-            why = ('engine_off', '') if not engine_on else \
-                (('not_offered', '') if family != 'octeontx' else ('other', ''))
+        if why is None and sa.get('hw_if'):
+            # setkey names the port whose driver took it ("hw offl if"), yet the engine's own list,
+            # the record of what it holds, does not show it: say both rather than guess
+            why = ('port_took', sa['hw_if'])
+        elif why is None and not engine_on:
+            why = ('engine_off', '')
+        elif why is None and on and not on.startswith(FRONT.get(family, '-')):
+            why = ('not_on_port', on)
+        elif why is None:
+            why = ('not_offered', '') if family != 'octeontx' else ('other', '')
         direction = 'encrypt' if sa['src'] in ours else ('decrypt' if sa['dst'] in ours else '')
         rows.append({'direction': direction, 'spi': '0x' + key, 'tunnel': sa['src'] + ' -> ' + sa['dst'],
-                     'port': '', 'window': '', 'handle': '', 'engine': False, 'note': '',
+                     'port': sa.get('hw_if', ''), 'window': '', 'handle': '', 'engine': False, 'note': '',
                      'cipher': sa['enc'] + (' / ' + sa['auth'] if sa['auth'] else ''), 'mode': sa['mode'],
                      'reason': why[0], 'reason_word': why[1]})
     return rows

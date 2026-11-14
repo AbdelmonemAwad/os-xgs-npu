@@ -155,10 +155,12 @@
                             cipher: "{{ lang._('cipher %s: the engine takes AES-GCM-16 and AES-CBC') }}",
                             auth: "{{ lang._('HMAC %s: the engine takes SHA-1, SHA-256, SHA-384 and SHA-512') }}",
                             keylen: "{{ lang._('a key of %s bits: the engine takes 128, 192 and 256') }}",
-                            not_offered: "{{ lang._('not offered to a front port: the tunnel does not use one') }}",
+                            not_offered: "{{ lang._('not in the driver list of offers: it came before the driver loaded, or the list (the last sixteen) moved on') }}",
+                            not_on_port: "{{ lang._('its local address is on %s, not on a front port: the driver takes only an association whose address is on its port') }}",
                             esn: "{{ lang._('extended sequence numbers inbound, left to the kernel') }}",
                             window: "{{ lang._('replay window %s: not a power of two, or above 4096') }}",
                             engine_refused: "{{ lang._('the engine refused it') }}",
+                            port_took: "{{ lang._('the kernel says port %s took it; it is not in the engine list') }}",
                             other: "{{ lang._('allowed by the rules; not taken for a reason the counters show (a route by another interface, a VLAN, the coprocessor not ready)') }}"
                         }[row.reason] || '';
                         return '<span class="text-muted">' + why.replace('%s', '<code>' + row.reason_word + '</code>') + '</span>';

@@ -131,6 +131,84 @@ check('the engine off: a rule still named where one applies', rows['0x22222222']
 rows = {r['spi']: r for r in ip.kernel_rows([], detail, True, 'armada')}
 check('the XGS 136: not offered to a front port', rows['0x33333333']['reason'], 'not_offered')
 
+# The XGS 3300's ipsec.table (2026-11-14): an IPv6 association's ends are text, an IPv4 one's two hex
+# words, and a port that is gone reads "no interface"; until then only the hex form was read, and an
+# IPv6 association the engine held showed as one in the kernel.
+TABLE = """  1 handle 2 rev 1  decrypt  spi 0xcdba8404  fd99:136::1 -> fd99:23::1  lif 0x7000  oxp9  drv_spi 12  win 32  after seq 0
+  2 handle 3 rev 1  encrypt  spi 0xc8660138  0xc6336402 -> 0xcb007101  lif 0x7000  oxp9  drv_spi 28  win 0  after seq 1048576
+      1 connection(s) in the flow table; by flows since install 1500 bytes 1 packets, told to the kernel
+  3 handle 4 rev 2  encrypt  spi 0x0000beef  0xc6336402 -> 0xcb007101  lif 0x7000  no interface  drv_spi 29  win 0  after seq 0  (not ready)
+"""
+rows = ip.table_rows(TABLE)
+check('the table: one row per association, the flow line skipped', [r['spi'] for r in rows],
+      ['0xcdba8404', '0xc8660138', '0x0000beef'])
+check('the table: an IPv6 association read whole', (rows[0]['direction'], rows[0]['tunnel'], rows[0]['port'],
+      rows[0]['window'], rows[0]['engine']), ('decrypt', 'fd99:136::1 -> fd99:23::1', 'oxp9', '32', True))
+check('the table: an IPv4 association, its hex ends as addresses', rows[1]['tunnel'], '198.51.100.2 -> 203.0.113.1')
+check('the table: a port that is gone', rows[2]['port'], 'no interface')
+
+# setkey -D wraps a long key: an AES-256-GCM key and its salt are 36 bytes, eight groups on the first
+# line and the ninth on its own; and "hw offl if" names the port whose driver took it. Until
+# 2026-11-14 the ninth group was not counted, and the page said "a key of 224 bits".
+SETKEY_WRAP = """fd99:23::1 fd99:136::1
+\tesp mode=tunnel spi=3362128184(0xc8660138) reqid=1(0x00000001)
+\tE: aes-gcm-16  00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+\t00000000
+\tseq=0x00000000 replay=0 flags=0x00000000 state=mature
+\tcurrent: 0(bytes)\thard: 0(bytes)\tsoft: 0(bytes)
+\tallocated: 0\thard: 0\tsoft: 0
+\thw offl if: oxp9
+\tsadb_seq=1 pid=4242 refcnt=1
+fd99:136::1 fd99:23::1
+\tesp mode=tunnel spi=305419896(0x12345678) reqid=2(0x00000002)
+\tE: aes-gcm-16  00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+\t00000000
+\tseq=0x00000000 replay=0 flags=0x00000000 state=mature
+\tsadb_seq=0 pid=4242 refcnt=1
+"""
+ip.run = lambda argv: SETKEY_WRAP if argv[:2] == ['/sbin/setkey', '-D'] else \
+    ('\tinet6 fd99:23::1 prefixlen 64\n' if argv[0] == '/sbin/ifconfig' else None)
+wrap = ip.kernel_detail()
+check('a wrapped key: all 36 bytes counted', wrap['c8660138']['keylen'], 36)
+check('a wrapped AES-256-GCM key: the rules allow it', ip.rule_reason(wrap['c8660138']), None)
+check('"hw offl if": the port read', wrap['c8660138']['hw_if'], 'oxp9')
+check('no "hw offl if": no port', wrap['12345678']['hw_if'], '')
+rows = {r['spi']: r for r in ip.kernel_rows([], wrap, True, 'octeontx')}
+check('a port took it and the engine list lacks it: said so, with the port',
+      (rows['0xc8660138']['reason'], rows['0xc8660138']['reason_word'], rows['0xc8660138']['port']),
+      ('port_took', 'oxp9', 'oxp9'))
+check('no port named: "other"', rows['0x12345678']['reason'], 'other')
+
+# Both drivers take only an association whose local address is on the port itself
+# (octep_ipsec_direction, npuipsec_direction): one whose address is on a loopback is never theirs,
+# whatever route its packets take. The XGS 136 in the lab, 2026-11-14: fd99:136::1 on lo0, the route
+# by npup8, and the page said "not offered to a front port: the tunnel does not use one".
+IFCONFIG = """lo0: flags=1008049<UP,LOOPBACK,RUNNING,MULTICAST,LOWER_UP> metric 0 mtu 16384
+\tinet6 fd99:136::1 prefixlen 128
+npup8: flags=1008843<UP,BROADCAST,RUNNING,SIMPLEX,MULTICAST,LOWER_UP> metric 0 mtu 1500
+\tinet6 fe80::1%npup8 prefixlen 64 scopeid 0xd
+\tinet6 fd99:23::2 prefixlen 64
+"""
+ip.run =lambda argv: SETKEY_WRAP if argv[:2] == ['/sbin/setkey', '-D'] else \
+    (IFCONFIG if argv[0] == '/sbin/ifconfig' else None)
+owners = ip.address_owners()
+check('ifconfig: each address with its interface, the scope left out',
+      (owners.get('fd99:136::1'), owners.get('fd99:23::2'), owners.get('fe80::1')), ('lo0', 'npup8', 'npup8'))
+plain = {k: dict(v, hw_if='') for k, v in ip.kernel_detail().items()}
+rows = {r['spi']: r for r in ip.kernel_rows([], plain, True, 'armada')}
+check('the XGS 136: the local address on a loopback, said so with its interface',
+      (rows['0xc8660138']['reason'], rows['0xc8660138']['reason_word'], rows['0xc8660138']['direction']),
+      ('not_on_port', 'lo0', 'decrypt'))
+IFCONFIG_PORT = IFCONFIG.replace('lo0:', 'npup7:')
+ip.run = lambda argv: SETKEY_WRAP if argv[:2] == ['/sbin/setkey', '-D'] else \
+    (IFCONFIG_PORT if argv[0] == '/sbin/ifconfig' else None)
+rows = {r['spi']: r for r in ip.kernel_rows([], plain, True, 'armada')}
+check('the XGS 136: the local address on a front port and not in the list', rows['0xc8660138']['reason'],
+      'not_offered')
+rows = {r['spi']: r for r in ip.kernel_rows([], plain, False, 'armada')}
+check('the engine off comes before the interface', rows['0xc8660138']['reason'], 'engine_off')
+check('the counts are not taken for a key line', ip.kernel_counts().get('c8660138'), {'bytes': 0, 'packets': 0})
+
 # the encryption profile, from the swanctl.conf OPNsense writes
 check('GCM-16 alone: hardware', ip.proposal_verdict('aes256gcm16-modp2048')[0], 'all')
 check('GCM-16 named gcm128: hardware', ip.proposal_verdict('aes128gcm128-ecp256')[0], 'all')
