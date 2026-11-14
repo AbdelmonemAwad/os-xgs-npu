@@ -85,9 +85,20 @@ static npuep_pf_find_t	*npuep_pf_find;
 static npuep_pf_exists_t *npuep_pf_exists;
 static int		 npuep_pf_tried;
 
+/*
+ * pfsync's update for a state, by pointer, for the states the keepalive restamps - octep_pf.c's
+ * octep_pf_sync, and everything its comment says holds here: a connection in hardware passes pf no
+ * packet, so pfsync never refreshed the peer's copy, whose expiry then removed the live state
+ * (#1160); the pointer is pf's VNET variable, read at every call through curvnet's base, and
+ * optional.
+ */
+typedef void npuep_pfsync_update_t(struct pf_kstate *);
+static caddr_t		 npuep_pfsync_sym;
+
 struct npuep_pf_hunt {
 	caddr_t	find;
 	caddr_t	exists;
+	caddr_t	sync;
 };
 
 static int
@@ -105,6 +116,8 @@ npuep_pf_in_file(linker_file_t lf, void *arg)
 		h->find = linker_file_lookup_symbol(lf, "pf_find_state_all", 0);
 	if (h->exists == NULL)
 		h->exists = linker_file_lookup_symbol(lf, "pf_find_state_all_exists", 0);
+	if (h->sync == NULL)
+		h->sync = linker_file_lookup_symbol(lf, "vnet_entry_pfsync_update_state_ptr", 0);
 
 	return (0);
 }
@@ -129,12 +142,14 @@ npuep_pf_present(void)
 
 	h.find = NULL;
 	h.exists = NULL;
+	h.sync = NULL;
 	(void)linker_file_foreach(npuep_pf_in_file, &h);
 
 	/* Both or neither. Half of this facility is not worth having. */
 	if (h.find != NULL && h.exists != NULL) {
 		npuep_pf_find = (npuep_pf_find_t *)h.find;
 		npuep_pf_exists = (npuep_pf_exists_t *)h.exists;
+		npuep_pfsync_sym = h.sync;
 		return (true);
 	}
 
@@ -558,6 +573,18 @@ npuep_pf_settled(const struct npuep_pf_tuple *t)
  * The caller decides that the connection is alive. Called unconditionally this would keep a dead
  * connection's state, and the driver's table entry with it, for ever.
  */
+static void
+npuep_pf_sync(struct pf_kstate *s)
+{
+	npuep_pfsync_update_t *f;
+
+	if (npuep_pfsync_sym == NULL)
+		return;
+	f = *(npuep_pfsync_update_t **)(curvnet->vnet_data_base + (uintptr_t)npuep_pfsync_sym);
+	if (f != NULL)
+		f(s);	/* pfsync's own: queues the update, and leaves a state marked no-sync alone */
+}
+
 int
 npuep_pf_touch(const struct npuep_pf_tuple *t)
 {
@@ -576,6 +603,7 @@ npuep_pf_touch(const struct npuep_pf_tuple *t)
 				continue;
 			if (s->timeout < PFTM_MAX) {
 				s->expire = pf_get_uptime();
+				npuep_pf_sync(s);
 				n++;
 			}
 			PF_STATE_UNLOCK(s);

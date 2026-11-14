@@ -568,7 +568,13 @@ E), which it was on the older commit.
   create side if the create side ever exists.
 - **`pfsync` interaction beyond the import path.** A state learned from a peer inserts without a
   local packet (`sys/netpfil/pf/if_pfsync.c:898`). What an HA failover should do about flows
-  programmed on the other member is not addressed here at all.
+  programmed on the other member is not addressed here at all. One part is since 2026-11-14: a state
+  in hardware passes pf no packet, so pfsync never refreshed a peer's copy of it, which expired and
+  sent back a delete that removed the live state - measured with a UDP connection, replaced 60 to 70
+  seconds in with pfsync to a peer and never without
+  ([#1160](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/1160)). The keepalive's restamp is told
+  to pfsync now, as a packet's would be (`octep_pf_sync` in `contrib/octep/octep_pf.c`,
+  `npuep_pf_sync` in `contrib/npuep/npupf.c`).
 - **No measurement of the RPC path under load.** The two-second figure is the driver's timeout
   constant, not an observed latency. The observed cost of a NetAgent request is 12 ms healthy and up
   to four seconds when it is not (`docs/npuep/netagent.md:166`); RPC has no equivalent measurement.
