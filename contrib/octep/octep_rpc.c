@@ -488,13 +488,14 @@ octep_rpc_post(struct octep_softc *sc)
 	uint16_t reqlen;
 	bus_size_t desc;
 	uint64_t posted, done;
-	uint32_t idx;
+	uint32_t idx, fw_owner;
 	uint16_t rc, plen;
 	uint32_t us, step;
 	sbintime_t deadline;
 	int i, wire;
 
 	mtx_assert(&sc->mtx, MA_OWNED);
+	fw_owner = 0;
 
 	/* nothing asked of a coprocessor that has left the bus (#768): see gone in octep.h */
 	if (sc->gone)
@@ -623,7 +624,9 @@ octep_rpc_post(struct octep_softc *sc)
 		break;
 	}
 
-	case OCTEP_RPC_CMD_FW_CFG_PARAMS_SET:
+	case OCTEP_RPC_CMD_FW_CFG_PARAMS_SET: {
+		uint32_t word;
+
 		/*
 		 * The global configuration word. fw_state_set_cfg_params refuses a request shorter
 		 * than four bytes - `cmp w4, #3; b.ls` on the length - and then reads a HALFWORD
@@ -633,17 +636,26 @@ octep_rpc_post(struct octep_softc *sc)
 		 * Bit 0 is FW_CFG_OFFLOAD. Until it is set the fast path forces every frame it takes
 		 * off the wire to the host without a flow lookup, which is why no flow has ever
 		 * existed on this appliance and why nothing the crypto path needs can be reached.
+		 *
+		 * The owner's word with the driver's own bits ORed in (rpc_fw_cfg_auto: FP_PKT_DUMP
+		 * while a packet capture runs, dp.capture_auto), so that a write by offload.sh keeps
+		 * the driver's copies and the driver's write keeps every bit the owner set. The
+		 * driver's own write (octep_rpc_fw_cfg_auto) sends the owner's word as the far side
+		 * last accepted it, never what rpc.fw_cfg holds staged and not yet posted. With
+		 * rpc_fw_cfg_auto 0 a write from rpc.post is the owner's word alone, as it always was.
 		 */
-		if ((sc->rpc_fw_cfg & ~(uint32_t)OCTEP_FW_CFG_NAMED) != 0) {
+		fw_owner = sc->rpc_internal != 0 ? sc->rpc_fw_cfg_held : sc->rpc_fw_cfg;
+		word = fw_owner | sc->rpc_fw_cfg_auto;
+		if ((word & ~(uint32_t)OCTEP_FW_CFG_NAMED) != 0) {
 			device_printf(sc->dev, "rpc: fw_cfg 0x%x sets a bit the vendor does not name; "
-			    "the named bits are 0x%x\n", sc->rpc_fw_cfg,
-			    (unsigned)OCTEP_FW_CFG_NAMED);
+			    "the named bits are 0x%x\n", word, (unsigned)OCTEP_FW_CFG_NAMED);
 			return (EINVAL);
 		}
-		le16enc(p + 0, (uint16_t)sc->rpc_fw_cfg);
+		le16enc(p + 0, (uint16_t)word);
 		le16enc(p + 2, 0);
 		reqlen = 4;
 		break;
+	}
 
 	case OCTEP_RPC_CMD_FW_STATE_REV_SET:
 		/*
@@ -1161,6 +1173,18 @@ posted_payload:
 				plen = OCTEP_RPC_DATA_MAX_SIZE - OCTEP_RPC_BUF_DESC_SIZE;
 			memcpy(sc->rpc_last_reply, buf + OCTEP_RPC_BUF_DESC_SIZE, plen);
 			sc->rpc_commands++;
+			/*
+			 * The configuration word the fast path now holds, which no command reads
+			 * back: its two parts as they were sent, for the driver's own write of it
+			 * (octep_rpc_fw_cfg_auto), which changes only its own part and sends the
+			 * owner's as the fast path took it. Not for the platform search, which sends
+			 * its own number with no payload.
+			 */
+			if (sc->rpc_cmd_num == OCTEP_RPC_CMD_FW_CFG_PARAMS_SET && rc == 0 &&
+			    sc->rpc_probe_wire <= 0) {
+				sc->rpc_fw_cfg_held = fw_owner;
+				sc->rpc_fw_cfg_auto_held = sc->rpc_fw_cfg_auto;
+			}
 			return (0);
 		}
 		step = (us < 2000) ? 20 : 1000;
@@ -2804,6 +2828,37 @@ octep_rpc_platform_learn(struct octep_softc *sc)
 }
 
 /*
+ * The configuration word with the driver's own bits as rpc_fw_cfg_auto now holds them: FP_PKT_DUMP
+ * while a packet capture runs on a front port, or none (octep_dp_capture_auto). What goes is the
+ * owner's word as the far side last accepted it, rpc_fw_cfg_held, with those ORed in - the post's
+ * FW_CFG_PARAMS_SET does both - so the driver changes its own bit and nothing else: never a bit the
+ * owner set, and never a word staged in rpc.fw_cfg by hand and not posted. A write of the driver's
+ * own, so allow_write is not consulted, and the same borrowing of rpc.cmd as octep_rpc_live_uid.
+ * Called with sc->mtx held, by a caller that decided under it what to ask for; quiet keeps a
+ * timeout already reported once out of the log. ETIMEDOUT when the far side did not answer, EIO
+ * when it refused, as the flow programmers answer.
+ */
+int
+octep_rpc_fw_cfg_auto(struct octep_softc *sc, int quiet)
+{
+	uint32_t s_cmd;
+	int err;
+
+	mtx_assert(&sc->mtx, MA_OWNED);
+	s_cmd = sc->rpc_cmd_num;
+	sc->rpc_internal = 1;
+	sc->rpc_quiet = quiet;
+
+	sc->rpc_cmd_num = OCTEP_RPC_CMD_FW_CFG_PARAMS_SET;
+	err = octep_rpc_post_write(sc);
+
+	sc->rpc_quiet = 0;
+	sc->rpc_cmd_num = s_cmd;
+	sc->rpc_internal = 0;
+	return (err);
+}
+
+/*
  * Bump the firewall revision, which throws away every offloaded flow.
  *
  * This is what a ruleset reload needs and the only thing it needs. fw_state_fpop_rev_set stores the
@@ -3306,7 +3361,9 @@ octep_rpc_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
 	    "no command that reads this word back, so a write replaces a value nobody has seen: "
 	    "always set every bit you want rather than the one you are changing. OFFLOAD is measured "
 	    "to be clear after a coprocessor start - every wire frame is forced to the host - and "
-	    "what the other bits hold at that point has not been read");
+	    "what the other bits hold at that point has not been read. This is the owner's word: the "
+	    "driver's own FP_PKT_DUMP while a packet capture runs (dp.capture_auto) is ORed into every "
+	    "post of it and never written here");
 	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "fw_rev",
 	    CTLFLAG_RW, &sc->rpc_fw_rev, 0,
 	    "the firewall revision the flow and connection entries are checked against. Setting it "

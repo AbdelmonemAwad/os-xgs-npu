@@ -86,6 +86,20 @@ class Recover(unittest.TestCase):
         gone = dict(hb('alive', 2), gone=True)
         self.assertEqual(fastpath.decide(gone, 1, [], NOW)[0], 'recover')
 
+    # decision row 9 (2026-11-13): with heartbeat.gone_ms past dead_ms, a fast path taken as stopped is not
+    # taken up again until the driver has taken its coprocessor as gone - it may answer again before
+    def test_dead_before_gone_ms_waits(self):
+        dead = dict(hb('dead', 35), gone=False, gone_ms=50000)
+        self.assertEqual(fastpath.decide(dead, 1, [], NOW)[0], 'none')
+
+    def test_gone_after_gone_ms_is_taken_up_again(self):
+        gone = dict(hb('dead', 50), gone=True, gone_ms=50000)
+        self.assertEqual(fastpath.decide(gone, 1, [], NOW)[0], 'recover')
+
+    def test_the_default_gone_ms_changes_nothing(self):
+        dead = dict(hb('dead', 30), gone=True, gone_ms=30000)
+        self.assertEqual(fastpath.decide(dead, 1, [], NOW)[0], 'recover')
+
     def test_a_failed_recovery_is_restarted_for(self):
         self.assertEqual(fastpath.decide(hb('dead', 300), 1, [], NOW, [NOW - 200], True)[0], 'restart')
 
@@ -312,6 +326,7 @@ class ReportAroundTheRecovery(unittest.TestCase):
         self.real = {name: getattr(fastpath, name) for name in self.NAMES}
         self.lock = tempfile.NamedTemporaryFile(delete=False)
         self.state, self.events, self.ok = {}, [], True
+        self.said = ['the fast path answers again']
         test = self
 
         class Sub:
@@ -333,7 +348,7 @@ class ReportAroundTheRecovery(unittest.TestCase):
 
         def recover(seconds=None):
             test.events.append('recovery')
-            return ['the fast path answers again'], test.ok
+            return test.said, test.ok
 
         def save(kept):
             self.state.clear()
@@ -366,6 +381,17 @@ class ReportAroundTheRecovery(unittest.TestCase):
         # the finding alone is waited for, and not as long as a send through the stopped fast path took
         self.assertEqual(self.events[0][3], fastpath.FIND_SECONDS)
         self.assertLess(fastpath.FIND_SECONDS, 120)
+
+    def test_a_recovery_taken_up_is_counted(self):
+        fastpath.check()
+        self.assertEqual(len(self.state.get('recoveries', [])), 1)
+
+    def test_a_fast_path_back_by_itself_is_not_counted_as_a_recovery(self):
+        """decision row 9: recover.sh stopped before anything was restarted (still_stopped)"""
+        self.said = ['20:11:20 the fast path answered again after 20 s; nothing restarted']
+        fastpath.check()
+        self.assertEqual(self.state.get('recoveries'), [])
+        self.assertNotIn(('started', 'rc.reboot', True), self.kinds())
 
     def test_a_recovery_that_failed_restarts_with_the_report_found_and_not_sent(self):
         """Nothing passes the fast path that did not come back, and the restart does not wait for sends

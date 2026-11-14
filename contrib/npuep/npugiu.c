@@ -796,6 +796,7 @@ struct npugiu_softc {
 	uint32_t		 hb_period_ms;
 	uint32_t		 hb_late_ms;
 	uint32_t		 hb_dead_ms;
+	uint32_t		 hb_gone_ms;	/* and npuep_gone set (npugiu_hb_judge) */
 	int			 hb_state;	/* NPUGIU_HB_* */
 	uint32_t		 hb_seq;		/* the last sequence sent */
 	uint32_t		 hb_want;	/* queue 0's producer index just past the last beat */
@@ -3363,9 +3364,17 @@ npugiu_hb_judge(struct npugiu_softc *sc, sbintime_t now)
 			sc->hb_deaths++;
 			device_printf(sc->fac.dev, "heartbeat: the fast path has not answered for %ju s - "
 			    "taken as stopped\n", (uintmax_t)(ms / 1000));
-			/* the OCTEON TX driver's rule, for one way on both families (#768) */
-			npuep_set_gone("its fast path stopped answering the heartbeat");
 		}
+		/*
+		 * The OCTEON TX driver's rule, for one way on both families (#768), and its
+		 * heartbeat.gone_ms (octep_hb_judge says why, 2026-11-13): gone at that much silence,
+		 * never before dead_ms, 50 s by default (dead_ms's 30 s until then). Once gone, queue 0's consumer
+		 * index is no longer read, so a beat taken after it is never seen: a fast path that
+		 * comes back after gone stays dead here until the driver is loaded again.
+		 * npuep_set_gone() sets it once.
+		 */
+		if (ms >= sc->hb_gone_ms)
+			npuep_set_gone("its fast path stopped answering the heartbeat");
 	} else if (ms >= sc->hb_late_ms && (sc->hb_state == NPUGIU_HB_ALIVE ||
 	    sc->hb_state == NPUGIU_HB_WAITING)) {
 		sc->hb_state = NPUGIU_HB_LATE;
@@ -4799,6 +4808,11 @@ npugiu_add_sysctls(struct npugiu_softc *sc)
 		    "no answer for this long is late, and said once in the system log");
 		SYSCTL_ADD_UINT(ctx, c, OID_AUTO, "dead_ms", CTLFLAG_RW, &sc->hb_dead_ms, 0,
 		    "no answer for this long and the fast path is taken as stopped, said once");
+		SYSCTL_ADD_UINT(ctx, c, OID_AUTO, "gone_ms", CTLFLAG_RW, &sc->hb_gone_ms, 0,
+		    "no answer for this long, and never before dead_ms, and the coprocessor is taken "
+		    "as gone: nothing more read from it until the driver is loaded again "
+		    "(dev.npuep.0.gone, fastpath.py); 50000 by default. Set to dead_ms, 30000, it is "
+		    "taken as gone as soon as stopped, as before");
 		SYSCTL_ADD_PROC(ctx, c, OID_AUTO, "state", CTLTYPE_STRING | CTLFLAG_RD |
 		    CTLFLAG_MPSAFE, sc, 0, npugiu_sysctl_hb_state, "A",
 		    "off, waiting (no answer yet), alive, late or dead");
@@ -5438,6 +5452,7 @@ npugiu_attach(struct npuep_facility *fac)
 	sc->hb_period_ms = 5000;
 	sc->hb_late_ms = 15000;
 	sc->hb_dead_ms = 30000;
+	sc->hb_gone_ms = 50000;	/* heartbeat.gone_ms: npugiu_hb_judge */
 	sc->poll_ms = imax(NPUGIU_POLL_MS_MIN, imin(NPUGIU_POLL_MS_MAX, npugiu_poll_ms));
 	sc->rx_budget = imax(NPUGIU_RX_BUDGET_MIN, imin(NPUGIU_RX_BUDGET_MAX, npugiu_rx_budget));
 	sc->rx_reread_us = imax(0, imin(NPUGIU_REREAD_US_MAX, npugiu_reread_us));

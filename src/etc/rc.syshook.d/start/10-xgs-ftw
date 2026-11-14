@@ -1,0 +1,18 @@
+#!/bin/sh
+#-
+# SPDX-License-Identifier: BSD-2-Clause
+# Copyright (c) 2026 Abdelmonem Awad <eg2@live.com>
+#
+# The XGS 3300's fail-to-wire relay pair, Port1 and Port2, put back to normal at every boot where it
+# is found in bypass, its watchdog expired or a trigger latched - scripts/xgs/ftw-normal.sh boot, with
+# the vendor's open tool's own -t disable and -d, never arming anything. Early among the start hooks:
+# while the pair bypasses, Port2 - the WAN this family is set up with - is joined to Port1 and not to
+# this host, and the host's link on it stays up (measured 2026-11-11). Detached, because the
+# coprocessor may still be coming up: it is asked every 15 s, twenty times at most, and the boot never
+# waits. The script says what it found and did in the system log (tag xgs-ftw) and is quiet when
+# there is nothing to do; it does nothing on any other board, and nothing at all where the kernel
+# environment holds xgs.ftw.boot=0.
+S=/usr/local/opnsense/scripts/xgs/ftw-normal.sh
+[ -f "${S}" ] || exit 0
+/usr/sbin/daemon -f /bin/sh "${S}" boot
+exit 0

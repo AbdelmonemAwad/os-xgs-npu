@@ -106,7 +106,7 @@ def heartbeat():
         if state is None:
             continue
         hb = {'node': node, 'state': state}
-        for key in ('on', 'since_answer_ms', 'sent', 'answered', 'deaths', 'revivals', 'rtt_us'):
+        for key in ('on', 'since_answer_ms', 'sent', 'answered', 'deaths', 'revivals', 'rtt_us', 'gone_ms'):
             v = sysctl('%s.%s' % (node, key))
             hb[key] = int(v) if v is not None and v.isdigit() else None
         gone = sysctl(node.rsplit('.', 1)[0] + '.gone')
@@ -206,6 +206,14 @@ def decide(hb, minutes, restarts, now, recoveries=(), failed=False):
     if minutes == 1:
         if not hb.get('gone') and hb.get('state') != 'dead':
             return 'none', 'the fast path is %s' % hb.get('state')
+        # Taken as stopped, and not yet as gone: the driver still sends it beats and frames until
+        # heartbeat.gone_ms, and a fast path that answers before then needs nothing (decision row 9,
+        # 2026-11-13; recover.sh's still_stopped). gone_ms is 50 s by default, 20 s past dead_ms; set
+        # to dead_ms, the two come together and this is never so. A driver without the knob (None) is recovered for as before.
+        gone_ms = hb.get('gone_ms')
+        if not hb.get('gone') and gone_ms is not None and silent < gone_ms:
+            return 'none', ('taken as stopped %d s ago; the driver takes the coprocessor as gone at %d s '
+                            '(heartbeat.gone_ms), and it is taken up again only then' % (silent // 1000, gone_ms // 1000))
         what = ('the driver has taken the coprocessor as gone' if hb.get('gone') else
                 'the coprocessor\'s fast path has not answered its heartbeat for %d s' % (silent // 1000))
         if failed:
@@ -439,6 +447,15 @@ def check():
     for line in lines[-20:]:
         log('notice', 'recover: ' + line)
     if ok:
+        # The fast path came back by itself before anything was restarted (recover.sh's still_stopped):
+        # not a recovery, so not one of the day's RECOVERIES_PER_DAY.
+        if any(line.endswith('nothing restarted') for line in lines):
+            kept = load_state()
+            mine = kept.get('recoveries', [])
+            if now in mine:
+                mine.remove(now)
+                kept['recoveries'] = mine
+                save_state(kept)
         send_reports()
         return 0
     # Not back: this stop is restarted for, now - the next check would only find it the same.

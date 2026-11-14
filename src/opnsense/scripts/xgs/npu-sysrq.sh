@@ -19,9 +19,14 @@
 # this boot's coprocessor come up and, while its heartbeat is dead, for no longer than the
 # coprocessor's own watchdog leaves a hung one before resetting it - about a minute after its last
 # feed (#768).
-# Shares the console as npu-run.sh does: the logger told to stand aside, the same lock.
+# Shares the console as npu-run.sh does: the logger told to stand aside, the same lock, and the same
+# device - the host's UART at I/O port 0x3e8 (console-dev.sh), /dev/cuau2 on the XGS 3300.
 LIB=/usr/local/opnsense/scripts
-DEV=/dev/cuau2
+# Its exit 2 - no UART at 0x3e8, and /dev/cuau2 only for want of one - refuses before anything is
+# opened: a BREAK there goes to whatever that unit is on this board, not to the coprocessor.
+DEV=$(/bin/sh ${LIB}/xgs/console-dev.sh 2>/dev/null)
+BY=$?
+[ -n "${DEV}" ] || DEV=/dev/cuau2
 LOCK=/var/run/xgs-npu-console.lock
 TMP=/var/run/xgs-npu-sysrq.$$
 KEYS=${1:-}
@@ -35,6 +40,7 @@ case ${SECS} in
 esac
 [ "$(/bin/sh ${LIB}/xgs/board.sh 2>/dev/null | /usr/bin/awk '{print $2}')" = octeontx ] ||
     { echo "only the XGS 3300 family's coprocessor console is asked this way" >&2; exit 1; }
+[ ${BY} = 2 ] && { echo "no UART at I/O port 0x3e8: ${DEV} is not the coprocessor's console; nothing sent" >&2; exit 1; }
 [ -c "${DEV}" ] || { echo "no ${DEV}" >&2; exit 1; }
 case "$(/sbin/sysctl -n dev.octep.0.sdp.hs_state 2>/dev/null)" in
 completed*) ;;

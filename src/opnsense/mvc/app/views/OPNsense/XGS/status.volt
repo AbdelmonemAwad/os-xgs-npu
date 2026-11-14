@@ -339,6 +339,33 @@
             return '<div class="alert alert-warning" role="alert" style="margin: 15px 15px 0;">' + text + '</div>';
         }
 
+        /* A port the Intrusion Detection inspects in IPS mode at an MTU its netmap adapter cuts
+           (status.py, intrusion_detection.mtu_over, from ids_mtu.py). The emulated adapter carries a
+           frame in one 2,048-byte buffer; at MTU 9000 larger frames are cut and Suricata may exit
+           without a word (measured on an XGS 136, 2026-11-11). Also in the log at each apply. */
+        function mtu_note(ids) {
+            const over = (ids && ids.on === true && ids.mtu_over) || [];
+            if (!over.length) {
+                return '';
+            }
+            const rows = over.map(function (p) {
+                /* filled in one pass, so a name holding %s is not filled in again */
+                const vals = [p.interface, p.device, p.mtu,
+                    p.adapter === 'native' ? "{{ lang._('native netmap adapter') }}" : "{{ lang._('emulated netmap adapter') }}",
+                    p.carries];
+                let n = 0;
+                return '<li dir="auto">' + "{{ lang._('%s (%s): MTU %s, the largest its %s carries is %s') }}"
+                    .replace(/%s/g, function () { return String(vals[n++]); }) + '</li>';
+            }).join('');
+            const text = '<p dir="auto"><b>' + "{{ lang._('Intrusion Detection cuts large frames on these ports') }}" + '</b></p>' +
+                '<ul>' + rows + '</ul><p dir="auto">' +
+                "{{ lang._('In IPS mode Suricata reads a port through netmap, and a frame larger than its adapter carries is cut; Suricata may not start at all.') }}" +
+                '</p><p dir="auto">' +
+                "{{ lang._('Set the MTU of the ports the Intrusion Detection inspects to 1500, or, on the XGS 136, use the native adapter: hw.npuep.netmap at 1 and dev.netmap.buf_size at 9216 in System: Settings: Tunables, then reboot.') }}" +
+                '</p>';
+            return '<div class="alert alert-warning" role="alert" style="margin: 15px 15px 0;">' + text + '</div>';
+        }
+
         /* What the Hardware offloading card's Off means. Both settings are off after an install
            (XGS.xml: offload and flow_auto default 0), and until both are on no connection runs in
            hardware: what the coprocessor can do for a connection waits for them. Said in a sentence,
@@ -361,6 +388,7 @@
 
         function render(st, ports, ipsec, settings) {
             $('#xgs_ids').html(ids_note(st && st.intrusion_detection));
+            $('#xgs_ids_mtu').html(mtu_note(st && st.intrusion_detection));
             /* the board's health whether or not the driver attached: its fans and supplies are not the
                coprocessor's */
             /* not named health: that is the coprocessor's own Linux, drawn under Coprocessor link */
@@ -880,6 +908,7 @@
     <div id="status" class="tab-pane active table-responsive">
         <div id="xgs_ask"></div>
         <div id="xgs_ids"></div>
+        <div id="xgs_ids_mtu"></div>
         <div id="xgs_offload"></div>
         <div id="xgs_panel"></div>
         <div class="xgs-cards" id="xgs_cards"></div>

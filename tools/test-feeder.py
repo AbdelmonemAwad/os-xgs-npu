@@ -1716,15 +1716,22 @@ class TheConsoleSession(unittest.TestCase):
         with open(self.path('sleeps'), encoding='utf-8') as f:
             return [int(line) for line in f.read().split()]
 
+    # What console-dev.sh says of the console's device, by its exit (-v's second line)
+    FOUND = {0: 'uart2 at I/O port 0x3e8-0x3ef (devinfo -rv)',
+             1: 'nothing read from devinfo -rv: /dev/cuau2, as before',
+             2: "no UART at I/O port 0x3e8 (devinfo -rv), and uart2 at I/O memory 0xfedc9000-0xfedc9fff: "
+                "/dev/cuau2 is not the console's port"}
+
     def run_script(self, first='', again='', interrupted='', ssh=1, mark=None, queued=False, gone=False,
-                   reloaded=False, busy=False, seconds='4', answer=None, reader=60, **env):
+                   reloaded=False, busy=False, seconds='4', answer=None, reader=60, by=0, irq=True, **env):
         """npu-run.sh <seconds> 'echo alive', the console printing first at its first read, and at a later
         one interrupted after a Ctrl-C and a carriage return, or again after a carriage return alone; the
         link's ssh exiting ssh; the watch's mark made mark seconds before (None: no mark), or while this
         caller queued for the lock (queued). While it queued, too: the coprocessor taken as gone (gone),
         the driver loaded again, its handshake not made (reloaded), or the wait for the lock run out
         (busy). With answer, the console prints that once the command is typed, and its reader runs for
-        reader seconds unless it is stopped, as the cat does. What it did, and the keys it typed."""
+        reader seconds unless it is stopped, as the cat does. console-dev.sh exits by for the console's
+        device; with irq False the UART's interrupts do not move. What it did, and the keys it typed."""
         for name in ('reads', 'irq', 'kept', 'urgent', 'gone', 'reloaded', 'sleeps'):
             if os.path.exists(self.path(name)):
                 os.unlink(self.path(name))
@@ -1744,6 +1751,7 @@ class TheConsoleSession(unittest.TestCase):
                                        'dev.octep.0.gone) if [ -e "{gone}" ]; then echo 1; else echo 0; fi ;;\n'
                                        'dev.octep.0.sdp.hs_state) if [ -e "{reloaded}" ]; then '
                                        'echo "idle (scratch 0x0000000000000000)"; else echo completed; fi ;;\n'
+                                       "dev.uart.2.%location) printf '%s\\n' 'handle=\\_SB_.PCI0.UAR3' ;;\n"
                                        '*) exit 1 ;;\nesac\n'.format(gone=self.path('gone'),
                                                                      reloaded=self.path('reloaded'))),
             '/usr/bin/lockf': self.write(os.path.join(bin_, 'lockf'),
@@ -1755,9 +1763,14 @@ class TheConsoleSession(unittest.TestCase):
             '/usr/bin/vmstat': self.write(os.path.join(bin_, 'vmstat'),
                                           '#!/bin/sh\nn=$(( $(cat "{0}" 2>/dev/null || echo 0) + 1 ))\n'
                                           'echo "$n" > "{0}"\n'
-                                          'echo "irq4: uart2 $n 0"\n'.format(self.path('irq'))),
+                                          'echo "irq4: uart2 $n 0"\n'.format(self.path('irq')) if irq else
+                                          '#!/bin/sh\necho "irq4: uart2 7 0"\n'),
             '/usr/local/bin/python3': self.write(os.path.join(bin_, 'keep'),
                                                  '#!/bin/sh\ncat "$3" >> "%s"\n' % self.kept),
+            '/usr/sbin/devctl': self.write(os.path.join(bin_, 'devctl'),
+                                           '#!/bin/sh\nprintf "%%s\\n" "$*" >> "%s"\n' % self.path('devctl')),
+            '/usr/bin/logger': self.write(os.path.join(bin_, 'logger'),
+                                          '#!/bin/sh\nprintf "%%s\\n" "$*" >> "%s"\n' % self.path('logged')),
         }
         self.write(os.path.join(bin_, 'stty'), '#!/bin/sh\nexit 0\n')
         self.write(os.path.join(bin_, 'sleep'), '#!/bin/sh\necho "$1" >> "%s"\nexit 0\n' % self.path('sleeps'))
@@ -1772,17 +1785,19 @@ class TheConsoleSession(unittest.TestCase):
                    'else printf \'%b\' "$CONSOLE_AGAIN"; fi ;;\nesac\n'.format(reads=self.path('reads'),
                                                                                dev=self.dev))
         self.write(self.path('lib', 'xgs', 'board.sh'), 'echo "XGS3300 octeontx"\n', 0o644)
+        self.write(self.path('lib', 'xgs', 'console-dev.sh'),
+                   '#!/bin/sh\necho "%s"\n[ "$1" = -v ] && echo "%s"\nexit %d\n'
+                   % (self.dev, self.FOUND[by], by), 0o644)
         self.write(self.path('lib', 'npuctl', 'mgmt-link.sh'),
                    '#!/bin/sh\n[ "$2" = true ] && exit %d\necho "over ssh: $2"\n' % ssh)
         with open(self.SCRIPT, encoding='utf-8') as f:
             text = f.read()
         swaps = [('LIB=/usr/local/opnsense/scripts', 'LIB=' + self.path('lib')),
-                 ('DEV=/dev/cuau2', 'DEV=' + self.dev),
                  ('LOCK=/var/run/xgs-npu-console.lock', 'LOCK=' + self.path('lock')),
                  ('URGENT=/var/run/xgs-npu-console.urgent', 'URGENT=' + self.urgent),
                  ('TMP=/var/run/xgs-npu-run.$$', 'TMP=' + self.path('run.$$')),
+                 ('REFUSED=/var/run/xgs-npu-console.refused', 'REFUSED=' + self.path('refused')),
                  ('/var/run/xgs-console-log.pause', self.pause),
-                 ('UNIT=${DEV#/dev/cuau}', 'UNIT=2'),
                  ('[ -c "${DEV}" ]', '[ -e "${DEV}" ]'),
                  # read at once, after the keys of its turn (below), not by a cat beside them - or, with
                  # an answer, by a reader that runs until it is stopped, as the cat does
@@ -1908,6 +1923,82 @@ class TheConsoleSession(unittest.TestCase):
         self.assertTrue(keys.endswith(b'exit\r'), keys)
         # the first read's two and the login's two; then the command's four, one a second
         self.assertEqual(self.sleeps(), [1, 1, 2] + [1] * 4)
+
+    def devctl(self):
+        """What devctl was asked, one line a call."""
+        if not os.path.exists(self.path('devctl')):
+            return []
+        with open(self.path('devctl'), encoding='utf-8') as f:
+            return f.read().splitlines()
+
+    def test_a_uart_that_is_not_the_console_s_port_is_never_opened(self):
+        """No UART at I/O port 0x3e8 (console-dev.sh's exit 2), and /dev/cuau2 all the same: refused
+        before the device is opened - not read, not one key typed into it (a carriage return, root and
+        the command went to the chipset's UART before), whether or not it interrupts - and never detached
+        and attached again: #601's log has an XGS 136 r2's uart2, the chipset's own UART, detached and
+        attached again 9 times, 11 to 25 s apart. Refused at every look with exit 1, which feeder.py
+        takes as saying nothing of the coprocessor, counted, and said in the log once."""
+        for look, irq in ((1, False), (2, True), (3, False)):
+            done, keys = self.run_script(first='\r\nroot@marvell:~# ', by=2, irq=irq)
+            self.assertEqual(done.returncode, 1, done.stderr)
+            self.assertIn('nothing was opened: no UART at I/O port 0x3e8', done.stderr)
+            self.assertEqual(keys, b'')
+            self.assertFalse(os.path.exists(self.path('reads')))
+            self.assertFalse(os.path.exists(self.pause))
+        self.assertEqual(self.devctl(), [])
+        with open(self.path('refused'), encoding='utf-8') as f:
+            self.assertEqual(f.read().strip(), '3')
+        with open(self.path('logged'), encoding='utf-8') as f:
+            logged = f.read().splitlines()
+        self.assertEqual(len(logged), 1, logged)
+        self.assertIn('uart2 at I/O memory 0xfedc9000-0xfedc9fff', logged[0])
+        self.assertIn(self.path('refused'), logged[0])
+
+    def test_the_console_s_port_that_lost_its_interrupt_is_attached_again_as_before(self):
+        """The UART at 0x3e8 (exit 0), or nothing known of the host's UARTs (exit 1, /dev/cuau2 as before):
+        a byte written and no interrupt is the lost interrupt of #768, and the UART is detached and attached
+        again by its ACPI handle as before, and the session goes on. Nothing refused, nothing said."""
+        for by in (0, 1):
+            done, keys = self.run_script(first='\r\nroot@marvell:~# ', again='\r\nroot@marvell:~# ', by=by,
+                                         irq=False)
+            self.assertIn('it was attached again', done.stderr)
+            self.assertIn(b'echo "---NPU""BEGIN---"; echo alive;', keys)
+        self.assertEqual(self.devctl(), ['detach uart2', 'attach \\_SB_.PCI0.UAR3'] * 2)
+        self.assertFalse(os.path.exists(self.path('refused')))
+        self.assertFalse(os.path.exists(self.path('logged')))
+
+    def test_a_uart_that_interrupts_is_left_alone_wherever_it_is(self):
+        """The interrupts moved: nothing detached, by either answer that is used (exit 2 never opens it)."""
+        for by in (0, 1):
+            done, keys = self.run_script(first='\r\nroot@marvell:~# ', by=by)
+            self.assertIn(b'echo "---NPU""BEGIN---"; echo alive;', keys)
+        self.assertEqual(self.devctl(), [])
+        self.assertFalse(os.path.exists(self.path('refused')))
+
+    def test_the_interrupts_are_found_on_a_line_the_uart_shares(self):
+        """irqs(): the console's UART found by its address (BY 0) on an interrupt line it shares - "irq3:
+        uart2 uart3" - where the word after the line's first name was read: nothing for uart3, the name
+        uart3 for uart2, neither of which moves, so every look would take it for a UART that had lost its
+        interrupt. Read as before otherwise - console-dev.sh's knob at 0 among them (BY 1) - and the same
+        either way for a UART alone on its line."""
+        with open(self.SCRIPT, encoding='utf-8') as f:
+            text = f.read()
+        start = text.index('irqs() {')
+        body = text[start:text.index('\n}\n', start) + 3]
+        for line, unit, by, want in (('irq3: uart2 uart3   1234   0', '3', '0', '1234'),
+                                     ('irq3: uart2 uart3   1234   0', '2', '0', '1234'),
+                                     ('irq3: uart2 uart3+    88   0', '3', '0', '88'),
+                                     ('irq3: uart2 uart3   1234   0', '3', '1', ''),
+                                     ('irq3: uart2 uart3   1234   0', '2', '1', 'uart3'),
+                                     ('irq5: uart2       19139   0', '2', '0', '19139'),
+                                     ('irq5: uart2       19139   0', '2', '1', '19139'),
+                                     ('irq5: uart2       19139   0', '2', '2', '19139'),
+                                     ('irq5: uart2       19139   0', '4', '0', '')):
+            vmstat = self.write(self.path('vmstat'), '#!/bin/sh\necho "%s"\n' % line)
+            done = subprocess.run(['/bin/sh', '-c', body.replace('/usr/bin/vmstat', vmstat) + 'irqs\n'],
+                                  env=dict(os.environ, UNIT=unit, BY=by), capture_output=True, text=True,
+                                  timeout=30)
+            self.assertEqual(done.stdout.strip(), want, (line, unit, by, done.stderr))
 
 
 if __name__ == '__main__':

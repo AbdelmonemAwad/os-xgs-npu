@@ -111,7 +111,7 @@ rm -rf /var/db/os-xgs-npu/cp
 rm -f "${PREFIX}/opnsense/scripts/xgs/apply.php" "${PREFIX}/opnsense/scripts/xgs/portmap.py" \
     "${PREFIX}/opnsense/scripts/xgs/ipsec.py" "${PREFIX}/opnsense/scripts/xgs/reassign.sh" \
     "${PREFIX}/opnsense/scripts/xgs/defaults.php" "${PREFIX}/etc/rc.syshook.d/start/74-xgs-defaults" \
-    "${PREFIX}/opnsense/scripts/xgs/npu-run.sh" \
+    "${PREFIX}/opnsense/scripts/xgs/npu-run.sh" "${PREFIX}/opnsense/scripts/xgs/console-dev.sh" \
     "${PREFIX}/opnsense/scripts/xgs/tunables-kenv.sh" \
     "${PREFIX}/opnsense/scripts/xgs/temperatures.sh" "${PREFIX}/opnsense/scripts/xgs/transceivers.py" \
     "${PREFIX}/opnsense/scripts/xgs/bundle.py" "${PREFIX}/opnsense/scripts/xgs/flows.py" \
@@ -123,9 +123,10 @@ rm -f "${PREFIX}/opnsense/scripts/xgs/apply.php" "${PREFIX}/opnsense/scripts/xgs
     "${PREFIX}/opnsense/scripts/xgs/health.py" "${PREFIX}/opnsense/scripts/xgs/models.py" \
     "${PREFIX}/opnsense/scripts/xgs/portcheck.py" "${PREFIX}/opnsense/scripts/xgs/fastpath.py" \
     "${PREFIX}/opnsense/scripts/xgs/recover.sh" "${PREFIX}/opnsense/scripts/xgs/portstats.py" \
+    "${PREFIX}/opnsense/scripts/xgs/fastpath-monit.sh" "${PREFIX}/opnsense/scripts/xgs/ids-ports.sh" \
     "${PREFIX}/opnsense/scripts/xgs/coprocessor.py" "${PREFIX}/opnsense/scripts/xgs/fpcounters.py" \
     "${PREFIX}/etc/cron.d/xgs-ja4" \
-    "${PREFIX}/opnsense/scripts/xgs/anomaly.py" \
+    "${PREFIX}/opnsense/scripts/xgs/anomaly.py" "${PREFIX}/opnsense/scripts/xgs/ids_mtu.py" \
     "${PREFIX}/etc/cron.d/xgs-anomaly" \
     "${PREFIX}/opnsense/scripts/xgs/count.py" \
     "${PREFIX}/etc/cron.d/xgs-count"
@@ -138,6 +139,9 @@ rm -rf /var/db/os-xgs-npu/lists /var/db/os-xgs-npu/ja4 /var/db/os-xgs-npu/anomal
 rm -f "${PREFIX}/opnsense/scripts/xgs/watchdog.sh" "${PREFIX}/etc/rc.syshook.d/start/08-xgs-watchdog" \
     "${PREFIX}/etc/rc.syshook.d/stop/23-xgs-watchdog" "${PREFIX}/etc/rc.syshook.d/stop/05-xgs-watchdog"
 rm -f "${PREFIX}/opnsense/scripts/xgs/switch-jumbo.sh" "${PREFIX}/etc/rc.syshook.d/start/09-xgs-switch-jumbo"
+# The hand-set switch tool and its state. What it set stays in the chip until the coprocessor next
+# boots, which erases the switch's registers; nothing is left to set it again.
+rm -f "${PREFIX}/opnsense/scripts/xgs/switch.sh" /var/db/os-xgs-npu/switch.state
 # The dashboard widgets. A dashboard that still lists one shows an empty panel until it is removed.
 rm -f "${PREFIX}/opnsense/www/js/widgets/XGSCoprocessor.js" "${PREFIX}/opnsense/www/js/widgets/XGSPorts.js" \
     "${PREFIX}/opnsense/www/js/widgets/XGSIpsec.js" "${PREFIX}/opnsense/www/js/widgets/XGSFlows.js" \
@@ -176,6 +180,10 @@ rm -f "${PREFIX}/opnsense/scripts/xgs/npu-log.sh" "${PREFIX}/etc/rc.syshook.d/st
     "${PREFIX}/etc/syslog-ng.conf.d/xgs-coprocessor.conf"
 # The coprocessor's software no longer read at boot; its record, coprocessor.json, went above.
 rm -f "${PREFIX}/etc/rc.syshook.d/start/73-xgs-coprocessor"
+# The XGS 3300's fail-to-wire relay no longer read, nor put back to normal at boot: the two scripts,
+# the start hook and the last outcome kept. The relay keeps what it was last set to.
+rm -f "${PREFIX}/opnsense/scripts/xgs/ftw-status.sh" "${PREFIX}/opnsense/scripts/xgs/ftw-normal.sh" \
+    "${PREFIX}/etc/rc.syshook.d/start/10-xgs-ftw" /var/db/os-xgs-npu/ftw-normal.state
 # A bridge's link no longer acted on: OPNsense's own devd rules again, for Ethernet and 802.11 only.
 rm -f "${PREFIX}/etc/devd/xgs-bridge.conf"
 /usr/sbin/service devd restart > /dev/null 2>&1 || true

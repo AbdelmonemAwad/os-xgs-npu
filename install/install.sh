@@ -132,15 +132,20 @@ install -S -m 0755 "${SRC}/src/opnsense/scripts/xgs/update.py" "${PREFIX}/opnsen
 install -m 0755 "${SRC}/src/opnsense/scripts/xgs/assign.php" "${PREFIX}/opnsense/scripts/xgs/assign.php"
 install -m 0755 "${SRC}/src/opnsense/scripts/xgs/countdown.py" "${PREFIX}/opnsense/scripts/xgs/countdown.py"
 # The settings page's apply, the readers of the Ports and IPsec pages, the appliance's settings in
-# OPNsense's own pages, the runner other plugins use to reach the coprocessor (npu-run.sh), and the
-# driver's settings put where it reads them before the early hooks load it (tunables-kenv.sh).
-for f in apply.php portmap.py ipsec.py reassign.sh defaults.php npu-run.sh tunables-kenv.sh temperatures.sh watchdog.sh transceivers.py bundle.py flows.py flow_exclude.php lists_cut.py ja4_cut.py hwdrop.py anomaly.py poe.py plugins.py health.py portstats.py models.py portcheck.py fastpath.py recover.sh cp_users.py cp_overlay.py coprocessor.py fpcounters.py console_log.py feeder.py npu-sysrq.sh subnets.py npu-clock.sh npu-log.sh; do
+# OPNsense's own pages, the runner other plugins use to reach the coprocessor (npu-run.sh) and the
+# coprocessor's console it finds by its address (console-dev.sh), and the driver's settings put where
+# it reads them before the early hooks load it (tunables-kenv.sh).
+for f in apply.php portmap.py ipsec.py reassign.sh defaults.php npu-run.sh console-dev.sh tunables-kenv.sh temperatures.sh watchdog.sh transceivers.py bundle.py flows.py flow_exclude.php lists_cut.py ja4_cut.py hwdrop.py anomaly.py poe.py plugins.py health.py portstats.py models.py portcheck.py fastpath.py recover.sh fastpath-monit.sh ids-ports.sh cp_users.py cp_overlay.py coprocessor.py fpcounters.py console_log.py feeder.py npu-sysrq.sh subnets.py npu-clock.sh npu-log.sh ftw-status.sh ftw-normal.sh ids_mtu.py; do
     install -S -m 0755 "${SRC}/src/opnsense/scripts/xgs/${f}" "${PREFIX}/opnsense/scripts/xgs/${f}"
 done
 # Jumbo frames through the coprocessor's switch chip at every boot, on both families: the script,
 # its start hook, and the switch tool it puts on the coprocessor (an aarch64 binary for the
 # coprocessor, not for this host - contrib/mvsw).
 install -m 0755 "${SRC}/src/opnsense/scripts/xgs/switch-jumbo.sh" "${PREFIX}/opnsense/scripts/xgs/switch-jumbo.sh"
+# The switch chip set by hand from the command line - mirroring and an egress limit -
+# each read before it is written and put back as found (switch.sh; its state in
+# /var/db/os-xgs-npu/switch.state).
+install -m 0755 "${SRC}/src/opnsense/scripts/xgs/switch.sh" "${PREFIX}/opnsense/scripts/xgs/switch.sh"
 install -d -m 0755 "${PREFIX}/etc/rc.syshook.d/start" "${PREFIX}/share/os-xgs-npu"
 install -m 0755 "${SRC}/src/etc/rc.syshook.d/start/09-xgs-switch-jumbo" "${PREFIX}/etc/rc.syshook.d/start/09-xgs-switch-jumbo"
 # The host's hardware watchdog: armed at the end of every boot when the setting says so, and
@@ -442,6 +447,10 @@ install -m 0755 "${SRC}/src/etc/rc.syshook.d/start/72-xgs-npu-log" "${PREFIX}/et
 # What the coprocessor runs - its vendor build, its fast path's build - read once at the end of every
 # boot (scripts/xgs/coprocessor.py), for the problem reports and the support bundle.
 install -m 0755 "${SRC}/src/etc/rc.syshook.d/start/73-xgs-coprocessor" "${PREFIX}/etc/rc.syshook.d/start/73-xgs-coprocessor"
+# The XGS 3300's fail-to-wire relay pair put back to normal at every boot where it is found in bypass
+# or with a trigger latched (scripts/xgs/ftw-normal.sh, read by ftw-status.sh); on any other board the
+# hook does nothing, and with xgs.ftw.boot=0 from the loader nothing at all.
+install -m 0755 "${SRC}/src/etc/rc.syshook.d/start/10-xgs-ftw" "${PREFIX}/etc/rc.syshook.d/start/10-xgs-ftw"
 install -m 0644 "${SRC}/src/opnsense/mvc/app/controllers/OPNsense/XGS/ReportsController.php" \
     "${PREFIX}/opnsense/mvc/app/controllers/OPNsense/XGS/ReportsController.php"
 install -m 0644 "${SRC}/src/opnsense/mvc/app/controllers/OPNsense/XGS/Api/ReportsController.php" \

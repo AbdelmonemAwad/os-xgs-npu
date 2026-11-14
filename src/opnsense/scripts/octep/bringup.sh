@@ -157,6 +157,9 @@ if [ "${CHECK:-0}" = "1" ]; then
 	exit 0
 fi
 
+# The front ports there before this run: none, and this run is what makes them (see the end).
+HAD=$(/sbin/ifconfig -l 2>/dev/null | tr ' ' '
+' | grep -c '^oxp')
 if ! ${KLDSTAT} -q -m pci/octep; then
 	[ -f "${MODULE}" ] || fail "no ${MODULE} - build and install it with install/install.sh from os-xgs-npu"
 	# The driver's settings as the configuration has them, for this load: a configuration restored
@@ -796,5 +799,16 @@ if [ ${NNB} -gt 0 ]; then
 	log "up: ${N} front-port interfaces, ${NNB} of them not bound: ${NOTBOUND}"
 else
 	log "up: ${N} front-port interfaces"
+fi
+# THE INTRUSION DETECTION ON THE NEW PORTS (#1153), when this run made them and is not part of a
+# recovery in place (recover.sh restarts it itself, once OPNsense has reloaded the interfaces). In
+# Netmap mode on a front port, Suricata stays on the rings of the ports a reload destroyed: on
+# 2026-11-11 (item M1) 30,000 errors a second at 98 % CPU and the traffic uninspected. At boot Suricata
+# is not running yet and ids-ports.sh does nothing; run by hand after the driver was unloaded or its
+# device detached, it restarts it once the ports are here.
+if [ "${HAD:-0}" -eq 0 ] && [ "${N}" -gt 0 ] && [ -z "${XGS_RECOVER_LOCKED:-}" ] &&
+    [ -f /usr/local/opnsense/scripts/xgs/ids-ports.sh ]; then
+	IDS=$(/bin/sh /usr/local/opnsense/scripts/xgs/ids-ports.sh 2>/dev/null)
+	[ -n "${IDS}" ] && log "${IDS}"
 fi
 exit 0
