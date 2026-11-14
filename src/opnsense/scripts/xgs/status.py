@@ -581,6 +581,12 @@ def intrusion_detection(path=CONFIG):
         "inspect_then_hardware": capture == "netmap" and text(xgs, "inspect_then_hardware", "0") == "1" and running,
     }
     out["uninspected"] = out["on"] and out["offloading"] and not out["inspect_then_hardware"]
+    # And the ports inspected in IPS mode at an MTU their netmap adapter cuts (ids_mtu.py).
+    try:
+        import ids_mtu
+        out["mtu_over"] = ids_mtu.check(root)["over"]
+    except Exception:
+        out["mtu_over"] = []
     return out
 
 

@@ -13238,15 +13238,33 @@ octep_dp_link_poll(void *arg, int pending __unused)
 			 * attribute 0x04 is nominal and a dark port answers 1000 exactly as
 			 * a cabled one does. Measured on this appliance, which is why it is
 			 * read here and thrown away below.
+			 *
+			 * READ AGAIN ON EVERY VISIT WHILE THE LINK IS UP, not only on the first
+			 * visit after it came up. This used to ask once, while dif->speed was
+			 * still 0, and keep that answer until the link went down. Two things
+			 * defeat that. The first answer can be taken while the copper is still
+			 * settling: on the 3300 (2026-11-12) Port3 and Port4 said 100baseTX all
+			 * session while the switch's port status register said 1000 full, and a
+			 * cable pulled and put back made them 1000baseT. And a renegotiation
+			 * whose down-and-up falls between two visits of this rotation (one port a
+			 * second, so several seconds apart) never shows as a link change here at
+			 * all, so the speed is never asked again. One more mailbox request per
+			 * tick is the price; it is skipped when the link read itself failed,
+			 * because the mailbox is then busy or wedged and the filter work below
+			 * is skipped for the same reason.
 			 */
-			if (dif->link == 1 && dif->speed == 0) {
+			if (err == 0 && dif->link == 1) {
 				uint32_t mbit = 0;
 
 				if (octep_nwa_port_speed(sc, dif->nwaport, &mbit) == 0 &&
-				    mbit != 0 && mbit <= 100000) {
+				    mbit != 0 && mbit <= 100000 && mbit != dif->speed) {
+					if (dif->speed != 0)
+						if_printf(dif->ifp, "%u Mbit/s, was %u\n", mbit,
+						    dif->speed);
+					else
+						if_printf(dif->ifp, "%u Mbit/s\n", mbit);
 					dif->speed = mbit;
 					if_setbaudrate(dif->ifp, (uint64_t)mbit * 1000000);
-					if_printf(dif->ifp, "%u Mbit/s\n", mbit);
 				}
 			} else if (dif->link != 1 && dif->speed != 0) {
 				dif->speed = 0;

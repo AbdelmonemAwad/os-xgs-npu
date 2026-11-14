@@ -285,6 +285,20 @@ if ($after !== false && $after !== $before && $ids_on) {
     $backend->configdRun('ids restart');
     $steps[] = 'the Intrusion Detection restarted to read ' . (strpos($after, 'oxips0') !== false ? 'oxips0 as well' : 'only its own interfaces');
 }
+/*
+ * A front port the Intrusion Detection inspects in IPS mode at an MTU its netmap adapter cuts
+ * (ids_mtu.py: emulated, 2,030; native on the XGS 136, netmap's buffer less 18). Suricata on such
+ * a port cuts every larger frame, or exits without a word (measured on an XGS 136, 2026-11-11), and
+ * nothing in OPNsense says so - said here, in the log, and on XGS: Overview.
+ */
+exec('/usr/local/opnsense/scripts/xgs/ids_mtu.py 2>/dev/null', $mtu_over);
+foreach ($mtu_over as $line) {
+    if (trim($line) === '') {
+        continue;
+    }
+    syslog(LOG_WARNING, 'xgs: ' . $line);
+    $steps[] = $line;
+}
 
 /*
  * The inspector's depth against Suricata's own (xgs_ips_depth, above): only while the overlay has

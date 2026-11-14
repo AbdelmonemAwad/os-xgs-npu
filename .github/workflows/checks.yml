@@ -182,6 +182,10 @@ jobs:
       - name: The TLS fingerprints' cut
         run: python3 tools/test-ja4-cut.py
 
+      # The front ports the Intrusion Detection inspects in IPS mode at an MTU their netmap adapter cuts.
+      - name: The IPS ports' MTU warning
+        run: python3 tools/test-ids-mtu.py
+
       # And which connections in hardware either cut drops on the coprocessor first, from each
       # driver's own table: a connection matched wrongly is one dropped for nothing. Each verdict
       # carries the revision the table showed, so an index given to another connection between the
