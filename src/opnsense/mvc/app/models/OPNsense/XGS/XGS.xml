@@ -114,6 +114,15 @@
                 <Mask>/^[\s,]*([tqd][0-9a-z]{2}[di][0-9]{4}[0-9A-Za-z]{2}_[0-9a-f]{12}_[0-9a-f]{12}([\s,]+[tqd][0-9a-z]{2}[di][0-9]{4}[0-9A-Za-z]{2}_[0-9a-f]{12}_[0-9a-f]{12}){0,199})?[\s,]*$/</Mask>
                 <ValidationMessage>JA4 fingerprints, as t13d1516h2_8daaf6152771_e5627efa2ab1, separated by commas or new lines.</ValidationMessage>
             </cut_ja4>
+            <!-- Suricata's IPS drops cut (ff-10, 2026-11-14): every alert the Intrusion Detection logs
+                 as blocked cuts its connection as a listed fingerprint does - its pf states killed,
+                 and with cut_in_hardware its flow dropped on the coprocessor first - by
+                 scripts/xgs/ja4_cut.py, every two seconds. Acts only in IPS mode. Off: a new choice,
+                 and an installed appliance keeps what it saved. -->
+            <cut_ips_drops type="BooleanField">
+                <Required>Y</Required>
+                <Default>0</Default>
+            </cut_ips_drops>
             <!-- Cut in hardware (discovery 3, 2026-10-23): plain connections made with the microflow
                  action IPS and the fast path's IPS switch on (dp.mflow_action / flow.mflow_action,
                  offload.sh), so a connection the two cuts above cut is dropped on the coprocessor by

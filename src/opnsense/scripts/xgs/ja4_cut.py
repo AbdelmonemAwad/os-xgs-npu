@@ -24,6 +24,15 @@ docs/measurements/ja4-cut-2026-10-19.md.
     ja4_cut.py --seen       the fingerprints in the log now, the most frequent first, each with the
                             last connection that presented it - to find the one to list
 
+SURICATA'S DROPS CUT IN HARDWARE TOO (ff-10, since 2026-11-14). XGS: Settings "Cut what the IPS drops"
+(general.cut_ips_drops): every alert the Intrusion Detection logs as blocked - its IPS policy dropped
+a frame of that connection - is cut the same way, its pf states killed and, with "Cut in hardware" on,
+its flow given the DROP verdict on the coprocessor first. Suricata drops only the frames it sees; a
+connection already carried by the coprocessor, or put there after the inspector's depth ("Inspect,
+then hardware"), would otherwise go on there. It acts only in IPS mode: in IDS mode nothing is
+logged as blocked. The block lists of os-blocklists and XGS: Settings' own lists are cut by their
+addresses (lists_cut.py, and os-blocklists' cut.py for the lists it owns), not here.
+
 A fingerprint newly listed is looked for in the whole log since it was last rotated, so listing one
 cuts what is already open with it. A state is cut only when pf made it no later than the log line
 that names its connection, so a later connection that happens to reuse the same ports is never taken
@@ -91,6 +100,22 @@ def settings():
     return listed, problem, bad
 
 
+def drops_setting():
+    """(whether Suricata's drops are cut, what keeps them from being logged): cut_ips_drops, and the
+    Intrusion Detection on in IPS mode."""
+    try:
+        root = ET.parse(CONFIG).getroot()
+    except (OSError, ET.ParseError):
+        return False, 'config.xml could not be read'
+    on = (root.findtext('OPNsense/XGS/general/cut_ips_drops') or '0') == '1'
+    ids = root.find('OPNsense/IDS/general')
+    if ids is None or (ids.findtext('enabled') or '0') != '1':
+        return on, 'Intrusion Detection is off'
+    if (ids.findtext('ips') or '0') != '1':
+        return on, 'the Intrusion Detection is in IDS mode and drops nothing'
+    return on, None
+
+
 def stamp(text):
     """Suricata's timestamp, 2026-10-19T03:03:00.641496+0000, as seconds since the epoch."""
     try:
@@ -99,15 +124,31 @@ def stamp(text):
         return None
 
 
-def tls_events(fh):
-    """(offset of the next whole line, [event]) for every TLS line with a JA4 from fh's position;
-    a last line not yet ended is left for the next reading."""
+def tls_events(fh, drops=False):
+    """(offset of the next whole line, [event]) for every TLS line with a JA4 from fh's position, and
+    with drops every alert the IPS logged as blocked (its 'drop' the rule's signature id); a last line
+    not yet ended is left for the next reading."""
     out = []
     pos = fh.tell()
     for raw in iter(fh.readline, b''):
         if not raw.endswith(b'\n'):
             break
         pos += len(raw)
+        if drops and b'"event_type":"alert"' in raw and b'"blocked"' in raw:
+            try:
+                ev = json.loads(raw)
+                if ev['alert'].get('action') != 'blocked':
+                    continue
+                out.append({
+                    'ja4': None, 'drop': int(ev['alert'].get('signature_id') or 0),
+                    'at': stamp(ev.get('timestamp')), 'proto': str(ev.get('proto', '')).lower(),
+                    'src': (str(ipaddress.ip_address(ev['src_ip'])), int(ev['src_port'])),
+                    'dst': (str(ipaddress.ip_address(ev['dest_ip'])), int(ev['dest_port'])),
+                    'offset': pos - len(raw),
+                })
+            except (ValueError, KeyError, TypeError, AttributeError):
+                pass
+            continue
         if b'"event_type":"tls"' not in raw or b'"ja4"' not in raw:
             continue
         try:
@@ -212,6 +253,7 @@ class Watch:
         self.status = load(STATUS, {})
         self.config_mtime = None
         self.listed, self.problem, self.bad = [], None, []
+        self.drops, self.drops_problem = False, None
 
     def reload(self):
         try:
@@ -221,6 +263,7 @@ class Watch:
         if m != self.config_mtime:
             self.config_mtime = m
             self.listed, self.problem, self.bad = settings()
+            self.drops, self.drops_problem = drops_setting()
 
     def once(self):
         self.reload()
@@ -228,7 +271,7 @@ class Watch:
         listed = self.listed
         before = set(st.get('listed', []))
         summary = {'run': int(time.time()), 'listed': len(listed), 'read': 0, 'matched': 0, 'cut': 0}
-        if not listed:
+        if not listed and not self.drops:
             st['listed'] = []
             return summary
         fresh = [f for f in listed if f not in before]
@@ -245,10 +288,12 @@ class Watch:
             return summary
         with open(EVE, 'rb') as fh:
             fh.seek(start)
-            end, events = tls_events(fh)
+            end, events = tls_events(fh, drops=self.drops)
         summary['read'] = len(events)
         want = set(listed)
         matched = [e for e in events if e['ja4'] in want and (e['ja4'] in fresh or e['offset'] >= known)]
+        # a drop only once: from where the last reading stopped, never again with a fresh fingerprint
+        matched += [e for e in events if e.get('drop') is not None and e['offset'] >= known]
         summary['matched'] = len(matched)
         read_to = {'inode': info.st_ino, 'offset': end, 'listed': listed}
         if not matched:
@@ -282,10 +327,13 @@ class Watch:
             if r.returncode != 0:
                 continue
             summary['cut'] += 1
-            key = (ev['ja4'], ev['src'], ev['dst'])
+            key = (ev['ja4'] or 'IPS drop (signature %d)' % ev['drop'], ev['src'], ev['dst'])
             per_conn[key] = per_conn.get(key, 0) + 1
         for (fp, src, dst), n in per_conn.items():
-            totals[fp] = totals.get(fp, 0) + 1
+            if fp.startswith('IPS drop'):
+                st['drops_cut'] = st.get('drops_cut', 0) + 1
+            else:
+                totals[fp] = totals.get(fp, 0) + 1
             log(f"{fp}: {fmt(src)} -> {fmt(dst)} cut ({n} state{'' if n == 1 else 's'})"
                 + (f", {summary['dropped']} dropped in hardware first" if summary.get('dropped') else ''))
         summary['connections'] = len(per_conn)
@@ -307,6 +355,11 @@ class Watch:
             text += ' - ' + self.problem
         if self.bad:
             text += ' - not a JA4 fingerprint: ' + ', '.join(self.bad[:3])
+        if self.drops:
+            text += '; what the IPS drops: %d connection%s cut in all' % (
+                self.status.get('drops_cut', 0), '' if self.status.get('drops_cut', 0) == 1 else 's')
+            if self.drops_problem:
+                text += ' - ' + self.drops_problem
         return 'cut by TLS fingerprint: ' + text
 
     def save(self):
@@ -365,7 +418,7 @@ def main(argv):
             summary = w.once()
             cut += summary['cut']
             conns += summary.get('connections', 0)
-            if not w.listed and seconds:
+            if not w.listed and not w.drops and seconds:
                 break       # nothing to watch: the next minute's run looks again
             if time.monotonic() + EVERY > until:
                 break

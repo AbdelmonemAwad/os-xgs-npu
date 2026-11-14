@@ -96,6 +96,12 @@
             <help>TLS fingerprints (JA4) whose connections are cut: a JA4 names the software that opened a connection - the ciphers, extensions and protocols its ClientHello offers - rather than the address it went to, so it still matches a program that changes its server. It needs the Intrusion Detection with its TLS log carrying JA4: Services: Intrusion Detection: Administration, advanced mode, "Enable eve TLS logging" and "ja4" in "Eve TLS custom logging"; IDS mode, which only listens, is enough. The log is read every two seconds, and every connection it shows with a fingerprint listed here is cut: its states are killed, and the coprocessor lets go of it with them. The fingerprint is taken from the connection's first message, before it is put in hardware. Listing one cuts what is already open with it. One per line or separated by commas, as t13d1516h2_8daaf6152771_e5627efa2ab1. The XGS log says what was cut.</help>
         </field>
         <field>
+            <id>xgs.general.cut_ips_drops</id>
+            <label>Cut what the IPS drops</label>
+            <type>checkbox</type>
+            <help>Suricata drops only the frames it sees. A connection the coprocessor already carries, or put in hardware after the inspector's depth, goes on there. On, every alert the Intrusion Detection logs as blocked cuts its connection as a listed fingerprint does: its states are killed, and with Cut in hardware on it is dropped on the coprocessor first. Read every two seconds. It acts only while the Intrusion Detection runs in IPS mode: in IDS mode nothing is logged as blocked. The XGS log says what was cut.</help>
+        </field>
+        <field>
             <id>xgs.general.cut_in_hardware</id>
             <label>Cut in hardware</label>
             <type>checkbox</type>

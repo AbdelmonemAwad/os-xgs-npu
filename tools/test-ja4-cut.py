@@ -261,6 +261,47 @@ try:
     check('two connections cut in pf, and not the third', sorted(killed), ['a52ad56a00000000', 'b52ad56a00000000'])
     check('on the coprocessor too: those two dropped, not the one with an end of each',
           (s.get('dropped'), verdicts), (2, ['2 1 1', '3 1 1']))
+
+    # Suricata's IPS drops (ff-10): an alert logged as blocked cuts its connection as a listed
+    # fingerprint does, with no fingerprint listed; an alert that was not blocked cuts nothing.
+    def alert(ts, src, sport, dst, dport, action):
+        return ('{"timestamp":"%s","flow_id":2,"event_type":"alert","src_ip":"%s","src_port":%d,"dest_ip":"%s",'
+                '"dest_port":%d,"proto":"TCP","alert":{"action":"%s","signature_id":2210000,"signature":"x"}}\n'
+                % (ts, src, sport, dst, dport, action))
+
+    def config_drops(on, ips=True):
+        with open(jc.CONFIG, 'w', encoding='utf-8') as fh:
+            fh.write('<opnsense><OPNsense><XGS><general><cut_ja4></cut_ja4><cut_ips_drops>%d</cut_ips_drops>'
+                     '</general></XGS><IDS><general><enabled>1</enabled><ips>%d</ips></general></IDS></OPNsense>'
+                     '</opnsense>' % (on, ips))
+        t = os.stat(jc.CONFIG).st_mtime + 2
+        os.utime(jc.CONFIG, (t, t))
+
+    config_drops(1, ips=False)
+    check('in IDS mode the drops are said to cut nothing', jc.drops_setting(),
+          (True, 'the Intrusion Detection is in IDS mode and drops nothing'))
+    config_drops(1)
+    check('in IPS mode nothing keeps them', jc.drops_setting(), (True, None))
+    killed.clear()
+    verdicts.clear()
+    jc.STATUS = os.path.join(work, 'status-drops.json')
+    with open(jc.EVE, 'w', encoding='utf-8', newline='\n') as fh:
+        fh.write(alert(T0, '192.168.1.40', 50000, '203.0.113.20', 443, 'blocked'))
+        fh.write(alert(T0, '192.168.1.41', 50001, '203.0.113.21', 443, 'allowed'))
+    w = jc.Watch()
+    s = w.once()
+    check('a blocked alert cuts its connection, an allowed one nothing', killed, ['a52ad56a00000000'])
+    check('dropped on the coprocessor first', verdicts, ['2 1 1'])
+    check('counted as a drop, not as a fingerprint', (w.status.get('drops_cut'), w.status.get('totals', {})),
+          (1, {}))
+    killed.clear()
+    s = w.once()
+    check('read once: not cut again at the next reading', killed, [])
+    config_drops(0)
+    killed.clear()
+    jc.STATUS = os.path.join(work, 'status-drops-off.json')
+    s = jc.Watch().once()
+    check('off: nothing read, nothing cut', (killed, s['read']), ([], 0))
     jc.time.time = real_time
 finally:
     shutil.rmtree(work, ignore_errors=True)
