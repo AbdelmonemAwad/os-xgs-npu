@@ -97,6 +97,13 @@
                     temp: function (column, row) {
                         return row.temp !== '' ? row.temp + ' &deg;C' : '';
                     },
+                    /* read only; not read yet - see the note under the table */
+                    fec: function (column, row) {
+                        if (row.present !== '1') {
+                            return '';
+                        }
+                        return row.fec ? row.fec : '<span class="text-muted">' + "{{ lang._('not read') }}" + '</span>';
+                    },
                     power: function (column, row) {
                         const value = row[column.id];
                         if (value === '') {
@@ -183,6 +190,7 @@
                 <th data-column-id="bias" data-type="string" data-width="7em">{{ lang._('Bias (mA)') }}</th>
                 <th data-column-id="tx" data-formatter="power" data-type="string" data-width="8em">{{ lang._('Transmit') }}</th>
                 <th data-column-id="rx" data-formatter="power" data-type="string" data-width="9em">{{ lang._('Receive') }}</th>
+                <th data-column-id="fec" data-formatter="fec" data-type="string" data-width="7em">FEC</th>
             </tr>
         </thead>
         <tbody></tbody>
@@ -191,6 +199,10 @@
     <div class="help-block" style="padding: 0 15px 15px;">
         {{ lang._('Read on the coprocessor every five minutes, from the modules\' own memory: their identity, and where a module reports them its temperature, supply voltage, laser bias and the light it sends and receives. A received light below -11.1 dBm - the weakest a 10GBASE-SR receiver is meant to accept - is shown in red.') }}
         {{ lang._('The medium is what the port reports to the system, on the Interfaces pages and in ifconfig, and it is taken from here: from the module\'s own codes, or, where a copper module claims a fibre standard - some 10GBASE-T modules do - from its part number.') }}
+    </div>
+    <div class="help-block" style="padding: 0 15px 15px;">
+        {{ lang._('Forward error correction (FEC) is shown read only, and is not read yet: the coprocessor\'s network agent keeps it, and asking the agent for it once stopped the agent until the coprocessor restarted, so neither driver asks. Nothing on this page sets it.') }}
+        {{ lang._('In OPNsense\'s LAGG settings (Interfaces: Devices: LAGG), the protocol "fec" is Fast EtherChannel, a way of bundling ports - not forward error correction.') }}
     </div>
 </div>
 
