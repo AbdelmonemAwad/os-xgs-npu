@@ -40,6 +40,9 @@
         <Flows order="45" VisibleName="Offloaded Flows" cssClass="fa fa-bolt fa-fw" url="/ui/xgs/flows"/>
         <Updates order="80" VisibleName="Updates" cssClass="fa fa-cloud-arrow-down fa-fw" url="/ui/xgs/updates"/>
         <Reports order="85" VisibleName="Problem Reports" cssClass="fa fa-bug fa-fw" url="/ui/xgs/reports"/>
+        <!-- a ping from the coprocessor, over the management link (svc-1-10, 2026-11-14): a page of
+             its own beside the Coprocessor Console, which is OPNsense's log viewer and takes no field -->
+        <CoprocessorPing order="89" VisibleName="Coprocessor Ping" cssClass="fa fa-satellite-dish fa-fw" url="/ui/xgs/ping"/>
         <LogFile order="90" VisibleName="Log File" cssClass="fa fa-file-lines fa-fw" url="/ui/diagnostics/log/core/xgs"/>
         <ConsoleLog order="91" VisibleName="Coprocessor Console" cssClass="fa fa-terminal fa-fw" url="/ui/diagnostics/log/xgs/npu-console"/>
         <CoprocessorLog order="92" VisibleName="Coprocessor Log" cssClass="fa fa-rectangle-list fa-fw" url="/ui/diagnostics/log/xgs/coprocessor"/>

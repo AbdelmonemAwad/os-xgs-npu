@@ -281,6 +281,10 @@ install -m 0644 "${SRC}/src/opnsense/mvc/app/controllers/OPNsense/XGS/UpdatesCon
     "${PREFIX}/opnsense/mvc/app/controllers/OPNsense/XGS/UpdatesController.php"
 install -m 0644 "${SRC}/src/opnsense/mvc/app/controllers/OPNsense/XGS/Api/UpdatesController.php" \
     "${PREFIX}/opnsense/mvc/app/controllers/OPNsense/XGS/Api/UpdatesController.php"
+install -m 0644 "${SRC}/src/opnsense/mvc/app/controllers/OPNsense/XGS/PingController.php" \
+    "${PREFIX}/opnsense/mvc/app/controllers/OPNsense/XGS/PingController.php"
+install -m 0644 "${SRC}/src/opnsense/mvc/app/controllers/OPNsense/XGS/Api/PingController.php" \
+    "${PREFIX}/opnsense/mvc/app/controllers/OPNsense/XGS/Api/PingController.php"
 install -m 0644 "${SRC}/src/opnsense/mvc/app/controllers/OPNsense/XGS/forms/general.xml" \
     "${PREFIX}/opnsense/mvc/app/controllers/OPNsense/XGS/forms/general.xml"
 install -m 0644 "${SRC}/src/opnsense/mvc/app/controllers/OPNsense/XGS/Api/StatusController.php" \
@@ -357,6 +361,14 @@ install -m 0644 "${SRC}/src/opnsense/service/templates/OPNsense/Syslog/local/xgs
 install -d -m 0755 "${PREFIX}/etc/syslog-ng.conf.d"
 install -m 0644 "${SRC}/src/etc/syslog-ng.conf.d/xgs-coprocessor.conf" \
     "${PREFIX}/etc/syslog-ng.conf.d/xgs-coprocessor.conf"
+# And to the remote servers OPNsense sends its log to (2026-11-14): an overlay on the Syslog
+# templates (+TARGETS.D), written with them by the reload below and each time OPNsense writes them,
+# adding a log path from the coprocessor's source to each of OPNsense's remote destinations.
+install -d -m 0755 "${PREFIX}/opnsense/service/templates/OPNsense/Syslog/+TARGETS.D"
+install -m 0644 "${SRC}/src/opnsense/service/templates/OPNsense/Syslog/+TARGETS.D/xgs.TARGET" \
+    "${PREFIX}/opnsense/service/templates/OPNsense/Syslog/+TARGETS.D/xgs.TARGET"
+install -m 0644 "${SRC}/src/opnsense/service/templates/OPNsense/Syslog/xgs-coprocessor-remote.conf" \
+    "${PREFIX}/opnsense/service/templates/OPNsense/Syslog/xgs-coprocessor-remote.conf"
 
 # A bridge's link acted on as an Ethernet port's (issue 911): devd reads its directory at start.
 install -d -m 0755 "${PREFIX}/etc/devd"

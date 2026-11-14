@@ -28,6 +28,8 @@
 #                              one appended line and closes it again; `coprocessor` runs it at boot
 #                              when the link's ssh is refused
 #   mgmt-link.sh status        the link, the addresses, the rule, the ssh - what works right now
+#   mgmt-link.sh ping ADDRESS [COUNT]
+#                              a ping sent by the coprocessor, over the link - XGS: Coprocessor Ping
 #   mgmt-link.sh ssh [cmd]     a shell, or one command, on the coprocessor over the link
 #
 # Every path is quiet about a machine without the link.
@@ -285,8 +287,35 @@ ssh)
 	have_link || exit 1
 	exec ssh -i "${KEY}" -o BatchMode=yes -o ConnectTimeout=8 "root@${NPU_ADDR}" "$@"
 	;;
+ping)
+	# A ping sent by the coprocessor itself, over the link (svc-1-10, 2026-11-14): what its own
+	# Linux reaches - a front port's network, its gateway - which this host's ping cannot tell. The
+	# address or name and the count are checked here before anything is sent, for they become part
+	# of a command line on the coprocessor: letters, digits, dots, colons and hyphens only, not
+	# starting with a hyphen, 253 characters at most; a count of 1 to 10. An address with a colon is
+	# IPv6: ping6, or ping -6 where the coprocessor has no ping6. Each ping waits its count and five
+	# seconds more at most, and the session twenty more than that.
+	TARGET=${2:-}
+	COUNT=${3:-4}
+	case "${TARGET}" in
+	''|-*|*[!A-Za-z0-9.:-]*) echo "not an address or a host name: ${TARGET}"; exit 2 ;;
+	esac
+	[ ${#TARGET} -le 253 ] || { echo "not an address or a host name: too long"; exit 2; }
+	case "${COUNT}" in
+	''|*[!0-9]*) echo "a count is 1 to 10"; exit 2 ;;
+	esac
+	[ "${COUNT}" -ge 1 ] && [ "${COUNT}" -le 10 ] || { echo "a count is 1 to 10"; exit 2; }
+	have_link || { echo "no ${LINK} on this machine"; exit 1; }
+	DEADLINE=$((COUNT + 5))
+	case "${TARGET}" in
+	*:*) REMOTE="ping6 -c ${COUNT} -w ${DEADLINE} ${TARGET} 2>/dev/null || ping -6 -c ${COUNT} -w ${DEADLINE} ${TARGET}" ;;
+	*) REMOTE="ping -c ${COUNT} -w ${DEADLINE} ${TARGET}" ;;
+	esac
+	exec /usr/bin/timeout $((DEADLINE + 20)) ssh -i "${KEY}" -o BatchMode=yes -o ConnectTimeout=8 \
+	    "root@${NPU_ADDR}" "${REMOTE}" < /dev/null 2>&1
+	;;
 *)
-	echo "usage: $0 assign|early|start|coprocessor|trust|status|ssh [command]"
+	echo "usage: $0 assign|early|start|coprocessor|trust|status|ssh [command]|ping address [count]"
 	exit 2
 	;;
 esac

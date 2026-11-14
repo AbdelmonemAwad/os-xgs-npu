@@ -132,6 +132,14 @@ open-source drop (`xgs-bsp/tools/xgs_log_fwd.c`).
   it arrives - the coprocessor's times carry no zone, and its clock is wrong until this host sets it -
   and carries the sender's address as its origin, which is also what OPNsense's log viewer needs to
   read a line's date, severity and process: without it the whole line showed under Line.
+- **And further (since 2026-11-14):** to every remote server OPNsense sends its own log to (System:
+  Settings: Logging: Remote). OPNsense writes each destination with one log path from `s_all`, this
+  host's lines; an overlay on its Syslog templates (`templates/OPNsense/Syslog/+TARGETS.D/xgs.TARGET`,
+  the way the Intrusion Detection's is overlaid) writes `/usr/local/etc/syslog-ng.conf.d/xgs-coprocessor-remote.conf`
+  with them: a second log path to each of those destinations, from the coprocessor's source, the host
+  named `coprocessor`, through the destination's own program, level and facility choices. The
+  destination is OPNsense's and is not written again, so the coprocessor's log follows what is set
+  there and nothing is set on the XGS pages. Not yet seen at a remote server.
 - **When:** the start hook `72-xgs-npu-log` at the end of the boot, every 15 s for up to five minutes;
   cron every ten minutes after that, so a coprocessor taken up again in place is told again within
   ten minutes. While the forwarder's file holds this host's address, nothing is done. Telling it is

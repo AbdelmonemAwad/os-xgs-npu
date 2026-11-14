@@ -189,6 +189,12 @@ rm -f "${PREFIX}/opnsense/scripts/xgs/npu-clock.sh" "${PREFIX}/etc/rc.syshook.d/
 # (syslog-ng is restarted below); the log kept so far stays in /var/log/xgs/coprocessor.
 rm -f "${PREFIX}/opnsense/scripts/xgs/npu-log.sh" "${PREFIX}/etc/rc.syshook.d/start/72-xgs-npu-log" \
     "${PREFIX}/etc/syslog-ng.conf.d/xgs-coprocessor.conf"
+# and its way to the remote servers: the overlay, and what it wrote, which names that source and
+# would stop syslog-ng without it
+rm -f "${PREFIX}/opnsense/service/templates/OPNsense/Syslog/+TARGETS.D/xgs.TARGET" \
+    "${PREFIX}/opnsense/service/templates/OPNsense/Syslog/xgs-coprocessor-remote.conf" \
+    "${PREFIX}/etc/syslog-ng.conf.d/xgs-coprocessor-remote.conf"
+rmdir "${PREFIX}/opnsense/service/templates/OPNsense/Syslog/+TARGETS.D" 2>/dev/null || true
 # The coprocessor's software no longer read at boot; its record, coprocessor.json, went above.
 rm -f "${PREFIX}/etc/rc.syshook.d/start/73-xgs-coprocessor"
 # The XGS 3300's fail-to-wire relay no longer read, nor put back to normal at boot: the two scripts,

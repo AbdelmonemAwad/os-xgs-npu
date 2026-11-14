@@ -257,5 +257,68 @@ class Early(unittest.TestCase):
         self.assertEqual(self.of(calls, 'configctl'), [])
 
 
+class Ping(unittest.TestCase):
+    """mgmt-link.sh ping (svc-1-10): a ping sent by the coprocessor over the link. The address and the
+    count become part of a command line on the coprocessor, so anything else is refused before ssh is
+    run; ssh and timeout are stand-ins that keep what they were given."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.dir = self.tmp.name
+        self.calls = os.path.join(self.dir, 'calls')
+        open(self.calls, 'w').close()
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def stub(self, name, body):
+        path = os.path.join(self.dir, name)
+        with open(path, 'w', newline='\n') as f:
+            f.write('#!/bin/sh\necho "%s $*" >> "%s"\n%s\n' % (name, self.calls, body))
+        os.chmod(path, 0o755)
+        return path
+
+    def ping(self, *args):
+        stubs = {'/usr/local/opnsense/scripts/xgs/board.sh': self.stub('board', 'echo "201 armada"'),
+                 '/usr/bin/logger': self.stub('logger', 'exit 0'),
+                 '/sbin/ifconfig': self.stub('ifconfig', 'exit 0'),
+                 '/usr/bin/timeout': self.stub('timeout', 'shift; exec "$@"')}
+        self.stub('ssh', 'echo "64 bytes from x"; exit 0')
+        with open(SCRIPT, encoding='utf-8') as f:
+            text = f.read()
+        for real, fake in stubs.items():
+            text = text.replace(real, fake)
+        script = os.path.join(self.dir, 'mgmt-link.sh')
+        with open(script, 'w', encoding='utf-8', newline='\n') as f:
+            f.write(text)
+        env = dict(os.environ, PATH=self.dir + os.pathsep + os.environ.get('PATH', ''))
+        done = subprocess.run(['/bin/sh', script, 'ping'] + list(args), env=env, capture_output=True,
+                              text=True, timeout=60)
+        with open(self.calls) as f:
+            return done, [c for c in f.read().splitlines() if c.startswith('ssh ')]
+
+    def test_an_address_is_pinged_by_the_coprocessor(self):
+        done, sent = self.ping('192.0.2.1', '3')
+        self.assertEqual(done.returncode, 0)
+        self.assertIn('64 bytes from x', done.stdout)
+        self.assertEqual(len(sent), 1)
+        self.assertTrue(sent[0].endswith('root@169.254.254.2 ping -c 3 -w 8 192.0.2.1'), sent[0])
+
+    def test_an_ipv6_address_is_pinged_with_ping6(self):
+        done, sent = self.ping('2001:db8::1', '1')
+        self.assertIn('ping6 -c 1 -w 6 2001:db8::1', sent[0])
+
+    def test_a_name_is_taken_and_the_count_defaults_to_four(self):
+        done, sent = self.ping('gateway.example.org')
+        self.assertIn('ping -c 4 -w 9 gateway.example.org', sent[0])
+
+    def test_anything_else_is_refused_before_ssh(self):
+        for bad in (['1.2.3.4;reboot'], ['$(reboot)'], ['-f', '1'], [''], ['a b'], ['1.2.3.4', '0'],
+                    ['1.2.3.4', '11'], ['1.2.3.4', '3x'], ['x' * 254]):
+            done, sent = self.ping(*bad)
+            self.assertEqual(done.returncode, 2, bad)
+            self.assertEqual(sent, [], bad)
+
+
 if __name__ == '__main__':
     unittest.main(verbosity=1)
