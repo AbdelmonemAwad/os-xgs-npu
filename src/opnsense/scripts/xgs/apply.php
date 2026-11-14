@@ -233,7 +233,7 @@ if (sysctl_get($act_oid) === null) {
 $marker = '/var/db/os-xgs-npu/inspector-vf';
 $present = '/var/run/os-xgs-npu.oxips0';
 $overlay = '/usr/local/etc/suricata/conf.d/xgs-inspector.yaml';
-$inspect = $get('inspect_then_hardware', '0') === '1';
+$inspect = $get('inspect_then_hardware', '1') === '1';
 exec('/sbin/ifconfig oxips0 > /dev/null 2>&1', $ifout, $ifrc);
 $have_if = $ifrc === 0;
 if ($inspect) {

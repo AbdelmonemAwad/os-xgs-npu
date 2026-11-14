@@ -151,7 +151,7 @@ Two of the six coprocessor families answer now, on silicon that shares nothing.
   coprocessor carries until it has let its first megabyte through, drops what its rules drop, and the
   hardware carries the rest - 941 Mbit/s on the XGS 136, the link full, and 3.98 Gbit/s on the XGS
   3300 ([measured](docs/measurements/inspect-2026-10-23.md#the-setting-and-the-intrusion-detection-service)).
-  Off by default; without it, what the IPS must see in full goes in **Never offloaded**, or
+  On in a new install since 2026-11-14, and it does nothing while the Intrusion Detection is off; without it, what the IPS must see in full goes in **Never offloaded**, or
   acceleration stays off ([the FAQ](docs/guide/faq.md#what-runs-in-the-coprocessors-hardware)).
 - **Captive Portal clients in hardware.** With the setting on XGS: Settings, each portal session is a
   live user of the coprocessor: its connections run in hardware, and a logout, a hard or an idle

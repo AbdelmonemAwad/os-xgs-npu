@@ -196,7 +196,7 @@ idle*)
 	# 2026-11-06 the inspector's function and ring 0 were taken at every boot after, with the setting
 	# off on the page. And one restored with it on waited for an Apply nobody knew was due. A
 	# configuration that cannot be read leaves the marker as it is.
-	case "$(/usr/local/bin/php -r 'require_once("config.inc"); $g = $config["OPNsense"]["XGS"]["general"] ?? []; echo (($g["inspect_then_hardware"] ?? "0") === "1") ? "1" : "0";' 2>/dev/null)" in
+	case "$(/usr/local/bin/php -r 'require_once("config.inc"); $g = $config["OPNsense"]["XGS"]["general"] ?? []; echo (($g["inspect_then_hardware"] ?? "1") === "1") ? "1" : "0";' 2>/dev/null)" in
 	1)	if [ ! -e /var/db/os-xgs-npu/inspector-vf ]; then
 			mkdir -p /var/db/os-xgs-npu && : > /var/db/os-xgs-npu/inspector-vf &&
 			    log "the configuration has inspect, then hardware: its marker made"
@@ -754,7 +754,7 @@ if [ -x /usr/local/opnsense/scripts/xgs/offload.sh ] && [ -x /usr/local/bin/php 
 	rm -f /var/run/os-xgs-npu.oxips0
 	if ifconfig oxips0 > /dev/null 2>&1; then
 		touch /var/run/os-xgs-npu.oxips0
-		INSPECT=$(/usr/local/bin/php -r 'require_once("config.inc"); echo empty($config["OPNsense"]["XGS"]["general"]["inspect_then_hardware"]) ? "0" : "1";' 2>/dev/null)
+		INSPECT=$(/usr/local/bin/php -r 'require_once("config.inc"); echo (($config["OPNsense"]["XGS"]["general"]["inspect_then_hardware"] ?? "1") === "1") ? "1" : "0";' 2>/dev/null)
 		if [ "${INSPECT}" = "1" ]; then
 			ifconfig oxips0 up
 			sysctl -q dev.octep.0.dp.ips_new=1 > /dev/null 2>&1 && log "inspect, then hardware: oxips0 up, new connections inspected"

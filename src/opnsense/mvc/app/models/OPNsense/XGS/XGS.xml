@@ -136,11 +136,14 @@
             <!-- Inspect, then hardware (discovery 4, 2026-10-23): the marker
                  /var/db/os-xgs-npu/inspector-vf, which has the driver make the coprocessor's
                  inspector function at boot; dp.ips_new / flow.ips_new; and oxips0 added to the
-                 Intrusion Detection by the template overlay OPNsense/IDS/xgs-inspector.yaml. Off by
-                 default: an experiment. -->
+                 Intrusion Detection by the template overlay OPNsense/IDS/xgs-inspector.yaml. On in a
+                 new install since 2026-11-14 (svc-2-06), off until then. It does nothing while the
+                 Intrusion Detection is off or in IDS mode: nothing reads oxips0, and the drivers hand
+                 each frame straight back and set its connection to forward (failclose leaves them
+                 so). The inspector's function is made at the boot after it is first on. -->
             <inspect_then_hardware type="BooleanField">
                 <Required>Y</Required>
-                <Default>0</Default>
+                <Default>1</Default>
             </inspect_then_hardware>
             <!-- Let rejected TCP segments through (issue 1148, measured 2026-11-12): while "Inspect,
                  then hardware" is on, the template overlay OPNsense/IDS/xgs-inspector.yaml writes

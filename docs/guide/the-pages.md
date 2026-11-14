@@ -191,7 +191,7 @@ again; on the XGS 136, the receive path too. **Full help** shows the text under 
 the Security tab below; **advanced mode** shows the rest. Since 2026-10-23 **Cut in hardware**, on
 by default, has both cuts on the **Security** tab drop a connection on the coprocessor itself first
 and keep it there while its sender goes on ([measured](../measurements/verdict-2026-10-23.md)).
-**Inspect, then hardware**, off by default, has OPNsense's Intrusion Detection in IPS mode inspect
+**Inspect, then hardware**, on in a new install since 2026-11-14 and doing nothing while the Intrusion Detection is off, has OPNsense's Intrusion Detection in IPS mode inspect
 each new connection in hardware until it has let its first megabyte through, and the coprocessor
 carry the rest; it needs one reboot
 ([measured](../measurements/inspect-2026-10-23.md#the-setting-and-the-intrusion-detection-service)).

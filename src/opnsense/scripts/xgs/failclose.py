@@ -49,7 +49,7 @@ def wanted(root):
         return (value if value is not None and value.strip() != '' else default).strip()
 
     fc = text('OPNsense/XGS/general/failclose', '1') == '1'
-    inspect = text('OPNsense/XGS/general/inspect_then_hardware', '0') == '1'
+    inspect = text('OPNsense/XGS/general/inspect_then_hardware', '1') == '1'
     ids_on = text('OPNsense/IDS/general/enabled', '0') == '1'
     ids_ips = text('OPNsense/IDS/general/mode', 'pcap') == 'netmap'
     if not fc:

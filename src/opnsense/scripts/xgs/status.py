@@ -646,7 +646,7 @@ def intrusion_detection(path=CONFIG):
         "capture": capture,
         "interfaces": names,
         "offloading": text(xgs, "offload", "1") == "1" and text(xgs, "flow_auto", "1") == "1",
-        "inspect_then_hardware": capture == "netmap" and text(xgs, "inspect_then_hardware", "0") == "1" and running,
+        "inspect_then_hardware": capture == "netmap" and text(xgs, "inspect_then_hardware", "1") == "1" and running,
     }
     out["uninspected"] = out["on"] and out["offloading"] and not out["inspect_then_hardware"]
     # And the ports inspected in IPS mode at an MTU their netmap adapter cuts (ids_mtu.py).
