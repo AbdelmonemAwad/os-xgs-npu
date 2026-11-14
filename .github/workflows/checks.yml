@@ -383,6 +383,12 @@ jobs:
       - name: The coprocessor's last good reading kept
         run: python3 tools/test-coprocessor-state.py
 
+      # The coprocessor's memory error counters and their alert: at the threshold XGS: Settings sets,
+      # at an error not corrected, counted again from each alert and each start of the coprocessor
+      # (hw-10). tools/test-health.py.
+      - name: The coprocessor's memory error alert
+        run: python3 tools/test-health.py
+
       # Which device becomes MGMT at the first boot, after an install and after a factory reset (issue
       # 957): scripts/xgs/assign.php's own function, with PHP and no OPNsense. tools/test-assign-mgmt.py.
       - name: MGMT after a factory reset

@@ -270,5 +270,36 @@ with tempfile.TemporaryDirectory() as here:
     inside = {r['partition']: (r.get('inside') or {}).get('sfversion') for r in shown['emmc'][0]['partitions']}
     check('pressed again once it is done: the closed partitions read', inside['mmcblk0p3'], '22.0.2.546')
 
+# The U-Boot match check (hw-15, 2026-11-14): the flash's U-Boot against the SDK of the system copy
+# that runs, and against the U-Boot the coprocessor last booted, as its console banner says.
+with tempfile.TemporaryDirectory() as tmp:
+    m = load(tmp)
+    flash = {'ubootflash': 'U-Boot 2019.10-10.22.03 (Nov 22 2024 - 10:00:00 +0000)',
+             'kernel': '4.14.207-10.22.03'}
+    check("U-Boot from the running copy's SDK: a match",
+          m.uboot_check(flash, {'uboot': '2019.10-10.22.03 (Nov 22 2024)'})['state'], 'match')
+    check('from another SDK: said',
+          m.uboot_check(dict(flash, kernel='4.14.207-10.21.01'), {})['state'], 'other_sdk')
+    check('another U-Boot than the one last booted: the flash was written since',
+          m.uboot_check(flash, {'uboot': '2019.10-10.21.01 (Jun 6 2022)'})['state'], 'flash_changed')
+    check('a version without its SDK is not judged', m.uboot_check(dict(flash, kernel='5.4.0-test'), {})['state'],
+          'unknown')
+    check('a flash not read is not read', m.uboot_check({'kernel': flash['kernel']}, {})['state'], 'unread')
+    check('nothing here writes U-Boot', m.uboot_check(flash, {})['write'], False)
+    said = []
+    m.run = lambda argv, timeout=60: said.append(argv) or ''
+    other = m.uboot_check(dict(flash, kernel='4.14.207-10.21.01'), {})
+    m.boottime = lambda: 1000
+    m.say_uboot(other, {'at': 500, 'software': {'uboot_check': other}})
+    check('a mismatch said once a boot: the first reading since this host booted', len(said), 1)
+    m.say_uboot(other, {'at': 2000, 'software': {'uboot_check': other}})
+    check('and not again while it stays the same', len(said), 1)
+    m.say_uboot(m.uboot_check(flash, {}), {'at': 500})
+    check('a match is not said', len(said), 1)
+    m.run = lambda argv, timeout=60: ''
+    m.npu_run, asks = coprocessor()
+    got = m.collect()
+    check('a reading carries the check', got['software']['uboot_check']['flash'], '2019.10-10.22.03')
+
 print('%d failure(s)' % failures)
 sys.exit(1 if failures else 0)

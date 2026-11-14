@@ -815,6 +815,63 @@
                 }
             });
         });
+
+        /* The Coprocessor tab: the software the coprocessor runs, and whether the U-Boot its flash holds
+           is the one expected (scripts/xgs/coprocessor.py: read at every boot, and on Read now). The
+           expected U-Boot is the one built from the SDK of the system copy the coprocessor runs. Nothing
+           here writes: this plugin has no path to write the coprocessor's flash. */
+        const UBOOT = {
+            match: ['text-success', "{{ lang._('Matches: built from the SDK of the system copy it runs') }}"],
+            other_sdk: ['text-warning', "{{ lang._('Does not match: built from another SDK than the system copy it runs') }}"],
+            flash_changed: ['text-warning', "{{ lang._('The flash was written since the coprocessor last booted: its next start boots another U-Boot') }}"],
+            unknown: ['text-muted', "{{ lang._('Not judged: a version without its SDK') }}"],
+            unread: ['text-muted', "{{ lang._('Not read') }}"]
+        };
+        let coproPoll = null;
+        function copro_row(label, value, cls) {
+            const $td = $('<td/>');
+            if (value === null || value === undefined || value === '') {
+                $td.html('&mdash;');
+            } else {
+                $td.append($('<span/>').addClass(cls || '').text(plain(value)));
+            }
+            return $('<tr/>').append($('<td style="width: 30%;"/>').text(label)).append($td);
+        }
+        function copro_show(d) {
+            const $body = $('#copro-rows').empty();
+            const reading = !!(d && d.reading);
+            $('#coproReadAct').prop('disabled', reading).find('i').toggleClass('fa-spin', reading);
+            if (!d || !d.software) {
+                $body.append(copro_row("{{ lang._('Coprocessor') }}", d && d.error ?
+                    "{{ lang._('Not read: the coprocessor did not answer') }}" : "{{ lang._('Not read yet') }}", 'text-muted'));
+            } else {
+                const sw = d.software, fw = sw.firmware || {}, chk = sw.uboot_check, fp = sw.fastpath;
+                $body.append(copro_row("{{ lang._('Vendor build') }}", sw.sfversion));
+                $body.append(copro_row("{{ lang._('Fast path build') }}", fp ? fp.build + ' (' + fp.kind + ')' : null));
+                $body.append(copro_row("{{ lang._('Its Linux kernel') }}", sw.kernel));
+                $body.append(copro_row("{{ lang._('ARM Trusted Firmware') }}", fw.atf || fw.atf_flash));
+                $body.append(copro_row("{{ lang._('U-Boot in the flash') }}", chk ? chk.flash : null));
+                $body.append(copro_row("{{ lang._('U-Boot at its last boot') }}", chk && chk.booted ? chk.booted :
+                    "{{ lang._('not seen: the console logger did not see that boot') }}", chk && chk.booted ? '' : 'text-muted'));
+                $body.append(copro_row("{{ lang._('Expected U-Boot SDK') }}", chk ? chk.expected_sdk : null));
+                const st = UBOOT[chk ? chk.state : 'unread'] || UBOOT.unread;
+                $body.append(copro_row("{{ lang._('U-Boot match') }}", st[1], st[0]));
+                $body.append(copro_row("{{ lang._('Writing U-Boot') }}",
+                    "{{ lang._('Not offered: this plugin has no path to write the coprocessor\'s flash. The check only reads.') }}", 'text-muted'));
+            }
+            $('#copro-at').text(d && d.at ? "{{ lang._('read') }}" + ' ' + new Date(d.at * 1000).toLocaleString() : '');
+            $('#copro-reading').toggle(reading);
+            clearTimeout(coproPoll);
+            if (reading) {
+                coproPoll = setTimeout(function () { ajaxGet('/api/xgs/updates/coprocessor', {}, copro_show); }, 5000);
+            }
+        }
+        $('a[href="#coprocessor"]').on('shown.bs.tab', function () {
+            ajaxGet('/api/xgs/updates/coprocessor', {}, copro_show);
+        });
+        $('#coproReadAct').click(function () {
+            ajaxCall('/api/xgs/updates/coprocessor', {}, copro_show);
+        });
     });
 </script>
 
@@ -825,6 +882,7 @@
     <li><a data-toggle="tab" href="#changelog">{{ lang._('What changed') }} <span id="changes-count" class="badge"></span></a></li>
     <li><a data-toggle="tab" href="#installer">{{ lang._('Installer log') }}</a></li>
     <li><a data-toggle="tab" href="#plugins">{{ lang._('Plugins') }} <span id="plugins-count" class="badge"></span></a></li>
+    <li><a data-toggle="tab" href="#coprocessor">{{ lang._('Coprocessor') }}</a></li>
 </ul>
 
 <div class="tab-content content-box">
@@ -941,6 +999,31 @@
                         <span class="text-muted" id="plugins-checked" style="margin-inline-start: 10px;"></span>
                         <div class="text-muted" style="margin-top: 8px;"><small>{{ lang._('Each plugin follows the latest release of its own repository on GitHub and installs it with the installer that release carries. An update of the project brings them along; here a plugin is updated or installed when its button is pressed. Its installer restarts the web GUI; this page follows the update through it.') }}</small></div>
                     </td>
+                </tr>
+            </tfoot>
+        </table>
+    </div>
+
+    <div id="coprocessor" class="tab-pane table-responsive">
+        <table class="table table-striped table-condensed">
+            <thead>
+                <tr>
+                    <th colspan="2">
+                        <div style="padding: 5px 0; font-size: 16px;">
+                            <b>{{ lang._('The coprocessor\'s software') }}</b>
+                            <span class="pull-right">
+                                <small class="text-muted" id="copro-at"></small>
+                                <small class="text-muted" id="copro-reading" style="display: none;">{{ lang._('reading the coprocessor...') }}</small>
+                                <button class="btn btn-default btn-xs" id="coproReadAct" type="button" title="{{ lang._('Read now') }}"><i class="fa fa-fw fa-refresh"></i></button>
+                            </span>
+                        </div>
+                    </th>
+                </tr>
+            </thead>
+            <tbody id="copro-rows"></tbody>
+            <tfoot>
+                <tr>
+                    <td colspan="2" class="text-muted"><small>{{ lang._('Read at every boot and on Read now, read-only. The expected U-Boot is the one built from the SDK of the system copy the coprocessor runs; a U-Boot that does not match, or a flash written since the coprocessor last booted, is also said in the system log. The coprocessor\'s software comes with its vendor install, not with this project\'s updates.') }}</small></td>
                 </tr>
             </tfoot>
         </table>

@@ -299,6 +299,19 @@
                 <Mask>/^([0-9]{1,2}(,[0-9]{1,2}){0,15})?$/</Mask>
                 <ValidationMessage>Front port labels, separated by commas.</ValidationMessage>
             </poe_af>
+            <!--
+                The coprocessor's memory: corrected errors (its EDAC counters, scripts/xgs/health.py,
+                every five minutes) that raise an alert - in the system log, and for os-netreport to
+                send. Counted again from each alert, and from each start of the coprocessor; an error
+                not corrected always raises one. 0, no alert for corrected errors. Only the XGS 3300
+                registers these counters; the ARMADA family has none.
+            -->
+            <ecc_alert type="IntegerField">
+                <Required>Y</Required>
+                <Default>10</Default>
+                <MinimumValue>0</MinimumValue>
+                <MaximumValue>1000000</MaximumValue>
+            </ecc_alert>
         </general>
         <!--
             Problem reports (scripts/xgs/reporter.py, docs/problem-reports.md): what goes wrong on

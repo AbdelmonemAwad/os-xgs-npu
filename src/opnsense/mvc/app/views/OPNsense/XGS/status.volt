@@ -430,6 +430,30 @@
             return list;
         }
 
+        /*
+         * The coprocessor's memory errors (hw-10), in a block of its own under the cards: its EDAC
+         * counters as scripts/xgs/health.py reads them every five minutes - the errors corrected and
+         * the ones not - against XGS: Settings' alert. Only the XGS 3300 registers these counters; the
+         * ARMADA family none, so there they are not read.
+         */
+        function ecc_card(fam, h, g) {
+            const key = "{{ lang._('Memory errors (ECC)') }}";
+            if (fam === 'armada' || (h && h.edac && !h.edac.counters)) {
+                return card('', 'fa-shield', key, '&mdash;', "{{ lang._('not read on this model') }}");
+            }
+            if (!h || !h.edac) {
+                return card('', 'fa-shield', key, '&mdash;', "{{ lang._('not read yet') }}");
+            }
+            /* the settings are XGS: Settings' to read: without them the alert is not named */
+            const e = h.edac, known = g.ecc_alert !== undefined && g.ecc_alert !== '', limit = Number(g.ecc_alert);
+            const sub = (!known ? "{{ lang._('corrected / uncorrected') }}" :
+                limit > 0 ? "{{ lang._('corrected / uncorrected; alert at %s corrected') }}".replace('%s', limit) :
+                "{{ lang._('corrected / uncorrected; no alert for corrected errors') }}") +
+                (h.ecc_alert_at ? ' &middot; ' + "{{ lang._('last alert') }}" + ' ' + new Date(h.ecc_alert_at * 1000).toLocaleString() : '');
+            return card(e.uncorrected ? 'bad' : (h.ecc_alert_at || (known && limit > 0 && e.corrected >= limit) ? 'warn' : 'ok'),
+                'fa-shield', key, e.corrected + ' / ' + e.uncorrected, sub);
+        }
+
         function render(st, ports, ipsec, settings) {
             $('#xgs_ids').html(ids_note(st && st.intrusion_detection));
             $('#xgs_ids_mtu').html(mtu_note(st && st.intrusion_detection));
@@ -444,7 +468,7 @@
                     "{{ lang._('not attached') }}",
                     st && st.message ? st.message : "{{ lang._('the coprocessor driver is not attached') }}") +
                     appliance_card(st && st.appliance));
-                $('#xgs_link, #xgs_limits, #xgs_fastpath, #xgs_rpc, #xgs_raw, #xgs_offload').empty();
+                $('#xgs_link, #xgs_limits, #xgs_fastpath, #xgs_rpc, #xgs_raw, #xgs_offload, #xgs_ecc').empty();
                 $('#xgs_fastpath_head').hide();
                 return;
             }
@@ -491,6 +515,7 @@
             }
             cards += restart(st.reset);
             $('#xgs_cards').html(cards);
+            $('#xgs_ecc').html(ecc_card(b.family, st.health, g));
             $('#xgs_panel').html(panel(ports));
             rows($('#xgs_link'), [
                 ["{{ lang._('Board') }}", b.assembly ? (b.model ? b.model + ', ' : '') + 'AMDA0' + b.assembly + ' (' + family + ')' : null],
@@ -1047,6 +1072,7 @@
         <div id="xgs_offload"></div>
         <div id="xgs_panel"></div>
         <div class="xgs-cards" id="xgs_cards"></div>
+        <div class="xgs-cards" id="xgs_ecc" style="padding-top: 0;"></div>
         <table class="table table-striped table-condensed">
             <thead>
                 <tr>

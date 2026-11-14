@@ -8,8 +8,8 @@
     bundle.py      write the bundle and print {"file", "size", "items", "data"} - data is the
                    .tar.gz in base64, which the Problem Reports page hands to the browser to save
 
-WHAT IS IN IT. The coprocessor's state as the pages read it (status, ports, transceivers, IPsec,
-the updater), the driver's sysctls and the kernel's modules, the boot messages, the plugin's own
+WHAT IS IN IT. The coprocessor's state as the pages read it (status, its software with the U-Boot
+match check, its own Linux with its memory's error counters, ports, transceivers, IPsec, the updater), the driver's sysctls and the kernel's modules, the boot messages, the plugin's own
 lines from the system log, what the coprocessor printed on its console, the network interfaces and their counters, the switch's frame limit,
 OPNsense's version and the reports already held - each a text file, every one put through the
 Problem Reports cleaner first (reporter.Scrubber): addresses, MACs, serial numbers, the host and
@@ -143,6 +143,11 @@ def items():
         # The coprocessor as XGS: Overview last read it - its software, its boot firmware and when
         # that was built, its chips and its flash - without asking it again (scripts/xgs/coprocessor.py).
         ('coprocessor.json', pretty(command([XGS + '/coprocessor.py', 'show']))),
+        # Its own Linux as the Overview last read it every five minutes - up for how long, its load,
+        # its memory and its memory's error counters (EDAC) - and the last memory alert
+        # (scripts/xgs/health.py), without asking it again.
+        ('coprocessor-health.json', pretty(command([XGS + '/health.py', 'show']))),
+        ('coprocessor-ecc-alert.json', pretty(command(['/bin/cat', '/var/db/os-xgs-npu/ecc-alert.json']))),
         ('ports.json', pretty(command([XGS + '/portmap.py']))),
         ('transceivers.json', transceivers()),
         ('ipsec.json', pretty(command([XGS + '/ipsec.py']))),

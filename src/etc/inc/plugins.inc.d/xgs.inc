@@ -234,6 +234,7 @@ function xgs_syslog()
         'octep', 'npuep', 'npuctl', 'xgs-assign', 'xgs-switch', 'xgs-lists', 'xgs-ja4', 'xgs-anomaly',
         'xgs-sensors', 'xgs-npu-clock', 'xgs-feeder', 'xgs-console', 'xgs-watchdog', 'xgs-poe',
         'xgs-cp', 'xgs-reset-reason', 'xgs-bundle', 'xgs-count', 'xgs-npu-log', 'xgs-defaults',
+        'xgs-coprocessor',
     ]];
 
     return $logfacilities;

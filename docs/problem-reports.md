@@ -181,7 +181,9 @@ fast paths), how the driver reads that software - the vendor version it takes it
 it then sends of the commands from 36 on, or that it has not placed its command numbering yet
 (since 2026-11-07: an owner's XGS 126 reported vendor build 20.0.0.222 on #812, a version the driver
 has no row for) - and a system copy built from another SDK
-than the U-Boot that boots it, when there is one - the expansion module in each bay with its revision and vendor, OPNsense's version, the
+than the U-Boot that boots it, when there is one, and since 2026-11-14 a U-Boot in its flash that is not
+from the running copy's SDK or not the one it last booted, and its memory's error counters (EDAC: corrected
+and uncorrected, or not read on a model that has none) - the expansion module in each bay with its revision and vendor, OPNsense's version, the
 kernel and its build, whether the driver module was built for that kernel, the installed commit of this
 plugin and of each appliance plugin, the plugin's files changed by hand since it was installed (by name,
 against the digests `install.sh` writes to `share/os-xgs-npu/manifest.sha256`), and the uptime. The
