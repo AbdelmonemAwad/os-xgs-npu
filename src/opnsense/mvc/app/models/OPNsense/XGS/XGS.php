@@ -42,4 +42,43 @@ use OPNsense\Base\BaseModel;
  */
 class XGS extends BaseModel
 {
+    /**
+     * The recommended settings (2026-11-14): what a new install has, as XGS.xml's defaults, each with
+     * whether it waits for a reboot. An appliance installed before keeps what it saved; XGS: Overview
+     * lists those of these that differ here, and Apply recommended (Api/SettingsController.php) sets
+     * exactly those, on the owner's press. tools/test-recommended.py holds this list to the model's
+     * defaults. Each one's condition is said on the page: failclose acts only while the Intrusion
+     * Detection runs in IPS mode, inspect_then_hardware does nothing while it is off, offloading
+     * keeps the ports it reads in IPS mode with the firewall (the netmap gate).
+     */
+    public const RECOMMENDED = [
+        'offload' => ['value' => '1', 'reboot' => false],
+        'flow_auto' => ['value' => '1', 'reboot' => false],
+        'cut_in_hardware' => ['value' => '1', 'reboot' => false],
+        'flood_cut' => ['value' => '1', 'reboot' => false],
+        'cp_hardware' => ['value' => '1', 'reboot' => false],
+        'anomaly_watch' => ['value' => '1', 'reboot' => false],
+        'inspect_then_hardware' => ['value' => '1', 'reboot' => true],
+        'failclose' => ['value' => '1', 'reboot' => false],
+        'ipsec_offload' => ['value' => '1', 'reboot' => true],
+        'ipsec_flows' => ['value' => '1', 'reboot' => true],
+    ];
+
+    /**
+     * The recommended settings that differ from $general (field => saved value, as strings), in the
+     * order above: [['field', 'now', 'recommended', 'reboot'], ...]. A field with no saved value is
+     * taken as its default, which is the recommended one, and does not differ.
+     */
+    public static function differing(array $general): array
+    {
+        $out = [];
+        foreach (self::RECOMMENDED as $field => $want) {
+            $now = array_key_exists($field, $general) ? (string)$general[$field] : $want['value'];
+            if ($now !== $want['value']) {
+                $out[] = ['field' => $field, 'now' => $now, 'recommended' => $want['value'],
+                    'reboot' => $want['reboot']];
+            }
+        }
+        return $out;
+    }
 }

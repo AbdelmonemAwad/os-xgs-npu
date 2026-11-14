@@ -663,6 +663,90 @@
             }
         });
 
+        /* The recommended settings (XGS::RECOMMENDED): on in a new install since 2026-11-14, and an
+           appliance installed before keeps what it saved. While any of them differs here, a card says
+           so and lists them, each with its condition; Apply recommended sets exactly those, saves and
+           applies them (api/xgs/settings/applyRecommended), and says what it changed and what waits
+           for a reboot. Nothing changes until it is pressed. XGS: Settings' privilege: a refused read
+           shows no card. */
+        const RECOMMENDED = {
+            offload: ["{{ lang._('Hardware offloading') }}", "{{ lang._('a port the Intrusion Detection reads in IPS mode stays with this firewall') }}"],
+            flow_auto: ["{{ lang._('Accelerate connections automatically') }}", "{{ lang._('with Hardware offloading, on the same condition') }}"],
+            cut_in_hardware: ["{{ lang._('Cut in hardware') }}", ''],
+            flood_cut: ["{{ lang._('Cut floods by the firewall\'s own limits') }}", "{{ lang._('the limits are the rules\' own') }}"],
+            cp_hardware: ["{{ lang._('Captive Portal clients in hardware') }}", ''],
+            anomaly_watch: ["{{ lang._('Watch for unusual traffic') }}", "{{ lang._('reports, never blocks') }}"],
+            inspect_then_hardware: ["{{ lang._('Inspect, then hardware') }}", "{{ lang._('does nothing while the Intrusion Detection is off') }}"],
+            failclose: ["{{ lang._('Drop when the inspection stops') }}", "{{ lang._('acts only while the Intrusion Detection runs in IPS mode') }}"],
+            ipsec_offload: ["{{ lang._('IPsec in the coprocessor\'s engine') }}", ''],
+            ipsec_flows: ["{{ lang._('Outbound tunnel flows forwarded by the coprocessor') }}", '']
+        };
+        function decode(v) {
+            return $('<textarea/>').html(v).text();
+        }
+        function rec_item(f, reboot) {
+            const r = RECOMMENDED[f] || [f, ''];
+            const $li = $('<li dir="auto"/>').append($('<b/>').text(decode(r[0])));
+            if (r[1]) {
+                $li.append(document.createTextNode(' - ' + decode(r[1])));
+            }
+            if (reboot) {
+                $li.append(document.createTextNode(' - ' + decode("{{ lang._('takes effect after a reboot') }}")));
+            }
+            return $li;
+        }
+        function recommended() {
+            $.ajax({url: '/api/xgs/settings/recommended', dataType: 'json'}).done(function (d) {
+                const differ = (d && d.differ) || [];
+                if (!differ.length) {
+                    $('#xgs_recommended').empty();
+                    return;
+                }
+                const $ul = $('<ul/>');
+                differ.forEach(function (x) { $ul.append(rec_item(x.field, x.reboot)); });
+                const $box = $('<div class="alert alert-info" role="alert" style="margin: 15px 15px 0;"/>')
+                    .append($('<p dir="auto"/>').append($('<b/>').text(decode("{{ lang._('The recommended settings are on in new installs') }}"))))
+                    .append($('<p dir="auto"/>').text(decode("{{ lang._('This appliance keeps what it saved. These differ here, and Apply recommended turns on exactly these:') }}")))
+                    .append($ul)
+                    .append($('<button type="button" class="btn btn-primary btn-sm" id="xgs_rec_apply"/>')
+                        .text(decode("{{ lang._('Apply recommended') }}")))
+                    .append(' <a href="/ui/xgs/settings" style="margin-inline-start: 8px;">' + "{{ lang._('Choose each one on XGS: Settings') }}" + '</a>');
+                $('#xgs_recommended').empty().append($box);
+            }).fail(function () {
+                $('#xgs_recommended').empty();
+            });
+        }
+        $(document).on('click', '#xgs_rec_apply', function () {
+            const $b = $(this).prop('disabled', true);
+            $b.append(' <i class="fa fa-spinner fa-pulse"></i>');
+            ajaxCall('/api/xgs/settings/applyRecommended', {}, function (d) {
+                const ok = d && d.status === 'ok';
+                const $msg = $('<div/>');
+                if (ok) {
+                    const $ul = $('<ul/>');
+                    (d.changed || []).forEach(function (f) { $ul.append(rec_item(f, (d.reboot || []).indexOf(f) >= 0)); });
+                    $msg.append($('<p dir="auto"/>').text(decode("{{ lang._('Turned on and applied:') }}"))).append($ul);
+                    if ((d.reboot || []).length) {
+                        $msg.append($('<p dir="auto"/>').append($('<b/>').text(decode("{{ lang._('Reboot to finish: the settings marked so take effect after it.') }}"))));
+                    }
+                    if (d.apply && d.apply.message) {
+                        $msg.append($('<p dir="auto"/>').append($('<small/>').html(d.apply.message)));
+                    }
+                } else {
+                    $msg.text(decode("{{ lang._('Nothing was changed.') }}") + ' ' + (d && d.message ? decode(d.message) : ''));
+                }
+                BootstrapDialog.show({
+                    type: ok ? BootstrapDialog.TYPE_SUCCESS : BootstrapDialog.TYPE_WARNING,
+                    title: "{{ lang._('Apply recommended') }}",
+                    message: $msg,
+                    buttons: [{label: "{{ lang._('Close') }}", action: function (dialog) { dialog.close(); }}]
+                });
+                recommended();
+                refresh();
+            });
+        });
+        recommended();
+
         $('#refreshAct').click(function () {
             refresh();
             $('#grid-counters').bootgrid('reload');
@@ -956,6 +1040,7 @@
 <div class="tab-content content-box">
     <div id="status" class="tab-pane active table-responsive">
         <div id="xgs_ask"></div>
+        <div id="xgs_recommended"></div>
         <div id="xgs_ids"></div>
         <div id="xgs_ids_mtu"></div>
         <div id="xgs_offload"></div>
