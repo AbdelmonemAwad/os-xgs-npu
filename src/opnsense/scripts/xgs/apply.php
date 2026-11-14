@@ -428,11 +428,11 @@ if (!is_array($excl)) {
 /* The tunables this family reads at attach. */
 $tunables = [];
 if ($family === 'octeontx') {
-    $tunables['hw.octep.ipsec_on'] = $get('ipsec_offload', '0') === '1' ? '1' : '0';
-    $tunables['hw.octep.ipsec_flows'] = $get('ipsec_flows', '0') === '1' ? '1' : '0';
+    $tunables['hw.octep.ipsec_on'] = $get('ipsec_offload', '1') === '1' ? '1' : '0';
+    $tunables['hw.octep.ipsec_flows'] = $get('ipsec_flows', '1') === '1' ? '1' : '0';
 } else {
-    $tunables['hw.npuep.ipsec_on'] = $get('ipsec_offload', '0') === '1' ? '1' : '0';
-    $tunables['hw.npuep.ipsec_flows'] = $get('ipsec_flows', '0') === '1' ? '1' : '0';
+    $tunables['hw.npuep.ipsec_on'] = $get('ipsec_offload', '1') === '1' ? '1' : '0';
+    $tunables['hw.npuep.ipsec_flows'] = $get('ipsec_flows', '1') === '1' ? '1' : '0';
     $tunables['hw.npuep.giu.poll_ms'] = (string)max(1, min(100, (int)$get('rx_poll_ms', '1')));
     $tunables['hw.npuep.giu.rx_budget'] = (string)max(4, min(4096, (int)$get('rx_budget', '1024')));
     $tunables['hw.npuep.giu.rx_msix'] = $get('rx_doorbells', '1') === '1' ? '1' : '0';

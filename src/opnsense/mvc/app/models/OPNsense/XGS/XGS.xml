@@ -181,18 +181,21 @@
                 <Default>1</Default>
             </anomaly_watch>
             <!-- IPsec associations to the coprocessor's engine: the loader tunable hw.octep.ipsec_on
-                 or hw.npuep.ipsec_on, read when the driver attaches - a reboot takes it. -->
+                 or hw.npuep.ipsec_on, read when the driver attaches - a reboot takes it. On in a new
+                 install since 2026-11-14 (hw-02); the tunable is written by the first apply of the
+                 settings page, and the reboot after it takes it. -->
             <ipsec_offload type="BooleanField">
                 <Required>Y</Required>
-                <Default>0</Default>
+                <Default>1</Default>
             </ipsec_offload>
             <!-- An association's flows forwarded by the coprocessor itself: hw.octep.ipsec_flows=1
                  on the OCTEON TX, hw.npuep.ipsec_flows=1 on the ARMADA (since 2026-10-20). The
                  OCTEON TX driver's value 2 is never offered: it forwards matching clear text that
-                 arrives on the tunnel's port. -->
+                 arrives on the tunnel's port. On in a new install since 2026-11-14, with
+                 ipsec_offload, and taken by a reboot as it is. -->
             <ipsec_flows type="BooleanField">
                 <Required>Y</Required>
-                <Default>0</Default>
+                <Default>1</Default>
             </ipsec_flows>
             <!-- ARMADA only: keep IPsec's software sessions off the host's AMD ccp(4) (issue 399). -->
             <ipsec_soft_crypto type="BooleanField">
