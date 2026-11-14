@@ -155,6 +155,8 @@ rm -f "${PREFIX}/opnsense/scripts/health/library/OPNsense/RRD/Stats/XGSCoprocess
     "${PREFIX}/opnsense/scripts/health/definitions/system-xgs-coprocessor.xml" \
     "${PREFIX}/opnsense/scripts/health/definitions/system-xgs-flows.xml" \
     /var/db/os-xgs-npu/health-history.json
+# Offloaded Flows' record of the connections that left hardware (scripts/xgs/flows.py).
+rm -f /var/db/os-xgs-npu/flows-seen.json /var/db/os-xgs-npu/flows-gone.json
 # The GUI translations' merge, its hook and its trigger, from a version before 2026-10-22 (since
 # then the Arabic is in opnsense-arabic's catalogue). The strings already merged stay in the
 # catalogues until a catalogue is written again.

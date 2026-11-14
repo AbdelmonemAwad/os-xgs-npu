@@ -160,5 +160,43 @@ npuep_rows = fl.npuep('  6 rev 9 plain 12s | orig mflow 5 nhop 2 192.0.2.20:5100
 check('the tables\' rows carry the index and its revision',
       [(f['id'], f['rev']) for f in octep_rows + npuep_rows], [(5, 3), (6, 9)])
 
+# The next hop each direction leaves by (2026-11-14): the XGS 3300's per direction from "nhop N", the
+# XGS 136's from its line; the XGS 3300's table read for the MAC, MTU and VLAN, the neighbour's address
+# from ARP.
+octep_rows = fl.octep('   5 rev 3  proto 6  sweep asks pf with the orig tuple, list 1\n'
+                      '      orig  0x0a0200c0:50001 -> 0x076433c6:443  slot 7 rev 1  active    '
+                      'nhop 4  in oxp2 (tag 0x0002)  punts 0\n'
+                      '      reply  0x076433c6:443 -> 0x0a0200c0:50001  slot 8 rev 1  active    '
+                      'nhop 2  in oxp1 (tag 0x0001)  punts 0\n')
+check('XGS 3300: each direction\'s next hop', octep_rows[0]['nhop'], [4, 2])
+check('XGS 136: each direction\'s next hop', npuep_rows[0]['nhop'], [2, 1])
+fl.run = lambda argv: '? (192.0.2.1) at 00:11:22:33:44:55 on igc0 expires in 1180 seconds [ethernet]\n' \
+    if argv[0] == '/usr/sbin/arp' else ''
+hops = fl.next_hops('  4 rev 1  refs 2  iface 1  to 00:11:22:33:44:55  from 00:aa:bb:cc:dd:ee  mtu 1500\n'
+                    '  2 rev 1  refs 1  iface 0  to 66:77:88:99:aa:bb  from 00:aa:bb:cc:dd:ef  mtu 1500  vlan 20\n')
+check('the next hop table: the neighbour\'s address behind its MAC',
+      hops['4'], {'mac': '00:11:22:33:44:55', 'mtu': 1500, 'vlan': 0, 'address': '192.0.2.1'})
+check('the next hop table: a VLAN, and no address known', (hops['2']['vlan'], hops['2']['address']), (20, ''))
+
+# Left hardware: a connection in the last listing and not in this one, with what pf says of it now.
+import tempfile
+with tempfile.TemporaryDirectory() as tmp:
+    fl.SEEN = os.path.join(tmp, 'seen.json')
+    fl.GONE = os.path.join(tmp, 'gone.json')
+    a = {'id': 5, 'rev': 3, 'protocol': 'TCP', 'src': '192.0.2.20', 'sport': 50001, 'dst': '203.0.113.9', 'dport': 443}
+    b = {'id': 6, 'rev': 1, 'protocol': 'UDP', 'src': '192.0.2.21', 'sport': 4000, 'dst': '203.0.113.9', 'dport': 53}
+    first = fl.track([a, b], True, now=1000)
+    check('the first listing: nothing left yet', (first['gone'], first['since']), ([], None))
+    fl.run = lambda argv: 'all udp 192.0.2.21:4000 -> 203.0.113.9:53       MULTIPLE:SINGLE\n' \
+        if argv[0] == '/sbin/pfctl' else ''
+    second = fl.track([], True, now=1010)
+    check('both gone between the two listings, newest last', [(g['id'], g['after'], g['before']) for g in second['gone']],
+          [(5, 1000, 1010), (6, 1000, 1010)])
+    check('what pf says of each now', [g['pf'] for g in second['gone']], ['gone', 'state'])
+    third = fl.track([a], False, now=1020)
+    check('a listing cut short: nothing told, and the next whole one starts again',
+          (len(third['gone']), third['complete'], os.path.exists(fl.SEEN)), (2, False, False))
+    check('after a cut-short listing, a whole one tells nothing new', len(fl.track([], True, now=1030)['gone']), 2)
+
 print('%d failed' % len(FAILED) if FAILED else 'all passed')
 sys.exit(1 if FAILED else 0)
