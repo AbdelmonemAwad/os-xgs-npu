@@ -181,7 +181,7 @@ number - set by `CONN_MODIFY_FP`, whose handler is present. It is the hook for p
 fast path takes the words and holds them, read back exactly, but two connections sharing a congested
 port kept their shares with the bit on one; what it would decide is not reachable with this firmware
 ([measured](../measurements/port-qos-2026-10-24.md)). The instrument is octep's alone, `dp.conn_qos`
-(`contrib/octep/octep_dp.c:9747`); npuep has the words' layout (`contrib/npuep/npuep.h:283-285`)
+(`contrib/octep/octep_dp.c:9760`); npuep has the words' layout (`contrib/npuep/npuep.h:283-285`)
 and nothing that writes them.
 
 ### The QoS commands

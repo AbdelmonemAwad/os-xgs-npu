@@ -178,6 +178,7 @@ FASTPATH_REASONS = [
     ("netmap", "dp.netmap_refused", "flow.netmap_refused", "connections"),
     ("netmap_cut", "dp.netmap_cut_refused", "flow.netmap_cut_refused", "connections"),
     ("ipv6", "dp.flow_v6_refused", "flow.v6_refused", "connections"),
+    ("ppp", "dp.flow_ppp_refused", "flow.ppp_refused", "attempts"),
     ("ipsec", None, "flow.ipsec_refused", "connections"),
     ("bridged", "dp.flow_bridged_kept", "flow.bridged_kept", "attempts"),
     ("vlan", None, "flow.vlan_kept", "attempts"),

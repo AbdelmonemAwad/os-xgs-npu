@@ -19,10 +19,10 @@ to a new image, and the checks fail on one without them.
 |---|---|---|
 | [screens/](screens/) | The web interface, page by page, in English and in Arabic | 108 |
 | [hardware/](hardware/) | Photographs and drawings of the appliances, one folder each | 41 |
-| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 851 |
+| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 859 |
 | [readme/](readme/) | The README's banner and status board, drawn by tools/readme-art.py | 6 |
 
-1045 images in all.
+1053 images in all.
 
 ## The web interface
 
@@ -1051,6 +1051,21 @@ The page: [ports-own-addresses-2026-10-24.md](../measurements/ports-own-addresse
 | [08-on-3300-to-pc-mtu1500.png](measurements/powerd-2026-10-17/08-on-3300-to-pc-mtu1500.png) |  | [appliance-defaults.md](../octep/appliance-defaults.md) |
 | [09-on-pc-to-3300-mtu9000.png](measurements/powerd-2026-10-17/09-on-pc-to-3300-mtu9000.png) |  | [appliance-defaults.md](../octep/appliance-defaults.md) |
 | [10-on-3300-to-pc-mtu9000.png](measurements/powerd-2026-10-17/10-on-3300-to-pc-mtu9000.png) |  | [appliance-defaults.md](../octep/appliance-defaults.md) |
+
+### measurements/pppoe-3300-2026-11-14/ (8)
+
+The page: [pppoe-3300-2026-11-14.md](../measurements/pppoe-3300-2026-11-14.md).
+
+| image | what it shows | used on |
+|---|---|---|
+| [01-a-ethernet-maker-on-jail-sends.png](measurements/pppoe-3300-2026-11-14/01-a-ethernet-maker-on-jail-sends.png) | A, Ethernet, maker on, the jail sends: 934 to 941 Mbit/s, 99 % wire to wire, the CPUs 1 to 3 % busy | [pppoe-3300-2026-11-14.md](../measurements/pppoe-3300-2026-11-14.md) |
+| [02-a-ethernet-maker-on-jail-receives.png](measurements/pppoe-3300-2026-11-14/02-a-ethernet-maker-on-jail-receives.png) | A, Ethernet, maker on, the jail receives: 798 to 941 Mbit/s, 99 % wire to wire | [pppoe-3300-2026-11-14.md](../measurements/pppoe-3300-2026-11-14.md) |
+| [03-b-ethernet-maker-off-jail-sends.png](measurements/pppoe-3300-2026-11-14/03-b-ethernet-maker-off-jail-sends.png) | B, Ethernet, maker off, the jail sends: 803 to 941 Mbit/s, every frame to the host, the CPUs 9 to 13 % busy | [pppoe-3300-2026-11-14.md](../measurements/pppoe-3300-2026-11-14.md) |
+| [04-b-ethernet-maker-off-jail-receives.png](measurements/pppoe-3300-2026-11-14/04-b-ethernet-maker-off-jail-receives.png) | B, Ethernet, maker off, the jail receives: 853 to 941 Mbit/s, the busiest CPU 19 to 36 % | [pppoe-3300-2026-11-14.md](../measurements/pppoe-3300-2026-11-14.md) |
+| [05-c-pppoe-maker-on-jail-sends.png](measurements/pppoe-3300-2026-11-14/05-c-pppoe-maker-on-jail-sends.png) | C, PPPoE, maker on, the jail sends: 835 to 931 Mbit/s, none in hardware, flow_nonhop up 176 to 188 a run | [pppoe-3300-2026-11-14.md](../measurements/pppoe-3300-2026-11-14.md) |
+| [06-c-pppoe-maker-on-jail-receives.png](measurements/pppoe-3300-2026-11-14/06-c-pppoe-maker-on-jail-receives.png) | C, PPPoE, maker on, the jail receives: 909 to 933 Mbit/s, one CPU 54 to 73 % busy | [pppoe-3300-2026-11-14.md](../measurements/pppoe-3300-2026-11-14.md) |
+| [07-d-pppoe-maker-off-jail-sends.png](measurements/pppoe-3300-2026-11-14/07-d-pppoe-maker-off-jail-sends.png) | D, PPPoE, maker off, the jail sends: 909 to 933 Mbit/s, none in hardware | [pppoe-3300-2026-11-14.md](../measurements/pppoe-3300-2026-11-14.md) |
+| [08-d-pppoe-maker-off-jail-receives.png](measurements/pppoe-3300-2026-11-14/08-d-pppoe-maker-off-jail-receives.png) | D, PPPoE, maker off, the jail receives: 856 to 933 Mbit/s, one CPU 54 to 63 % busy | [pppoe-3300-2026-11-14.md](../measurements/pppoe-3300-2026-11-14.md) |
 
 ### measurements/qsched-2026-10-25/ (4)
 

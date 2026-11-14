@@ -56,7 +56,7 @@ The LIF table is addressed `(iface_id << 12) | vlan`, which the driver writes at
 Interface units were handed out in `dp.if_add` order, at `if_initname(ifp, "oxp", sc->dp_nif)`,
 until 2026-11-06. Since then the bring-up gives each port its unit, `dp.if_unit` before its
 `dp.if_add` - its place on the model's panel, which is the same order - at
-`if_initname(ifp, "oxp", (int)unit)` - `contrib/octep/octep_dp.c:12651` - so that a port whose
+`if_initname(ifp, "oxp", (int)unit)` - `contrib/octep/octep_dp.c:12664` - so that a port whose
 interface is not made leaves its unit empty rather than renaming the ports after it (the review's
 O3). The bring-up script adds the two cages first and then the ten switch ports, so:
 

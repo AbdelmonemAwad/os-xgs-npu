@@ -395,6 +395,7 @@
             netmap: "{{ lang._('On a port the Intrusion Detection reads in IPS mode') }}",
             netmap_cut: "{{ lang._('Inspected, on a port the Intrusion Detection reads in IPS mode') }}",
             ipv6: "{{ lang._('IPv6 that pf translates') }}",
+            ppp: "{{ lang._('Out of a PPP link, such as PPPoE') }}",
             ipsec: "{{ lang._('Covered by an IPsec policy') }}",
             bridged: "{{ lang._('Bridged, and not a pair the coprocessor can bridge') }}",
             vlan: "{{ lang._('On a VLAN the coprocessor does not carry') }}",

@@ -7116,10 +7116,18 @@ octep_dp_flow_make(struct octep_softc *sc, const struct octep_pf_tuple *tin, uin
 	}
 	if (err != 0) {
 		sc->dp_flow_nonhop++;
+		if (err == EPROTONOSUPPORT)
+			sc->dp_flow_ppp_refused++;
 		sbuf_printf(sb, "no next hop for 0x%08x: %s\n",
 		    nha[d],
 		    bridged ? "a bridged connection, and the port the other direction arrives on "
 		    "has no link, or the frame carried no MACs" :
+		    err == EPROTONOSUPPORT ? "the route leaves by a PPP link (PPPoE, PPTP or L2TP), "
+		    "and the coprocessor is given nothing that can carry its header - the host keeps "
+		    "the connection" :
+		    err == EPFNOSUPPORT ? "the route leaves by an interface that is not Ethernet "
+		    "underneath - a tunnel's, or lo0 - and the coprocessor can only send out of a "
+		    "port" :
 		    err == EWOULDBLOCK ? "the neighbour is not resolved yet, and asking for it has "
 		    "just been done - try again in a moment" :
 		    err == ENETUNREACH ? (hint < 0 ? "the route leaves by an interface this driver "
@@ -9500,6 +9508,11 @@ octep_dp_add_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
 	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "flow_v6_refused",
 	    CTLFLAG_RD, &sc->dp_flow_v6_refused, 0,
 	    "IPv6 connections left to the host: translated, or covered by an IPsec policy");
+	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "flow_ppp_refused",
+	    CTLFLAG_RD, &sc->dp_flow_ppp_refused, 0,
+	    "attempts whose route leaves by a PPP link - PPPoE, PPTP or L2TP: the coprocessor is "
+	    "given nothing that can carry a PPP header, so the host keeps the connection. Counted in "
+	    "flow_nonhop as well");
 	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "flow_other_closing",
 	    CTLFLAG_RD, &sc->dp_flow_other_closing, 0,
 	    "attempts put off because the other direction had carried a FIN or RST not yet read");

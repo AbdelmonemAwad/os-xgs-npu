@@ -7,7 +7,8 @@
  * The OCTEON TX driver's octep_nhop_resolve, with the front ports asked of npugiu instead of the
  * datapath's own table. Everything the comments there say holds here: the net epoch is not
  * optional, fib 0 is the only one this appliance uses, a route out of an interface this driver
- * does not own is refused with ENETUNREACH unless the caller's hint names a front port with link,
+ * does not own is refused with ENETUNREACH unless the caller's hint names a front port with link, a
+ * route out of a PPP link with EPROTONOSUPPORT and out of any other non-Ethernet one with EPFNOSUPPORT,
  * and EWOULDBLOCK means arpresolve has just asked the neighbour and the caller should try again.
  */
 
@@ -192,6 +193,32 @@ npuep_nhop_ether(struct ifnet *ifp)
 }
 
 /*
+ * Whether that other interface is a PPP link: mpd5's netgraph interface, which OPNsense uses for
+ * PPPoE, PPTP and L2TP and names pppoeN, pptpN or l2tpN (its driver name stays "ng"), or ppp(8)'s
+ * tun. Its frames need a PPPoE and a PPP header, and nothing the coprocessor is given can carry
+ * one - no next hop, microflow or logical interface field holds a session - so a connection out of
+ * one stays with the host, and is told apart from the other refusals: it is not a fault.
+ */
+static int
+npuep_nhop_ppp(struct ifnet *ifp)
+{
+
+	return (if_gettype((if_t)ifp) == IFT_PPP ||
+	    strcmp(if_getdname((if_t)ifp), "ng") == 0);
+}
+
+/*
+ * The refusal for a route out of an interface that is not Ethernet underneath: EPROTONOSUPPORT for
+ * a PPP link, EPFNOSUPPORT for any other - a tunnel's.
+ */
+static int
+npuep_nhop_not_ether(struct ifnet *ifp)
+{
+
+	return (npuep_nhop_ppp(ifp) ? EPROTONOSUPPORT : EPFNOSUPPORT);
+}
+
+/*
  * A bridged connection's next hop: out of the port the other direction's frames come in on, which is
  * where the bridge has learned the far end is, named with the frame's own two MACs - which the
  * microflow's bridge control then leaves as they are, as it leaves the TTL (NPURPC_BRCTL_BRIDGED).
@@ -250,8 +277,9 @@ npuep_nhop_resolve(uint32_t dst, int hint_port, struct npuep_nhop *out)
 		return (EHOSTUNREACH);
 	}
 	if (!npuep_nhop_ether(ifp)) {
+		error = npuep_nhop_not_ether(ifp);
 		NET_EPOCH_EXIT(et);
-		return (ENETUNREACH);
+		return (error);
 	}
 	is_gw = (nh->nh_flags & NHF_GATEWAY) != 0;
 
@@ -357,8 +385,9 @@ npuep_nhop_resolve6(const uint32_t *dst6, int hint_port, struct npuep_nhop *out)
 		return (EHOSTUNREACH);
 	}
 	if (!npuep_nhop_ether(ifp)) {
+		error = npuep_nhop_not_ether(ifp);
 		NET_EPOCH_EXIT(et);
-		return (ENETUNREACH);
+		return (error);
 	}
 	is_gw = (nh->nh_flags & NHF_GATEWAY) != 0;
 
