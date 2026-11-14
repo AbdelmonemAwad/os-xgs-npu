@@ -29,8 +29,13 @@ SURICATA'S DROPS CUT IN HARDWARE TOO (ff-10, since 2026-11-14). XGS: Settings "C
 a frame of that connection - is cut the same way, its pf states killed and, with "Cut in hardware" on,
 its flow given the DROP verdict on the coprocessor first. Suricata drops only the frames it sees; a
 connection already carried by the coprocessor, or put there after the inspector's depth ("Inspect,
-then hardware"), would otherwise go on there. It acts only in IPS mode: in IDS mode nothing is
-logged as blocked. The block lists of os-blocklists and XGS: Settings' own lists are cut by their
+then hardware"), would otherwise go on there. It acts only while the Intrusion Detection runs in IPS
+mode (Netmap or Divert; in IDS mode nothing is logged as blocked), and only on what was logged since
+it began to: turned on, or back on, it does not reach back. Not every blocked alert is a cut (the
+review of 2026-11-14): Suricata ends the whole connection for most rules, but a few drop the one frame
+and let the connection go on - its own decoder, stream and application-layer event rules (signature ids
+2200000-2299999), and a match on a UDP or ICMP frame - and a UDP frame is easily forged with another's
+addresses to have its connection cut. So only TCP is cut, and not for those event rules. The block lists of os-blocklists and XGS: Settings' own lists are cut by their
 addresses (lists_cut.py, and os-blocklists' cut.py for the lists it owns), not here.
 
 A fingerprint newly listed is looked for in the whole log since it was last rotated, so listing one
@@ -100,6 +105,17 @@ def settings():
     return listed, problem, bad
 
 
+# The Intrusion Detection's capture modes that make Suricata an IPS (OPNsense's IDS model, general.mode:
+# pcap is IDS). Until 2026-11-14 this read general.ips, which OPNsense 26.7 does not have: in IPS mode
+# the summary said "IDS mode" (the review of 2026-11-14).
+IPS_MODES = ('netmap', 'divert')
+# Suricata's own event rules - decoder, stream and application-layer events (decoder-events.rules,
+# stream-events.rules and the rest of its rules folder) - take signature ids 2200000-2299999 by its
+# convention, and drop the frame, not the connection (their action applies to the packet, Suricata
+# 8.0 detect-engine-build.c). Their blocked alerts are not cuts.
+EVENT_SIDS = range(2200000, 2300000)
+
+
 def drops_setting():
     """(whether Suricata's drops are cut, what keeps them from being logged): cut_ips_drops, and the
     Intrusion Detection on in IPS mode."""
@@ -111,9 +127,20 @@ def drops_setting():
     ids = root.find('OPNsense/IDS/general')
     if ids is None or (ids.findtext('enabled') or '0') != '1':
         return on, 'Intrusion Detection is off'
-    if (ids.findtext('ips') or '0') != '1':
+    if (ids.findtext('mode') or '').strip() not in IPS_MODES and (ids.findtext('ips') or '0') != '1':
         return on, 'the Intrusion Detection is in IDS mode and drops nothing'
     return on, None
+
+
+def drop_left(ev):
+    """Why a blocked alert is not a cut, or None when it is one: only TCP - a UDP or ICMP frame is
+    easily forged with another's addresses, and Suricata drops such a frame alone - and not one of
+    Suricata's own event rules, which drop the frame and let the connection go on."""
+    if ev.get('proto') != 'tcp':
+        return 'not TCP'
+    if ev.get('drop') in EVENT_SIDS:
+        return 'an event rule of Suricata\'s, which drops the frame alone'
+    return None
 
 
 def stamp(text):
@@ -271,7 +298,19 @@ class Watch:
         listed = self.listed
         before = set(st.get('listed', []))
         summary = {'run': int(time.time()), 'listed': len(listed), 'read': 0, 'matched': 0, 'cut': 0}
-        if not listed and not self.drops:
+        # Suricata's drops are read only while they are cut and the Intrusion Detection runs in IPS
+        # mode, and only those logged since the save that made it so - config.xml's time, which is
+        # read when the watch sees it on: cron's next minute, or the settings page's apply at once -
+        # two minutes back at most, should the watch's own record have gone. Until 2026-11-14 it took
+        # every blocked alert since the log's last reading, so turning it on cut connections Suricata
+        # had blocked long before that and were still open.
+        drops = self.drops and not self.drops_problem
+        if drops and not st.get('drops_since'):
+            now = time.time()
+            st['drops_since'] = min(now, max(self.config_mtime or 0, now - 120))
+        elif not drops:
+            st.pop('drops_since', None)
+        if not listed and not drops:
             st['listed'] = []
             return summary
         fresh = [f for f in listed if f not in before]
@@ -288,12 +327,20 @@ class Watch:
             return summary
         with open(EVE, 'rb') as fh:
             fh.seek(start)
-            end, events = tls_events(fh, drops=self.drops)
+            end, events = tls_events(fh, drops=drops)
         summary['read'] = len(events)
         want = set(listed)
         matched = [e for e in events if e['ja4'] in want and (e['ja4'] in fresh or e['offset'] >= known)]
-        # a drop only once: from where the last reading stopped, never again with a fresh fingerprint
-        matched += [e for e in events if e.get('drop') is not None and e['offset'] >= known]
+        # a drop only once: from where the last reading stopped, never again with a fresh fingerprint;
+        # logged since the watch began; and only one that is a cut (drop_left)
+        since = st.get('drops_since') or 0
+        new_drops = [e for e in events if e.get('drop') is not None and e['offset'] >= known
+                     and e['at'] is not None and e['at'] >= since]
+        left = [e for e in new_drops if drop_left(e)]
+        if left:
+            summary['drops_left'] = len(left)
+            st['drops_left'] = st.get('drops_left', 0) + len(left)
+        matched += [e for e in new_drops if not drop_left(e)]
         summary['matched'] = len(matched)
         read_to = {'inode': info.st_ino, 'offset': end, 'listed': listed}
         if not matched:
@@ -301,6 +348,10 @@ class Watch:
             return summary
         # Where the reading stopped is kept only once pf's states are read: until 2026-11-06 it moved
         # first, and a failed read lost those connections for good. Now the same lines are read again.
+        # The time the states are listed at: their ages are counted back from it. Until 2026-11-14 it
+        # was read after the listing and its parsing, and on a large table a connection made just
+        # before its log line was taken for a later one and not cut.
+        listed_at = time.time()
         try:
             done = subprocess.run([PFCTL, '-ss', '-vv'], capture_output=True, text=True, errors='replace', timeout=120)
             if done.returncode != 0:
@@ -313,12 +364,13 @@ class Watch:
             return summary
         st.update(read_to)
         all_states = states(text)
-        cuts = to_cut(matched, all_states, time.time())
+        cuts = to_cut(matched, all_states, listed_at)
         # On the coprocessor first, at once and both ways, when "Cut in hardware" is on: every
         # connection both of whose ends belong to one state being cut, as pf names them - original
         # and translated - so a translated connection is found by either side's addresses. Each
-        # state's ends are kept apart (hwdrop.drop_ends): until 2026-11-06 they were one set.
-        groups = [st_ends for sid, _proto, st_ends, _age, _over in all_states if sid in cuts]
+        # state's ends are kept apart (hwdrop.drop_ends): until 2026-11-06 they were one set; and with
+        # its protocol, where the table says it (the XGS 3300's), since 2026-11-14.
+        groups = [(proto, st_ends) for sid, proto, st_ends, _age, _over in all_states if sid in cuts]
         summary['dropped'] = hwdrop.drop_ends(groups) if groups else 0
         per_conn = {}
         totals = st.setdefault('totals', {})
@@ -358,6 +410,9 @@ class Watch:
         if self.drops:
             text += '; what the IPS drops: %d connection%s cut in all' % (
                 self.status.get('drops_cut', 0), '' if self.status.get('drops_cut', 0) == 1 else 's')
+            if self.status.get('drops_left'):
+                text += ', %d drop%s not cut (not TCP, or an event rule of Suricata\'s)' % (
+                    self.status['drops_left'], '' if self.status['drops_left'] == 1 else 's')
             if self.drops_problem:
                 text += ' - ' + self.drops_problem
         return 'cut by TLS fingerprint: ' + text
@@ -418,7 +473,7 @@ def main(argv):
             summary = w.once()
             cut += summary['cut']
             conns += summary.get('connections', 0)
-            if not w.listed and not w.drops and seconds:
+            if not w.listed and not (w.drops and not w.drops_problem) and seconds:
                 break       # nothing to watch: the next minute's run looks again
             if time.monotonic() + EVERY > until:
                 break

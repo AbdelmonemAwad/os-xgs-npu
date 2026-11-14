@@ -128,6 +128,22 @@ check('XGS 3300: two cut at once drop those two only',
 check('XGS 3300: not the one that takes an end from each', d.writes,
       [('dev.octep.0.dp.flow_verdict', '2 1 7'), ('dev.octep.0.dp.flow_verdict', '3 1 1')])
 
+# With the state's protocol (2026-11-14): the XGS 3300's table names each connection's, and a TCP
+# state cut drops only a TCP connection on its ends - all of the table's here are TCP (proto 6) - so
+# a UDP one's group drops nothing; the XGS 136's table names none, and its connection is dropped as before.
+d = Driver('octeontx')
+use(d)
+check('XGS 3300: a TCP state cut drops its TCP connection',
+      hd.drop_ends([('tcp', {('10.0.0.2', 50002), ('203.0.113.9', 443)})], cfg.name), 1)
+d = Driver('octeontx')
+use(d)
+check('XGS 3300: a UDP state on the same ends drops no TCP connection',
+      (hd.drop_ends([('udp', {('10.0.0.2', 50002), ('203.0.113.9', 443)})], cfg.name), d.writes), (0, []))
+d = Driver('armada')
+use(d)
+check('XGS 136: no protocol in its table, the connection on those ends dropped as before',
+      hd.drop_ends([('udp', {('192.168.1.120', 51001), ('203.0.113.9', 22)})], cfg.name), 1)
+
 d = Driver('armada')
 use(d)
 check('XGS 136: a listed address dropped through flow.verdict', hd.drop_addresses({'203.0.113.9'}, cfg.name), 1)

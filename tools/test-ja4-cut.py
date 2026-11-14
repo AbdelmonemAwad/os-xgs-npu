@@ -264,44 +264,89 @@ try:
 
     # Suricata's IPS drops (ff-10): an alert logged as blocked cuts its connection as a listed
     # fingerprint does, with no fingerprint listed; an alert that was not blocked cuts nothing.
-    def alert(ts, src, sport, dst, dport, action):
+    def alert(ts, src, sport, dst, dport, action, sid=2019401, proto='TCP'):
         return ('{"timestamp":"%s","flow_id":2,"event_type":"alert","src_ip":"%s","src_port":%d,"dest_ip":"%s",'
-                '"dest_port":%d,"proto":"TCP","alert":{"action":"%s","signature_id":2210000,"signature":"x"}}\n'
-                % (ts, src, sport, dst, dport, action))
+                '"dest_port":%d,"proto":"%s","alert":{"action":"%s","signature_id":%d,"signature":"x"}}\n'
+                % (ts, src, sport, dst, dport, proto, action, sid))
 
-    def config_drops(on, ips=True):
+    # OPNsense 26.7's IDS model names the capture mode general.mode (pcap is IDS, netmap and divert
+    # IPS); until 2026-11-14 this read general.ips, which it does not have (the review of 2026-11-14)
+    def config_drops(on, mode='netmap', ips=None):
         with open(jc.CONFIG, 'w', encoding='utf-8') as fh:
             fh.write('<opnsense><OPNsense><XGS><general><cut_ja4></cut_ja4><cut_ips_drops>%d</cut_ips_drops>'
-                     '</general></XGS><IDS><general><enabled>1</enabled><ips>%d</ips></general></IDS></OPNsense>'
-                     '</opnsense>' % (on, ips))
+                     '</general></XGS><IDS><general><enabled>1</enabled>%s%s</general></IDS></OPNsense>'
+                     '</opnsense>' % (on, '<mode>%s</mode>' % mode if mode else '',
+                                       '<ips>%d</ips>' % ips if ips is not None else ''))
         t = os.stat(jc.CONFIG).st_mtime + 2
         os.utime(jc.CONFIG, (t, t))
 
-    config_drops(1, ips=False)
-    check('in IDS mode the drops are said to cut nothing', jc.drops_setting(),
+    config_drops(1, mode='pcap')
+    check('in IDS mode (pcap) the drops are said to cut nothing', jc.drops_setting(),
           (True, 'the Intrusion Detection is in IDS mode and drops nothing'))
+    config_drops(1, mode='divert')
+    check('Divert is IPS too', jc.drops_setting(), (True, None))
+    config_drops(1, mode=None, ips=1)
+    check('an older OPNsense: its IPS switch', jc.drops_setting(), (True, None))
     config_drops(1)
-    check('in IPS mode nothing keeps them', jc.drops_setting(), (True, None))
+    check('in IPS mode (netmap) nothing keeps them', jc.drops_setting(), (True, None))
     killed.clear()
     verdicts.clear()
     jc.STATUS = os.path.join(work, 'status-drops.json')
+    # the watch's first reading: a blocked alert logged before it began is history, not a cut
     with open(jc.EVE, 'w', encoding='utf-8', newline='\n') as fh:
         fh.write(alert(T0, '192.168.1.40', 50000, '203.0.113.20', 443, 'blocked'))
-        fh.write(alert(T0, '192.168.1.41', 50001, '203.0.113.21', 443, 'allowed'))
     w = jc.Watch()
     s = w.once()
-    check('a blocked alert cuts its connection, an allowed one nothing', killed, ['a52ad56a00000000'])
+    check('turned on: a drop logged before it began is not cut', (killed, w.status.get('drops_since')), ([], now))
+    T1 = '2026-10-19T03:04:00.641496+0000'      # five seconds after the watch began
+    with open(jc.EVE, 'a', encoding='utf-8', newline='\n') as fh:
+        fh.write(alert(T1, '192.168.1.40', 50000, '203.0.113.20', 443, 'blocked'))
+        fh.write(alert(T1, '192.168.1.41', 50001, '203.0.113.21', 443, 'allowed'))
+        fh.write(alert(T1, '192.168.1.41', 50001, '203.0.113.21', 443, 'blocked', proto='UDP'))
+        fh.write(alert(T1, '192.168.1.41', 50001, '203.0.113.21', 443, 'blocked', sid=2210045))
+    jc.time.time = lambda: now + 6
+    s = w.once()
+    check('a blocked alert cuts its connection; an allowed one nothing; UDP and an event rule not',
+          killed, ['a52ad56a00000000'])
     check('dropped on the coprocessor first', verdicts, ['2 1 1'])
-    check('counted as a drop, not as a fingerprint', (w.status.get('drops_cut'), w.status.get('totals', {})),
-          (1, {}))
+    check('counted as a drop, not as a fingerprint, and the two left counted',
+          (w.status.get('drops_cut'), w.status.get('totals', {}), w.status.get('drops_left')), (1, {}, 2))
+    check('the message says what was left', 'drops not cut' in w.message(s), True)
     killed.clear()
     s = w.once()
     check('read once: not cut again at the next reading', killed, [])
     config_drops(0)
     killed.clear()
-    jc.STATUS = os.path.join(work, 'status-drops-off.json')
-    s = jc.Watch().once()
-    check('off: nothing read, nothing cut', (killed, s['read']), ([], 0))
+    s = w.once()
+    check('off: nothing read, nothing cut, the start forgotten', (killed, s['read'], 'drops_since' in w.status),
+          ([], 0, False))
+    # back on: what Suricata blocked while it was off is not reached back for
+    with open(jc.EVE, 'a', encoding='utf-8', newline='\n') as fh:
+        fh.write(alert(T1, '192.168.1.41', 50001, '203.0.113.21', 443, 'blocked'))
+    config_drops(1)
+    jc.time.time = lambda: now + 60
+    s = w.once()
+    check('back on: a drop logged while it was off is not cut', killed, [])
+    config_drops(1, mode='pcap')
+    s = w.once()
+    check('in IDS mode the log is not read for drops', (s['read'], 'drops_since' in w.status), (0, False))
+    # Turned on by a save half a minute before the watch's next reading (cron's next minute): what was
+    # blocked after that save is cut, though the watch began later (seen on the XGS 136, 2026-11-14:
+    # the start was the watch's own, and an alert five seconds before it was taken for history).
+    config_drops(1)
+    os.utime(jc.CONFIG, (now + 400, now + 400))
+    jc.time.time = lambda: now + 430
+    w2 = jc.Watch()
+    w2.status = {}
+    w2.reload()
+    w2.once()
+    check('the start is the save that turned it on', w2.status.get('drops_since'), now + 400)
+    os.utime(jc.CONFIG, (now - 5000, now - 5000))
+    w3 = jc.Watch()
+    w3.status = {}
+    w3.reload()
+    w3.once()
+    check('two minutes back at most, should its own record have gone', w3.status.get('drops_since'), now + 430 - 120)
     jc.time.time = real_time
 finally:
     shutil.rmtree(work, ignore_errors=True)

@@ -99,7 +99,7 @@
             <id>xgs.general.cut_ips_drops</id>
             <label>Cut what the IPS drops</label>
             <type>checkbox</type>
-            <help>Suricata drops only the frames it sees. A connection the coprocessor already carries, or put in hardware after the inspector's depth, goes on there. On, every alert the Intrusion Detection logs as blocked cuts its connection as a listed fingerprint does: its states are killed, and with Cut in hardware on it is dropped on the coprocessor first. Read every two seconds. It acts only while the Intrusion Detection runs in IPS mode: in IDS mode nothing is logged as blocked. The XGS log says what was cut.</help>
+            <help>Suricata drops only the frames it sees. A connection the coprocessor already carries, or put in hardware after the inspector's depth, goes on there. On, every alert the Intrusion Detection logs as blocked for a TCP connection cuts it as a listed fingerprint does: its states are killed, and with Cut in hardware on it is dropped on the coprocessor first. Not UDP or ICMP, whose frames are easily forged with another's addresses, and not Suricata's own decoder, stream and application-layer event rules (signature ids 2200000 to 2299999): they drop the frame and let the connection go on. Only what is logged after it is turned on; read every two seconds. It acts only while the Intrusion Detection runs in IPS mode: in IDS mode nothing is logged as blocked. The XGS log says what was cut.</help>
         </field>
         <field>
             <id>xgs.general.cut_in_hardware</id>
