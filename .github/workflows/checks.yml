@@ -173,6 +173,15 @@ jobs:
       - name: The recovery in place, to its end
         run: python3 tools/test-recover.py
 
+      # switch.sh against a made-up switch chip: every register it writes read first in the same run, a
+      # value that never reads the same three times stopping the command before any write, off writing
+      # the kept value back and comparing it, the ingress rate limiter (PIRL) and the VLAN table (both
+      # held) read and never written, and a front-port name it does not know refused before the
+      # coprocessor is asked.
+      # tools/test-switch.py.
+      - name: The switch tool's reads, writes and put-backs
+        run: python3 tools/test-switch.py
+
       # Which connections a block list cuts is decided from pf's own text: a state matched wrongly
       # is a connection cut for nothing, one missed stays open to a listed address.
       - name: The block lists' cut

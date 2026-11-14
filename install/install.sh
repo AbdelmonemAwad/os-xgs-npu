@@ -142,6 +142,10 @@ done
 # its start hook, and the switch tool it puts on the coprocessor (an aarch64 binary for the
 # coprocessor, not for this host - contrib/mvsw).
 install -m 0755 "${SRC}/src/opnsense/scripts/xgs/switch-jumbo.sh" "${PREFIX}/opnsense/scripts/xgs/switch-jumbo.sh"
+# The switch chip set by hand from the command line - mirroring and an egress limit -
+# each read before it is written and put back as found (switch.sh; its state in
+# /var/db/os-xgs-npu/switch.state).
+install -m 0755 "${SRC}/src/opnsense/scripts/xgs/switch.sh" "${PREFIX}/opnsense/scripts/xgs/switch.sh"
 install -d -m 0755 "${PREFIX}/etc/rc.syshook.d/start" "${PREFIX}/share/os-xgs-npu"
 install -m 0755 "${SRC}/src/etc/rc.syshook.d/start/09-xgs-switch-jumbo" "${PREFIX}/etc/rc.syshook.d/start/09-xgs-switch-jumbo"
 # The host's hardware watchdog: armed at the end of every boot when the setting says so, and
