@@ -181,7 +181,7 @@ number - set by `CONN_MODIFY_FP`, whose handler is present. It is the hook for p
 fast path takes the words and holds them, read back exactly, but two connections sharing a congested
 port kept their shares with the bit on one; what it would decide is not reachable with this firmware
 ([measured](../measurements/port-qos-2026-10-24.md)). The instrument is octep's alone, `dp.conn_qos`
-(`contrib/octep/octep_dp.c:9447`); npuep has the words' layout (`contrib/npuep/npuep.h:283-285`)
+(`contrib/octep/octep_dp.c:9747`); npuep has the words' layout (`contrib/npuep/npuep.h:283-285`)
 and nothing that writes them.
 
 ### The QoS commands
@@ -294,7 +294,7 @@ refused every association - its `SA_ADD` is 200 bytes (#759, fixed in #760) - an
 `SA_GET_STATS` reads 0, as the XGS 136's does (#761)
 ([measured](../measurements/ipsec-step-2026-10-25.md)). They are sent by hand only, as they were for
 that measurement: octep's RPC probe builds all three as `rpc.cmd` 33 to 35, behind `rpc.allow_write`
-(`contrib/octep/octep_rpc.c:977-1000`, from `SA_REPLAY_UPDATE` on), and npuep's `rpc_channel.command`
+(`contrib/octep/octep_rpc.c:989-1012`, from `SA_REPLAY_UPDATE` on), and npuep's `rpc_channel.command`
 sends any command by its number (`contrib/npuep/npurpc.c:1770`).
 
 ### Ciphers nobody has tried
