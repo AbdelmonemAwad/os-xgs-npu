@@ -58,7 +58,9 @@ KERNEL_SPI = re.compile(r'\bspi=\d+\(0x([0-9a-f]+)\)')
 # A block's first line, its two addresses; an association in UDP (NAT-T) has each one's port after it
 # in brackets, "192.0.2.1[4500] 198.51.100.2[4500]", as setkey prints it (pfkey_sadump). Until
 # 2026-11-06 the brackets were not allowed for, and on the XGS 136 such an association had no row.
-KERNEL_ENDS = re.compile(r'^([0-9a-fA-F.:]+)(?:\[\d+\])? ([0-9a-fA-F.:]+)(?:\[\d+\])?$')
+# A link-local end carries its scope, "fe80::1%oxp9", which setkey prints before the port (2026-11-14:
+# until then such a block was not read, and its associations had no row and no cipher).
+KERNEL_ENDS = re.compile(r'^([0-9a-fA-F.:]+)(?:%[^\s\[\]]+)?(?:\[\d+\])? ([0-9a-fA-F.:]+)(?:%[^\s\[\]]+)?(?:\[\d+\])?$')
 # an association's counts in setkey -D: what its lifetime runs on, and the part the driver reported
 KERNEL_BYTES = re.compile(r'^\s*current: (\d+)\(bytes\)')
 KERNEL_ALLOC = re.compile(r'^\s*allocated: (\d+)')

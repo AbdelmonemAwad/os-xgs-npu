@@ -143,7 +143,7 @@
             <id>xgs.general.ipsec_offload</id>
             <label>IPsec in the coprocessor's engine</label>
             <type>checkbox</type>
-            <help>Encrypt and decrypt the tunnels configured under VPN: IPsec in the coprocessor's crypto engine instead of the host's CPU (AES-GCM, and AES-CBC with an HMAC). Written as a loader tunable through System: Settings: Tunables, because the driver has to have it before the tunnels come up: it takes effect at the next reboot. On in a new install, from the first Apply of this page and the reboot after it.</help>
+            <help>Encrypt and decrypt the tunnels configured under VPN: IPsec in the coprocessor's crypto engine instead of the host's CPU (AES-GCM, and AES-CBC with an HMAC). Written as a loader tunable through System: Settings: Tunables, because the driver has to have it before the tunnels come up: it takes effect at the next reboot. On in a new install: the install writes the tunable, and the driver has it from its next start.</help>
         </field>
         <field>
             <id>xgs.general.ipsec_flows</id>
