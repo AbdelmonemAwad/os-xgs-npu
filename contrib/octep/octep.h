@@ -3127,6 +3127,13 @@ struct octep_dp_oq {
 					 OCTEP_FW_CFG_IPS | OCTEP_FW_CFG_FINTRACK | \
 					 OCTEP_FW_CFG_FP_PKT_DUMP | OCTEP_FW_CFG_INJ_RECOVERY | \
 					 OCTEP_FW_CFG_DROP_IF_IPS_OFF)
+/*
+ * How long FP_PKT_DUMP, when the driver asked for it itself while a packet capture ran on a front
+ * port (dp.capture_auto, octep_dp_capture_auto), outlasts the last capture the link poll saw, in
+ * seconds. The poll runs about once a second, so the copies are given up about five seconds after
+ * a capture ends, and a capture started again within that finds them still running.
+ */
+#define	OCTEP_DP_CAPTURE_HOLD		5
 
 static __inline int
 octep_rpc_cmd_is_read(uint32_t cmd)
@@ -3402,6 +3409,27 @@ struct octep_softc {
 	uint64_t		 dp_mirror_noport;
 	uint64_t		 dp_mirror_bad;
 	uint64_t		 dp_mirror_nomem;
+	/*
+	 * Those copies asked for by the driver while a packet capture runs on a front port
+	 * (dp.capture_auto, octep_dp_capture_auto, from the link poll): the knob; the uptime of the
+	 * last poll that saw a capture, 0 for none yet, the port it was on and the process that opened
+	 * its BPF descriptor; the uptime of the last write for it that failed, 0 once one is taken -
+	 * the next waits OCTEP_DP_CAPTURE_HOLD seconds and is quiet; and the counts. seen_at, seen_if,
+	 * seen_pid and failed_at are under sc->mtx; the counts are written by the poll alone, or under
+	 * sc->mtx.
+	 */
+	uint32_t		 dp_cap_auto;
+	time_t			 dp_cap_seen_at;
+	char			 dp_cap_seen_if[IFNAMSIZ];
+	pid_t			 dp_cap_seen_pid;
+	time_t			 dp_cap_failed_at;
+	uint64_t		 dp_cap_on;		/* the copies turned on, the fast path took it */
+	uint64_t		 dp_cap_off;		/* ... and off again */
+	uint64_t		 dp_cap_failed;		/* writes for it not taken, or not answered */
+	uint64_t		 dp_cap_seen;		/* polls that found a capture */
+	uint64_t		 dp_cap_unpromisc;	/* ... only listeners not asking for promiscuous mode */
+	uint64_t		 dp_cap_portpromisc;	/* ... of them, one on a port promiscuous anyway */
+	uint64_t		 dp_cap_unneeded;	/* ... a capture, and nothing to add to the word */
 	/*
 	 * The head of each type's last message, from its Ethernet header on, for dp.cmsg_last: how the
 	 * interface counts (type 0) are laid out is read here before anything relies on it.
@@ -4144,6 +4172,20 @@ struct octep_softc {
 
 	/* struct fw_state, which the three firewall-state commands write one field of each. */
 	uint32_t		 rpc_fw_cfg;
+	/*
+	 * fw_cfg is one word with two writers, and FW_CFG_PARAMS_SET replaces all of it. rpc_fw_cfg is
+	 * the owner's - the one offload.sh reads back and writes, as XGS: Settings left it - and
+	 * rpc_fw_cfg_auto is the driver's own: FP_PKT_DUMP while a packet capture runs on a front port
+	 * (dp.capture_auto), 0 otherwise. octep_rpc_post ORs rpc_fw_cfg_auto into every
+	 * FW_CFG_PARAMS_SET: into rpc_fw_cfg for a post from rpc.post, into rpc_fw_cfg_held for the
+	 * driver's own (octep_rpc_fw_cfg_auto). So a write by either keeps the other's bits, and with
+	 * rpc_fw_cfg_auto 0 the owner's word goes alone, as before. The two _held are the parts of the
+	 * last word the far side accepted, rc 0, since no command reads it back: 0 until it has
+	 * accepted one. These three are written under sc->mtx.
+	 */
+	uint32_t		 rpc_fw_cfg_auto;
+	uint32_t		 rpc_fw_cfg_held;
+	uint32_t		 rpc_fw_cfg_auto_held;
 	uint32_t		 rpc_fw_rev;
 	uint32_t		 rpc_fw_l3_rev;
 
@@ -4487,6 +4529,8 @@ int	octep_rpc_conn_reclaim(struct octep_softc *sc, const struct octep_conn *c,
 	    uint8_t *seq);
 int	octep_rpc_conn_tcp_state(struct octep_softc *sc, uint32_t idx, uint16_t rev, uint8_t *seq);
 int	octep_rpc_live_uid(struct octep_softc *sc, int add, uint32_t uid);
+/* fw_cfg with the driver's own bits (rpc_fw_cfg_auto) on the owner's accepted word; sc->mtx held */
+int	octep_rpc_fw_cfg_auto(struct octep_softc *sc, int quiet);
 int	octep_rpc_conn_luid(struct octep_softc *sc, const struct octep_conn *c, uint32_t uid);
 int	octep_rpc_conn_qos(struct octep_softc *sc, const struct octep_conn *c, uint32_t which,
 	    uint32_t qos_orig, uint32_t qos_reply);

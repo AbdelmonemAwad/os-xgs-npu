@@ -71,6 +71,7 @@
 #include <net/if_var.h>
 #include <net/if_vlan_var.h>
 #include <net/bpf.h>
+#include <net/bpfdesc.h>	/* struct bpf_d's bd_promisc, for octep_dp_bpf_promisc */
 /*
  * For ifp->if_bridge, which is how the kernel itself asks whether an interface is a bridge
  * member and has no accessor in the if_t KPI. See octep_dp_if_filters() for the argument; the
@@ -2246,6 +2247,187 @@ octep_dp_mirror(struct octep_softc *sc, const uint8_t *p, const uint8_t *end)
 }
 
 /*
+ * Those copies, asked for by the driver while a packet capture runs on a front port
+ * (dp.capture_auto): from the link poll, about once a second.
+ *
+ * Until now only the owner asked for them, by hand - XGS: Settings "Copies for packet capture" - so
+ * a capture on a port showed nothing of a connection once it was in hardware unless they had been
+ * turned on first. The vendor's firmware turns its fast path off while tcpdump runs; this leaves it
+ * on and asks for the copies instead, while a capture is seen and OCTEP_DP_CAPTURE_HOLD seconds
+ * after, so a capture started again at once still finds them. With the copies on, a capture on the
+ * second XGS 3300 held every frame of a 500 Mbit/s stream in hardware
+ * (docs/measurements/capture-10g-2026-11-11.md); they were partial at 3.64 Gbit/s and on some boots
+ * of vendor version 22 (mirror-2026-10-25.md), and what they cost the host has not been read. Asking
+ * for them by itself changes none of that.
+ *
+ * WHAT IS TAKEN FOR A CAPTURE: a BPF descriptor on a front port that itself asked for promiscuous
+ * mode (BIOCPROMISC, which sets its bd_promisc and is the 'p' netstat -B shows) - not the port's
+ * promiscuous mode, and not a listener alone. tcpdump asks for it unless run with -p, and so does
+ * OPNsense's Interfaces: Diagnostics: Packet Capture with its Promiscuous box clear, the default:
+ * its capture.py passes -p when the box is ticked. A DHCP client holds a BPF descriptor on its
+ * interface for as long as it runs and never asks - dhclient's has a read filter and no BIOCPROMISC
+ * - and neither does OPNsense's host discovery, hostwatch, which holds one on every port. Until
+ * 2026-11-13 the test was a listener on a port in promiscuous mode, and if_bridge makes every member
+ * promiscuous: on the XGS 3300 with bridge1 = oxp4 + oxp5, hostwatch's descriptors (netstat -B, no
+ * 'p') kept the copies on for as long as the bridge stood, 800 polls, and 4 streams at line rate
+ * cost the host 9-14 % of its CPU against 0-5 % with them off (item 19). A port's promiscuous mode
+ * (if_pcount) cannot be split by holder - if_bridge, vlan(4) and lagg(4) passing theirs on,
+ * ifconfig's promisc, Suricata through netmap and a capture each add one - so it is not read here.
+ *
+ * HOW IT IS READ: the port's own list of BPF readers (bif_dlist, what bpf_peers_present() reads)
+ * walked in the network epoch, which is what the taps rely on - BPF unlinks a descriptor under its
+ * global lock and frees it only after the epoch (bpf.c, "LOCKING MODEL USED BY BPF") - and each
+ * descriptor's bd_promisc read without its lock: a byte written under BPF's global lock, and a stale
+ * read is right at the next poll. A port with no reader costs a load, as before; with a few, a few
+ * loads; no lock, no allocation, nothing BPF or a running capture waits on. The other ways were
+ * kernel_sysctlbyname("net.bpf.stats"), whose handler passes priv_check(PRIV_NET_BPF) from a kernel
+ * thread (proc0's credential) but takes BPF's global lock exclusively, every descriptor's own lock,
+ * and an allocation the size of every descriptor on the box, once a second, and comes back in two
+ * calls that race a descriptor opened between them; and if_pcount less the references known holders
+ * take, which nothing records. The price: struct bpf_d (net/bpfdesc.h) and struct bpf_if_ext
+ * (net/bpf.h) are kernel-internal, and this module is built against the running kernel's own
+ * sources and refuses to load against any other (see the include of net/if_private.h). FreeBSD's
+ * main has since dropped struct bpf_if_ext and put bif_dlist first in struct bpf_if: there the list
+ * is (struct bpfd_list *)ifp->if_bpf, as its bpf_peers_present() reads it.
+ *
+ * WHAT THIS MISSES: tcpdump -p, and that page with the box ticked, which look like hostwatch or a
+ * DHCP client; and that page on a port already in netmap mode, which it reads through netmap's
+ * monitor (netmap:<port>/tr) and not through BPF - octep_dp_mirror gives the copies to BPF alone, so
+ * they would not reach it either. A capture on the bridge, a vlan(4) or a lagg(4) over the ports
+ * and not on a port is not seen, as before. What it takes for a capture and is not one: any other
+ * program that asks BPF for promiscuous mode on a port. Then the copies run for as long as it does,
+ * as if the owner had asked for them: the fast path copies every frame it forwards, on every port,
+ * and those for a port nobody listens on are counted in dp.mirror and dropped. dp.capture_auto 0
+ * ends that. dp.capture_auto_unpromisc counts the polls that found only listeners not asking -
+ * hostwatch, a DHCP client, tcpdump -p - and dp.capture_auto_portpromisc those of them with such a
+ * listener on a port promiscuous anyway, a bridge member's hostwatch: what the old test took for a
+ * capture.
+ *
+ * THE WORD. FW_CFG_PARAMS_SET replaces the whole of fw_cfg, so the driver's bit is kept apart from
+ * the owner's (rpc_fw_cfg_auto beside rpc_fw_cfg, octep.h) and every write of the word carries both:
+ * offload.sh's keeps the copies, and the driver's sends the owner's word as the far side last
+ * accepted it with only its own bit changed, so a bit the owner set is never cleared. Nothing is
+ * asked while that word leaves the gate shut - OFFLOAD clear: nothing is forwarded in hardware and
+ * every frame reaches the host and its capture, as at every boot until offload.sh has written the
+ * word - or carries FP_PKT_DUMP itself, the owner's copies running anyway. A write not accepted
+ * records nothing, and a poll asks again once OCTEP_DP_CAPTURE_HOLD seconds have passed, quietly:
+ * the poll is the retry, as it is for the ports' receive filters.
+ *
+ * Called by the link poll, which may sleep, with no lock held. The write takes sc->mtx, as the
+ * driver's other writes do, and waits for its answer without sleeping, up to OCTEP_RPC_CMD_WAIT_MS.
+ * The front ports are read without it, as the poll reads them: dp.if_del stops and drains the poll
+ * before a port goes, and a port being added is not read before its bpfattach() has run (attached,
+ * read as octep_dp_mirror reads it, #1004).
+ */
+/*
+ * Whether a BPF descriptor on ifp asked for promiscuous mode itself, and if so the process that
+ * opened it: 1 and *pid set, or 0. See "HOW IT IS READ" above. ifp has had its bpfattach(); after a
+ * bpfdetach() its if_bpf is BPF's dead_bpf_if, whose list is empty.
+ */
+static int
+octep_dp_bpf_promisc(if_t ifp, pid_t *pid)
+{
+	struct epoch_tracker et;
+	struct bpf_if_ext *ext;
+	struct bpf_d *d;
+	int found;
+
+	found = 0;
+	NET_EPOCH_ENTER(et);
+	ext = (struct bpf_if_ext *)ifp->if_bpf;
+	if (ext != NULL) {
+		CK_LIST_FOREACH(d, &ext->bif_dlist, bd_next) {
+			if (atomic_load_char(&d->bd_promisc) != 0) {
+				*pid = d->bd_pid;
+				found = 1;
+				break;
+			}
+		}
+	}
+	NET_EPOCH_EXIT(et);
+	return (found);
+}
+
+static void
+octep_dp_capture_auto(struct octep_softc *sc)
+{
+	struct octep_dp_if *dif;
+	const char *who;
+	uint32_t i, owner;
+	pid_t pid, wpid;
+	int lone, ported, want, have;
+
+	who = NULL;
+	wpid = 0;
+	lone = ported = 0;
+	if (sc->dp_cap_auto != 0) {
+		for (i = 0; i < sc->dp_nif; i++) {
+			dif = &sc->dp_if[i];
+			if (dif->ifp == NULL || atomic_load_acq_int(&dif->attached) == 0 ||
+			    !bpf_peers_present_if(dif->ifp))
+				continue;
+			if (octep_dp_bpf_promisc(dif->ifp, &pid) != 0) {
+				if (who == NULL) {
+					who = if_name(dif->ifp);
+					wpid = pid;
+				}
+				continue;
+			}
+			lone = 1;
+			if ((if_getflags(dif->ifp) & IFF_PROMISC) != 0)
+				ported = 1;
+		}
+		if (who != NULL)
+			sc->dp_cap_seen++;
+		else if (lone != 0) {
+			sc->dp_cap_unpromisc++;
+			if (ported != 0)
+				sc->dp_cap_portpromisc++;
+		}
+	}
+
+	mtx_lock(&sc->mtx);
+	if (who != NULL) {
+		sc->dp_cap_seen_at = time_uptime;
+		strlcpy(sc->dp_cap_seen_if, who, sizeof(sc->dp_cap_seen_if));
+		sc->dp_cap_seen_pid = wpid;
+	}
+	owner = sc->rpc_fw_cfg_held;
+	want = sc->dp_cap_auto != 0 && sc->dp_cap_seen_at != 0 &&
+	    time_uptime - sc->dp_cap_seen_at < OCTEP_DP_CAPTURE_HOLD;
+	if (want != 0 && ((owner & OCTEP_FW_CFG_OFFLOAD) == 0 ||
+	    (owner & OCTEP_FW_CFG_FP_PKT_DUMP) != 0)) {
+		if (who != NULL)
+			sc->dp_cap_unneeded++;
+		want = 0;
+	}
+	have = (sc->rpc_fw_cfg_auto_held & OCTEP_FW_CFG_FP_PKT_DUMP) != 0;
+	/* what every write of the word carries from now on, offload.sh's among them */
+	sc->rpc_fw_cfg_auto = want != 0 ? OCTEP_FW_CFG_FP_PKT_DUMP : 0;
+	/*
+	 * After a write that failed, the next waits OCTEP_DP_CAPTURE_HOLD seconds: a far side that does
+	 * not answer holds sc->mtx, the front ports' transmit lock, for OCTEP_RPC_CMD_WAIT_MS each
+	 * time, and once a second would be most of the time.
+	 */
+	if (want != have && sc->rpc_ready && !sc->gone && (sc->dp_cap_failed_at == 0 ||
+	    time_uptime - sc->dp_cap_failed_at >= OCTEP_DP_CAPTURE_HOLD)) {
+		/* taken only once the far side accepted the word: octep_rpc_post records it then */
+		if (octep_rpc_fw_cfg_auto(sc, sc->dp_cap_failed_at != 0) == 0 &&
+		    ((sc->rpc_fw_cfg_auto_held & OCTEP_FW_CFG_FP_PKT_DUMP) != 0) == want) {
+			sc->dp_cap_failed_at = 0;
+			if (want != 0)
+				sc->dp_cap_on++;
+			else
+				sc->dp_cap_off++;
+		} else {
+			sc->dp_cap_failed_at = time_uptime;
+			sc->dp_cap_failed++;
+		}
+	}
+	mtx_unlock(&sc->mtx);
+}
+
+/*
  * A control message from the coprocessor, read where it arrives: on tag 254, with no interface of
  * its own. Each type is counted; the connection statistics (type 1) are applied to this table.
  *
@@ -2387,15 +2569,33 @@ octep_sysctl_dp_cmsg_rx(SYSCTL_HANDLER_ARGS)
 	return (error);
 }
 
-/* The fast path's copies for a capture (type 6), as octep_dp_mirror counted them. */
+/*
+ * The fast path's copies for a capture (type 6), as octep_dp_mirror counted them, and the driver's
+ * own asking for them while a capture runs (octep_dp_capture_auto): its state, the port and age of
+ * the last capture it saw, what it did, and the word the fast path last took - copied under the lock
+ * they are written under, and printed after it, since the printing may sleep.
+ */
 static int
 octep_sysctl_dp_mirror(SYSCTL_HANDLER_ARGS)
 {
 	struct octep_softc *sc = arg1;
 	struct sbuf *sb;
+	char who[IFNAMSIZ];
+	uint32_t owner, mine;
+	time_t at, now;
+	pid_t pid;
 	int error;
 
-	sb = sbuf_new_for_sysctl(NULL, NULL, 256, req);
+	mtx_lock(&sc->mtx);
+	owner = sc->rpc_fw_cfg_held;
+	mine = sc->rpc_fw_cfg_auto_held;
+	at = sc->dp_cap_seen_at;
+	strlcpy(who, sc->dp_cap_seen_if, sizeof(who));
+	pid = sc->dp_cap_seen_pid;
+	mtx_unlock(&sc->mtx);
+	now = time_uptime;
+
+	sb = sbuf_new_for_sysctl(NULL, NULL, 512, req);
 	if (sb == NULL)
 		return (ENOMEM);
 	sbuf_clear_flags(sb, SBUF_INCLUDENUL);
@@ -2405,9 +2605,36 @@ octep_sysctl_dp_mirror(SYSCTL_HANDLER_ARGS)
 	    (uintmax_t)sc->dp_mirror_tapped, (uintmax_t)sc->dp_mirror_unheard,
 	    (uintmax_t)sc->dp_mirror_noport, (uintmax_t)sc->dp_mirror_bad,
 	    (uintmax_t)sc->dp_mirror_nomem);
+	sbuf_printf(sb, "asked for while a capture runs (capture_auto %u): %s; ", sc->dp_cap_auto,
+	    (mine & OCTEP_FW_CFG_FP_PKT_DUMP) != 0 ? "on" : "off");
+	if (at == 0)
+		sbuf_cat(sb, "no capture seen yet");
+	else
+		sbuf_printf(sb, "the last capture seen on %s %jd s ago, pid %d", who,
+		    (intmax_t)(now - at), (int)pid);
+	sbuf_printf(sb, "; turned on %ju times and off %ju, %ju writes not taken\n",
+	    (uintmax_t)sc->dp_cap_on, (uintmax_t)sc->dp_cap_off, (uintmax_t)sc->dp_cap_failed);
+	sbuf_printf(sb, "the word the fast path last took 0x%x: the owner's 0x%x, the driver's 0x%x; "
+	    "polls that found a capture %ju, only listeners not asking for promiscuous mode %ju "
+	    "(on a port promiscuous anyway %ju), a capture and nothing to add %ju\n", owner | mine,
+	    owner, mine, (uintmax_t)sc->dp_cap_seen, (uintmax_t)sc->dp_cap_unpromisc,
+	    (uintmax_t)sc->dp_cap_portpromisc, (uintmax_t)sc->dp_cap_unneeded);
 	error = sbuf_finish(sb);
 	sbuf_delete(sb);
 	return (error);
+}
+
+/* dp.capture_auto_set: 1 while the word the fast path last took carries the driver's copies. */
+static int
+octep_sysctl_dp_capture_auto_set(SYSCTL_HANDLER_ARGS)
+{
+	struct octep_softc *sc = arg1;
+	int v;
+
+	mtx_lock(&sc->mtx);
+	v = (sc->rpc_fw_cfg_auto_held & OCTEP_FW_CFG_FP_PKT_DUMP) != 0;
+	mtx_unlock(&sc->mtx);
+	return (sysctl_handle_int(oidp, &v, 0, req));
 }
 
 /* Each type's last message, after its Ethernet header, as hex: how a layout is read before use. */
@@ -8978,7 +9205,53 @@ octep_dp_add_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
 	    octep_sysctl_dp_mirror, "A",
 	    "the fast path's copies of what it forwarded (type 6, sent while fw_cfg has FP_PKT_DUMP): "
 	    "how many arrived for each direction, and what became of them - given to the packet "
-	    "capture of the port they name, or not");
+	    "capture of the port they name, or not; and the copies asked for while a capture runs "
+	    "(capture_auto): on or off, the last capture seen, the counts, and the word the fast path "
+	    "last took, the owner's part and the driver's");
+	sc->dp_cap_auto = 1;
+	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "capture_auto",
+	    CTLFLAG_RW, &sc->dp_cap_auto, 0,
+	    "1 (the default): while a packet capture runs on a front port - a BPF descriptor on the "
+	    "port that asked for promiscuous mode itself (the 'p' of netstat -B), as tcpdump does "
+	    "unless run with -p and hostwatch and a DHCP client never do - the fast path is asked "
+	    "for its copies of what it forwards (fw_cfg's FP_PKT_DUMP, "
+	    "ORed into the owner's word and never clearing a bit of it), and they are given up "
+	    "again about " __XSTRING(OCTEP_DP_CAPTURE_HOLD) " seconds after the last capture is seen. "
+	    "Nothing is asked while the owner's word has offloading off or the copies on. 0: the "
+	    "owner's word alone decides, as before, and copies the driver asked for are given up at "
+	    "the next poll");
+	SYSCTL_ADD_PROC(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "capture_auto_set",
+	    CTLTYPE_INT | CTLFLAG_RD | CTLFLAG_MPSAFE, sc, 0,
+	    octep_sysctl_dp_capture_auto_set, "I",
+	    "1 while the word the fast path last took carries the copies the driver asked for, for a "
+	    "capture; 0 when it does not");
+	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "capture_auto_on",
+	    CTLFLAG_RD, &sc->dp_cap_on, 0,
+	    "times the copies were turned on for a packet capture, and the fast path took the word");
+	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "capture_auto_off",
+	    CTLFLAG_RD, &sc->dp_cap_off, 0,
+	    "... and turned off again: no capture seen for about " __XSTRING(OCTEP_DP_CAPTURE_HOLD)
+	    " seconds, capture_auto set to 0, or the owner's word now giving the copies itself or "
+	    "offloading nothing");
+	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "capture_auto_failed",
+	    CTLFLAG_RD, &sc->dp_cap_failed, 0,
+	    "writes of the word for them the fast path refused or did not answer; a poll asks again "
+	    "about " __XSTRING(OCTEP_DP_CAPTURE_HOLD) " seconds later, without a line in the log");
+	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "capture_auto_seen",
+	    CTLFLAG_RD, &sc->dp_cap_seen, 0,
+	    "polls, about one a second, that found a packet capture on a front port");
+	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "capture_auto_unpromisc",
+	    CTLFLAG_RD, &sc->dp_cap_unpromisc, 0,
+	    "polls that found no capture but BPF listeners that did not ask for promiscuous mode - "
+	    "hostwatch, a DHCP client, tcpdump -p - and did not take them for one");
+	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "capture_auto_portpromisc",
+	    CTLFLAG_RD, &sc->dp_cap_portpromisc, 0,
+	    "... of those, polls with such a listener on a port in promiscuous mode for another "
+	    "reason - a bridge member's hostwatch: what was taken for a capture before 2026-11-13");
+	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "capture_auto_unneeded",
+	    CTLFLAG_RD, &sc->dp_cap_unneeded, 0,
+	    "polls that found a capture and asked for nothing: the owner's word, as the fast path "
+	    "last took it, had the copies on already, or offloading off - nothing in hardware");
 	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "hw_counted",
 	    CTLFLAG_RD, &sc->dp_hw_applied, 0,
 	    "connection counts from the coprocessor applied to this table since attach");
@@ -13021,6 +13294,9 @@ octep_dp_link_poll(void *arg, int pending __unused)
 	octep_ipsec_stats_poll(sc);
 	CURVNET_RESTORE();
 
+	/* And the fast path's copies for a packet capture while one runs (dp.capture_auto). */
+	octep_dp_capture_auto(sc);
+
 	if (sc->dp_link_running != 0)
 		taskqueue_enqueue_timeout(taskqueue_thread, &sc->dp_link_task, hz);
 }
@@ -13486,6 +13762,17 @@ octep_dp_if_detach_all(struct octep_softc *sc)
 		if (sc->dp_fast_tq != NULL)
 			taskqueue_drain(sc->dp_fast_tq, &sc->dp_fast_task);
 	}
+
+	/*
+	 * And the copies the driver asked for while a capture ran (dp.capture_auto): out of every
+	 * later write of the configuration word, since with the poll stopped nothing would take them
+	 * out again. Not written now: what the fast path holds changes at that next write -
+	 * offload.sh's, or the poll's once a port is added again - and a port taken away has no
+	 * capture to give them to.
+	 */
+	mtx_lock(&sc->mtx);
+	sc->rpc_fw_cfg_auto = 0;
+	mtx_unlock(&sc->mtx);
 
 	/*
 	 * Give back the receive filters this driver opened, while there is still an ifnet to name
