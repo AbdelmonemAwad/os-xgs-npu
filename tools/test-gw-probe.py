@@ -47,6 +47,35 @@ check('the probe: an alert at the third failure in a row, none at the fourth, on
 turn, s = gw.probe_turn({'fails': 2, 'down': False}, True)
 check('a success before the third failure: no alert, the count back to 0', [turn, s], [None, {'fails': 0, 'down': False}])
 
+# One look as the cron job makes it (main), with the configuration, the connection and the alert stubbed and
+# the state in a folder of its own: a target changed in the middle of a run of failures starts its own count,
+# so the failures of the one before raise no alert for it.
+import io
+import json
+import tempfile
+import contextlib
+tmp = tempfile.mkdtemp(prefix='gw-probe-test-')
+gw.STATE = os.path.join(tmp, 'gw-probe.json')
+raised = []
+gw.alert = lambda kind, subject, text, facts: raised.append(subject)
+gw.connect_ms = lambda host, port, timeout=3.0: None
+settings = {'gw_jitter_alert': '0', 'gw_tcp_probe': 'one.example.net:22'}
+gw.setting = lambda name: settings.get(name, '')
+with contextlib.redirect_stdout(io.StringIO()):
+    gw.main()
+    gw.main()
+    settings['gw_tcp_probe'] = 'one.example.net:9'
+    gw.main()
+    gw.main()
+with open(gw.STATE, encoding='utf-8') as f:
+    check('a new target starts its own count: two failures on :22, then two on :9 - no alert yet',
+          [json.load(f)['probe'], raised], [{'fails': 2, 'down': False, 'target': 'one.example.net:9'}, []])
+with contextlib.redirect_stdout(io.StringIO()):
+    gw.main()
+check('the third failure on the new target raises the alert', raised, ['TCP probe to one.example.net:9 failing'])
+import shutil
+shutil.rmtree(tmp, ignore_errors=True)
+
 check('host:port', gw.target('one.example.net:443'), ('one.example.net', 443))
 check('[IPv6]:port', gw.target('[2001:db8::1]:853'), ('2001:db8::1', 853))
 check('no port: none', gw.target('one.example.net'), None)

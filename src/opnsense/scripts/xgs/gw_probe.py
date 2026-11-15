@@ -147,7 +147,11 @@ def main():
                                                          sum(1 for v in state['jitter'].values() if v)))
     if probe is not None:
         took = connect_ms(*probe)
-        turn, state['probe'] = probe_turn(state.get('probe', {}), took is not None)
+        name = '%s:%d' % probe
+        # a new target starts its own count: failures of the one before are not its own
+        was = state.get('probe', {}) if state.get('probe', {}).get('target') == name else {}
+        turn, state['probe'] = probe_turn(was, took is not None)
+        state['probe']['target'] = name
         if turn is not None:
             alert('gateway-tcp', 'TCP probe to %s:%d %s' % (probe[0], probe[1], 'failing' if turn == 'down' else 'answering again'),
                   ('%d connections in a row failed, a minute apart' % FAILS) if turn == 'down' else
