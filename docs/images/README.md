@@ -19,10 +19,10 @@ to a new image, and the checks fail on one without them.
 |---|---|---|
 | [screens/](screens/) | The web interface, page by page, in English and in Arabic | 108 |
 | [hardware/](hardware/) | Photographs and drawings of the appliances, one folder each | 41 |
-| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 900 |
+| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 908 |
 | [readme/](readme/) | The README's banner and status board, drawn by tools/readme-art.py | 6 |
 
-1094 images in all.
+1102 images in all.
 
 ## The web interface
 
@@ -1446,7 +1446,7 @@ The page: [sa23-2026-10-25.md](../measurements/sa23-2026-10-25.md).
 | [01-before.png](measurements/sa23-2026-10-25/01-before.png) | Before: the first XGS 3300 over vendor version 23, octep.ko fdc4e281 - no association mirrored; the coprocessor refused the inbound and the outbound association, rc 0x0001; 40 pings through the tunnel answered, the kernel's ESP counts rising, the engine's not | [sa23-2026-10-25.md](../measurements/sa23-2026-10-25.md) |
 | [02-after.png](measurements/sa23-2026-10-25/02-after.png) | After: octep.ko 4c844f00 - the inbound association at coprocessor index 1 and the outbound at index 2, the outbound started a million numbers past the kernel's counter; 40 pings through the tunnel, decrypted and encrypted by the engine, 40 and 40, and none by the kernel | [sa23-2026-10-25.md](../measurements/sa23-2026-10-25.md) |
 
-### measurements/settings-batch-2026-11-15/ (10)
+### measurements/settings-batch-2026-11-15/ (18)
 
 The page: [settings-batch-2026-11-15.md](../measurements/settings-batch-2026-11-15.md).
 
@@ -1462,6 +1462,14 @@ The page: [settings-batch-2026-11-15.md](../measurements/settings-batch-2026-11-
 | [08-certificate-import-read.png](measurements/settings-batch-2026-11-15/08-certificate-import-read.png) | XGS: Certificate Import on the second XGS 3300: a PKCS#12 file read, a certificate with its key and its authority listed | [the-pages.md](../guide/the-pages.md), [settings-batch-2026-11-15.md](../measurements/settings-batch-2026-11-15.md) |
 | [09-certificate-import-added.png](measurements/settings-batch-2026-11-15/09-certificate-import-added.png) | XGS: Certificate Import: both added to System: Trust, the Import button off | [settings-batch-2026-11-15.md](../measurements/settings-batch-2026-11-15.md) |
 | [10-in-system-trust.png](measurements/settings-batch-2026-11-15/10-in-system-trust.png) | System: Trust: Certificates: the imported certificate, its issuer the imported authority | [settings-batch-2026-11-15.md](../measurements/settings-batch-2026-11-15.md) |
+| [11-settings-acceleration.png](measurements/settings-batch-2026-11-15/11-settings-acceleration.png) | XGS: Settings, the Acceleration tab with full help: Never offloaded and Never offloaded: a rule's tag, empty | [settings-batch-2026-11-15.md](../measurements/settings-batch-2026-11-15.md) |
+| [12-settings-security.png](measurements/settings-batch-2026-11-15/12-settings-security.png) | XGS: Settings, the Security tab: router advertisements only from allowed senders, no interface chosen, the allowed senders empty, and the ready-made service aliases off | [settings-batch-2026-11-15.md](../measurements/settings-batch-2026-11-15.md) |
+| [13-settings-ipsec.png](measurements/settings-batch-2026-11-15/13-settings-ipsec.png) | XGS: Settings, the IPsec tab: the random margin off rekey times empty and IPComp for no child | [settings-batch-2026-11-15.md](../measurements/settings-batch-2026-11-15.md) |
+| [14-settings-acceleration-in-arabic.png](measurements/settings-batch-2026-11-15/14-settings-acceleration-in-arabic.png) | XGS: Settings in Arabic, the Acceleration tab with full help: a rule's tag | [settings-batch-2026-11-15.md](../measurements/settings-batch-2026-11-15.md) |
+| [15-settings-security-in-arabic.png](measurements/settings-batch-2026-11-15/15-settings-security-in-arabic.png) | XGS: Settings in Arabic, the Security tab: router advertisements and the service aliases | [settings-batch-2026-11-15.md](../measurements/settings-batch-2026-11-15.md) |
+| [16-settings-ipsec-in-arabic.png](measurements/settings-batch-2026-11-15/16-settings-ipsec-in-arabic.png) | XGS: Settings in Arabic, the IPsec tab: the rekey margin and IPComp | [settings-batch-2026-11-15.md](../measurements/settings-batch-2026-11-15.md) |
+| [17-settings-hardware-in-arabic.png](measurements/settings-batch-2026-11-15/17-settings-hardware-in-arabic.png) | XGS: Settings in Arabic, the Hardware tab: the PPPoE reconnect, the gateway jitter alert and the TCP probe | [settings-batch-2026-11-15.md](../measurements/settings-batch-2026-11-15.md) |
+| [18-certificate-import-in-arabic.png](measurements/settings-batch-2026-11-15/18-certificate-import-in-arabic.png) | XGS: Certificate Import in Arabic: a PKCS#12 file read, a certificate with its key and its authority listed | [settings-batch-2026-11-15.md](../measurements/settings-batch-2026-11-15.md) |
 
 ### measurements/sfos-versions-2026-10-25/ (8)
 

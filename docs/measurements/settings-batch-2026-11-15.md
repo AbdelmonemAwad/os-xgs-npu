@@ -153,6 +153,32 @@ each against the requests its page makes on OPNsense 26.7, with OPNsense's own w
 privilege, ported - compared with OPNsense's PHP on the appliance on eight addresses, which agreed: each reaches its
 page's reads and none of its writes.
 
+### The page
+
+XGS: Settings and XGS: Certificate Import were read on the second XGS 3300 in English and in Arabic, the Arabic
+catalogue of the batch's strings put on it for the reading and taken away after (17:10 to 17:22 UTC): every new
+field on its tab with its help in full, in both languages, and the page's console without errors.
+
+![XGS: Settings, the Acceleration tab with full help: Never offloaded and Never offloaded: a rule's tag, empty](../images/measurements/settings-batch-2026-11-15/11-settings-acceleration.png)
+
+![XGS: Settings, the Security tab: router advertisements only from allowed senders, no interface chosen, the allowed senders empty, and the ready-made service aliases off](../images/measurements/settings-batch-2026-11-15/12-settings-security.png)
+
+![XGS: Settings, the IPsec tab: the random margin off rekey times empty and IPComp for no child](../images/measurements/settings-batch-2026-11-15/13-settings-ipsec.png)
+
+<details markdown="1"><summary>The same pages in Arabic</summary>
+
+![XGS: Settings in Arabic, the Acceleration tab with full help: a rule's tag](../images/measurements/settings-batch-2026-11-15/14-settings-acceleration-in-arabic.png)
+
+![XGS: Settings in Arabic, the Security tab: router advertisements and the service aliases](../images/measurements/settings-batch-2026-11-15/15-settings-security-in-arabic.png)
+
+![XGS: Settings in Arabic, the IPsec tab: the rekey margin and IPComp](../images/measurements/settings-batch-2026-11-15/16-settings-ipsec-in-arabic.png)
+
+![XGS: Settings in Arabic, the Hardware tab: the PPPoE reconnect, the gateway jitter alert and the TCP probe](../images/measurements/settings-batch-2026-11-15/17-settings-hardware-in-arabic.png)
+
+![XGS: Certificate Import in Arabic: a PKCS#12 file read, a certificate with its key and its authority listed](../images/measurements/settings-batch-2026-11-15/18-certificate-import-in-arabic.png)
+
+</details>
+
 ### What these figures do not mean
 
 - **A user holding only the read-only privileges** was not made, so no page was opened as one.
