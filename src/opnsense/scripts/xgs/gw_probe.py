@@ -117,7 +117,7 @@ def alert(kind, subject, text, facts):
                        stdin=subprocess.DEVNULL, capture_output=True, timeout=10)
     except (OSError, subprocess.SubprocessError):
         pass
-    write_json(os.path.join(OUTBOX, 'gateway-%s-%d-%d.json' % (kind, at, os.getpid())),
+    write_json(os.path.join(OUTBOX, '%s-%d-%d.json' % (kind, at, os.getpid())),
                {'source': 'os-xgs-npu', 'kind': kind, 'at': at, 'subject': subject, 'text': text, 'facts': facts})
 
 
