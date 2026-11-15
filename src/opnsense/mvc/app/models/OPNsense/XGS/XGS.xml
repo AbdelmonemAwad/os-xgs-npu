@@ -76,6 +76,18 @@
                 <Mask>/^[0-9A-Za-z:.\/,;\s]{0,1500}$/</Mask>
                 <ValidationMessage>Addresses, networks and "port N" entries, separated by commas or new lines.</ValidationMessage>
             </flow_exclude>
+            <!-- Never offloaded by a rule's tag (plan 01, package 3.2, 2026-11-15): a tag a firewall rule
+                 sets (Firewall: Rules, advanced, "Set local tag"); a connection any of whose pf states
+                 carries it is never made in hardware. Written to dp.flow_tag or flow.tag by
+                 scripts/xgs/flow_exclude.php when the page is saved and at every boot; the drivers
+                 compare pf's id for the name with the tags of the connection's states, both sides of a
+                 translated one. When it changes the hardware is emptied, so the connections already
+                 in it are made again under it. pf's own characters for a name it is given. -->
+            <flow_tag type="TextField">
+                <Required>N</Required>
+                <Mask>/^[A-Za-z0-9_.-]{0,63}$/</Mask>
+                <ValidationMessage>A tag name: letters, digits, "_", "-" and ".", up to 63.</ValidationMessage>
+            </flow_tag>
             <!-- Captive Portal clients in hardware (discovery 5, 2026-10-24): scripts/xgs/cp_users.py,
                  every two seconds from cron.d/xgs-cp, lists each portal session's addresses as a live
                  user (dp.live_users, flow.live_users), so a logout takes its connections out of

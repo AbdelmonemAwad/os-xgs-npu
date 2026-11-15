@@ -474,6 +474,13 @@ if (!is_array($excl)) {
 } else {
     $steps[] = 'never offloaded: ' . (count($excl['entries']) ? implode(', ', $excl['entries']) : 'nothing') .
         (count($excl['refused']) ? ' - not read, so not applied: ' . implode(', ', $excl['refused']) : '');
+    if (($excl['tag'] ?? null) !== null) {
+        $steps[] = 'never offloaded by a rule\'s tag: ' . ($excl['tag'] === '' ? 'none' : $excl['tag']) .
+            (($excl['tag_message'] ?? '') !== '' ? ' - ' . $excl['tag_message'] : '');
+        if (strpos((string)($excl['tag_message'] ?? ''), 'refused') !== false) {
+            $ok = false;
+        }
+    }
     if (count($excl['refused'])) {
         $ok = false;
     }

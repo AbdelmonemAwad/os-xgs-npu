@@ -75,6 +75,12 @@ typedef bool octep_pf_exists_t(const struct pf_state_key_cmp *, u_int);
 
 static octep_pf_find_t	*octep_pf_find;
 static octep_pf_exists_t *octep_pf_exists;
+/*
+ * pf's id for a tag name, the one a rule's "tag" is given when it is loaded (dp.flow_tag). Optional,
+ * as the pfsync pointer below: without it (a pf that renamed it) no tag can be set.
+ */
+typedef uint16_t octep_pf_tagname2tag_t(const char *);
+static octep_pf_tagname2tag_t *octep_pf_tagname2tag;
 static int		 octep_pf_tried;
 
 /*
@@ -101,6 +107,7 @@ struct octep_pf_hunt {
 	caddr_t	find;
 	caddr_t	exists;
 	caddr_t	sync;
+	caddr_t	tagname2tag;
 };
 
 static int
@@ -120,6 +127,8 @@ octep_pf_in_file(linker_file_t lf, void *arg)
 		h->exists = linker_file_lookup_symbol(lf, "pf_find_state_all_exists", 0);
 	if (h->sync == NULL)
 		h->sync = linker_file_lookup_symbol(lf, "vnet_entry_pfsync_update_state_ptr", 0);
+	if (h->tagname2tag == NULL)
+		h->tagname2tag = linker_file_lookup_symbol(lf, "pf_tagname2tag", 0);
 
 	return (0);
 }
@@ -145,6 +154,7 @@ octep_pf_present(void)
 	h.find = NULL;
 	h.exists = NULL;
 	h.sync = NULL;
+	h.tagname2tag = NULL;
 	(void)linker_file_foreach(octep_pf_in_file, &h);
 
 	/* Both or neither. Half of this facility is not worth having. */
@@ -152,6 +162,7 @@ octep_pf_present(void)
 		octep_pf_find = (octep_pf_find_t *)h.find;
 		octep_pf_exists = (octep_pf_exists_t *)h.exists;
 		octep_pfsync_sym = h.sync;
+		octep_pf_tagname2tag = (octep_pf_tagname2tag_t *)h.tagname2tag;
 		return (true);
 	}
 
@@ -374,6 +385,7 @@ octep_pf_copy(struct octep_pf_state *out, struct pf_kstate *s)
 	out->direction = s->direction;
 	out->timeout = s->timeout;
 	out->state_flags = s->state_flags;
+	out->tag = s->tag;
 	out->src_state = s->src.state;
 	out->dst_state = s->dst.state;
 	out->seqlo[0] = s->src.seqlo;
@@ -453,14 +465,21 @@ octep_pf_copy(struct octep_pf_state *out, struct pf_kstate *s)
 int
 octep_pf_state_read(const struct octep_pf_tuple *t, struct octep_pf_state *out)
 {
-	struct octep_pf_state plain;
+	struct octep_pf_state plain, nat;
 	struct pf_state_key_cmp key;
 	struct pf_kstate *s;
 	const u_int dirs[2] = { PF_IN, PF_OUT };
-	int d, order, have_plain = 0;
+	uint16_t tags[2] = { 0, 0 };
+	int d, order, have_plain = 0, have_nat = 0;
 
 	if (!octep_pf_present())
 		return (0);
+	/*
+	 * Every arrangement in both lists, to the end: the first translated state found is still the
+	 * one returned, and the first plain one when there is none, as when this stopped at the first
+	 * translated one - but the tags of all of them are kept (dp.flow_tag), because the state a rule
+	 * tagged is often the untranslated one on the far side of a translated connection.
+	 */
 	for (d = 0; d < 2; d++) {
 		for (order = 0; order < octep_pf_combs(t); order++) {
 			octep_pf_key(&key, t, order);
@@ -471,19 +490,46 @@ octep_pf_state_read(const struct octep_pf_tuple *t, struct octep_pf_state *out)
 			out->order = order;
 			out->lookup_dir = (int)dirs[d];
 			octep_pf_orient(out, t);
-			if (out->nat_valid)
-				return (1);
-			if (!have_plain) {
+			if (out->tag != 0 && out->tag != tags[0] && out->tag != tags[1])
+				tags[tags[0] == 0 ? 0 : 1] = out->tag;
+			if (out->nat_valid && !have_nat) {
+				nat = *out;
+				have_nat = 1;
+			} else if (!out->nat_valid && !have_plain) {
 				plain = *out;
 				have_plain = 1;
 			}
 		}
 	}
-	if (have_plain) {
-		*out = plain;
-		return (1);
-	}
-	return (0);
+	if (!have_nat && !have_plain)
+		return (0);
+	*out = have_nat ? nat : plain;
+	out->tags[0] = tags[0];
+	out->tags[1] = tags[1];
+	return (1);
+}
+
+/*
+ * The id pf gives a tag name (dp.flow_tag): the id a rule whose "tag" names it puts on the states
+ * it makes. pf keeps one id a name while anything refers to the name, and this lookup is such a
+ * reference, kept: the id the driver compares states with stays the name's while it is set, and
+ * a name set again takes one more - a few bytes of pf's for each time the setting is saved. 0 for
+ * an empty name; ENOENT without pf or its function, ENOSPC when pf has no id left to give.
+ * Sleepable context only: it walks the linker files on the first call.
+ */
+int
+octep_pf_tag_id(const char *name, uint16_t *id)
+{
+
+	*id = 0;
+	if (name[0] == '\0')
+		return (0);
+	if (!octep_pf_present() || octep_pf_tagname2tag == NULL)
+		return (ENOENT);
+	CURVNET_SET(vnet0);
+	*id = octep_pf_tagname2tag(name);
+	CURVNET_RESTORE();
+	return (*id == 0 ? ENOSPC : 0);
 }
 
 /*

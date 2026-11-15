@@ -72,6 +72,12 @@
             <help>Addresses, networks and ports whose connections the coprocessor never forwards by itself: they always pass through the firewall, as they would without offloading. An address (192.168.1.10, 2001:db8::5), a network (10.0.0.0/8, 2001:db8::/32) or a port (port 22), one per line or separated by commas; either end of a connection can match. Applied when you save - the connections in hardware that it names go back to the firewall at once - and at every boot. A connection can also be handed back by itself, from Offloaded Flows. At most 64 entries.</help>
         </field>
         <field>
+            <id>xgs.general.flow_tag</id>
+            <label>Never offloaded: a rule's tag</label>
+            <type>text</type>
+            <help>A tag that a firewall rule sets (Firewall: Rules, a rule's advanced options, "Set local tag"): a connection any of whose states carries it is never put in hardware, and passes through the firewall as it would without offloading - on either side of a translated connection. Letters, digits, "_", "-" and "."; empty for none. Applied when you save and at every boot: when it changes, the connections in hardware go back to the firewall and are put in hardware again only if no state of theirs carries it.</help>
+        </field>
+        <field>
             <type>header</type>
             <label>Captive Portal</label>
         </field>

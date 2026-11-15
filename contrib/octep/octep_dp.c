@@ -5499,6 +5499,43 @@ octep_sysctl_dp_flow_exclude(SYSCTL_HANDLER_ARGS)
 }
 
 /*
+ * dp.flow_tag: a rule's tag the owner keeps with the host (XGS: Settings, written by
+ * scripts/xgs/flow_exclude.php). The name as a rule's "tag" gives it - letters, digits, "_", "-"
+ * and ".", up to 63 - and pf's id for it, which octep_dp_flow_make compares with the tags of a
+ * connection's states. Empty is none. The connections already in hardware are not looked at here:
+ * the script empties the hardware when the tag changes, as a ruleset load does, and the flow maker
+ * makes them again, or not.
+ */
+static int
+octep_sysctl_dp_flow_tag(SYSCTL_HANDLER_ARGS)
+{
+	struct octep_softc *sc = arg1;
+	char name[sizeof(sc->dp_flow_tag_name)];
+	uint16_t id;
+	int error, i;
+
+	strlcpy(name, sc->dp_flow_tag_name, sizeof(name));
+	error = sysctl_handle_string(oidp, name, sizeof(name), req);
+	if (error != 0 || req->newptr == NULL)
+		return (error);
+	for (i = 0; name[i] != '\0'; i++) {
+		char ch = name[i];
+
+		if (!((ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') || (ch >= '0' && ch <= '9') ||
+		    ch == '_' || ch == '-' || ch == '.'))
+			return (EINVAL);
+	}
+	error = octep_pf_tag_id(name, &id);
+	if (error != 0)
+		return (error);
+	mtx_lock(&sc->mtx);
+	sc->dp_flow_tag = id;
+	strlcpy(sc->dp_flow_tag_name, name, sizeof(sc->dp_flow_tag_name));
+	mtx_unlock(&sc->mtx);
+	return (0);
+}
+
+/*
  * The canonical table scripts/xgs/cp_users.py writes for dp.live_users: tokens separated by spaces,
  * each "a4:" and the eight hex digits of an IPv4 address, host order, or "a6:" and the thirty-two of
  * an IPv6 one, then "=" and the live user, 1 to 65535. The addresses are the Captive Portal's own,
@@ -6670,6 +6707,13 @@ octep_dp_flow_make(struct octep_softc *sc, const struct octep_pf_tuple *tin, uin
 		sc->dp_flow_nostate++;
 		sbuf_cat(sb, "pf has no state for that frame's tuple\n");
 		return (ENOENT);
+	}
+	/* A rule's tag the owner keeps with the host (dp.flow_tag), on any of the connection's states. */
+	if (sc->dp_flow_tag != 0 && (st.tags[0] == sc->dp_flow_tag || st.tags[1] == sc->dp_flow_tag)) {
+		sc->dp_flow_tagged++;
+		sbuf_printf(sb, "not accelerated: a rule tagged it %s, which the owner keeps with the "
+		    "host\n", sc->dp_flow_tag_name);
+		return (EPERM);
 	}
 	if ((sc->dp_accel_dir == 1 && !st.original) || (sc->dp_accel_dir == 2 && st.original)) {
 		sbuf_printf(sb, "not accelerated: dp.accel_dir admits only the %s direction and this "
@@ -9804,6 +9848,15 @@ octep_dp_add_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
 	    "owner's list: a4:<8 hex digits>/<length>, a6:<32 hex digits>/<length> and p:<port>, "
 	    "separated by spaces. A list that does not parse is refused whole; one that does takes out "
 	    "at once what it names. Empty is none");
+	SYSCTL_ADD_PROC(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "flow_tag",
+	    CTLTYPE_STRING | CTLFLAG_RW | CTLFLAG_MPSAFE, sc, 0,
+	    octep_sysctl_dp_flow_tag, "A",
+	    "a rule's tag the owner keeps with the host: a connection any of whose pf states carries it "
+	    "is not made. Letters, digits, _, - and ., up to 63; empty is none. As "
+	    "scripts/xgs/flow_exclude.php writes XGS: Settings' one");
+	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "flow_tagged",
+	    CTLFLAG_RD, &sc->dp_flow_tagged, 0,
+	    "times a connection was not made because a rule tagged it with dp.flow_tag");
 	SYSCTL_ADD_PROC(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "flow_release",
 	    CTLTYPE_STRING | CTLFLAG_RW | CTLFLAG_MPSAFE, sc, 0,
 	    octep_sysctl_dp_flow_release, "A",
