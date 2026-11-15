@@ -195,6 +195,9 @@ and keep it there while its sender goes on ([measured](../measurements/verdict-2
 each new connection in hardware until it has let its first megabyte through, and the coprocessor
 carry the rest; it needs one reboot
 ([measured](../measurements/inspect-2026-10-23.md#the-setting-and-the-intrusion-detection-service)).
+Since 2026-11-15 **Inspection threads per port** on the same tab, empty by default, gives each port the
+Intrusion Detection reads in IPS mode that many netmap rings and Suricata a thread for each, a connection kept
+with one ([measured](../measurements/ips-threads-2026-11-15.md)).
 Since 2026-10-19 that tab has **Cut open connections when listed**: block lists whose additions cut
 the connections already open ([measured](../measurements/lists-cut-2026-10-19.md)), and **Cut
 connections by TLS fingerprint**: JA4 fingerprints whose connections are cut, read from the

@@ -19,10 +19,10 @@ to a new image, and the checks fail on one without them.
 |---|---|---|
 | [screens/](screens/) | The web interface, page by page, in English and in Arabic | 108 |
 | [hardware/](hardware/) | Photographs and drawings of the appliances, one folder each | 41 |
-| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 885 |
+| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 890 |
 | [readme/](readme/) | The README's banner and status board, drawn by tools/readme-art.py | 6 |
 
-1079 images in all.
+1084 images in all.
 
 ## The web interface
 
@@ -660,6 +660,18 @@ The page: [ips-speed-2026-11-11.md](../measurements/ips-speed-2026-11-11.md).
 |---|---|---|
 | [01-tcp8-both-modes.png](measurements/ips-speed-2026-11-11/01-tcp8-both-modes.png) | XGS 136, IPS on Port8, eight TCP streams: 934 Mbit/s with the host carrying every frame, CPUs 36 % busy; 948 Mbit/s with Inspect, then hardware, 7,621 frames through the inspector, CPUs 2 % busy | [ips-speed-2026-11-11.md](../measurements/ips-speed-2026-11-11.md) |
 | [02-tls-both-modes.png](measurements/ips-speed-2026-11-11/02-tls-both-modes.png) | Twenty HTTPS requests through the XGS 136 in each mode, all answered; Suricata's statistics held no TLS count yet at either read | [ips-speed-2026-11-11.md](../measurements/ips-speed-2026-11-11.md) |
+
+### measurements/ips-threads-2026-11-15/ (5)
+
+The page: [ips-threads-2026-11-15.md](../measurements/ips-threads-2026-11-15.md).
+
+| image | what it shows | used on |
+|---|---|---|
+| [01-eight-streams-one-ring-and-four.png](measurements/ips-threads-2026-11-15/01-eight-streams-one-ring-and-four.png) | The XGS 3300, IPS on Port4, eight TCP streams: one ring, 941 Mbit/s and one thread; saved at 4, Suricata restarted with 16 worker threads; four rings, 941 Mbit/s over four threads | [ips-threads-2026-11-15.md](../measurements/ips-threads-2026-11-15.md) |
+| [02-four-rules-one-ring-and-four.png](measurements/ips-threads-2026-11-15/02-four-rules-one-ring-and-four.png) | The XGS 3300, four synthetic rules, sixteen senders of 1 MiB: one ring, 6 Mbit/s and 10 connections failed, one thread at 99.9 %; four rings, 31 and 29 Mbit/s and none failed; one ring again, 5 Mbit/s and 16 failed | [ips-threads-2026-11-15.md](../measurements/ips-threads-2026-11-15.md) |
+| [03-a-connection-on-one-ring.png](measurements/ips-threads-2026-11-15/03-a-connection-on-one-ring.png) | The XGS 3300's eight receive rings' interrupts over a run: one connection on one ring, four and eight spread over several | [ips-threads-2026-11-15.md](../measurements/ips-threads-2026-11-15.md) |
+| [04-the-setting.png](measurements/ips-threads-2026-11-15/04-the-setting.png) | XGS: Settings on the second XGS 3300, the Security tab with full help: Inspection threads per port, empty | [ips-threads-2026-11-15.md](../measurements/ips-threads-2026-11-15.md) |
+| [05-the-setting-in-arabic.png](measurements/ips-threads-2026-11-15/05-the-setting-in-arabic.png) | XGS: Settings on the second XGS 3300 in Arabic, the Security tab with full help: Inspection threads per port | [ips-threads-2026-11-15.md](../measurements/ips-threads-2026-11-15.md) |
 
 ### measurements/ipsec-directions-2026-11-11/ (9)
 
