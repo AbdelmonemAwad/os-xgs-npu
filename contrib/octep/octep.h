@@ -1332,6 +1332,7 @@ struct octep_ips_ent {
  * itself. LINK_MODE (0x09), which the plan first named, is refused by the far side either way.
  */
 #define	  OCTEP_NWA_SUB_KSETTINGS	0x55
+#define	  OCTEP_NWA_SUB_DUPLEX	0x0d	/* with OP_GET: 1 full, 0 half, 0xff not known */
 #define	  OCTEP_NWA_SUB_ADV		0x43
 #define	  OCTEP_NWA_ADV_ALL		0x6f	/* 10H 10F 100H 100F 1000F and autonegotiation */
 #define	  OCTEP_NWA_ADV_1000F		0x60	/* 1000F and autonegotiation */
@@ -2538,6 +2539,7 @@ struct octep_dp_if {
 	 */
 	uint8_t			 cage;
 	uint8_t			 media_half;	/* a socket forced to half duplex (media_change) */
+	uint8_t			 link_half;	/* a socket's link running half, as DUPLEX answers */
 	u_int			 mod_media[2];
 	uint8_t			 mac[6];
 	uint8_t			 mac_told[6];	/* the address the port and its LIF were last told */
@@ -4579,6 +4581,7 @@ void	octep_bar2_write8(struct octep_softc *sc, bus_size_t off, uint64_t v);
 void	octep_bar2_write4(struct octep_softc *sc, bus_size_t off, uint32_t v);
 int	octep_rpc_quiet(struct octep_softc *sc);
 int	octep_nwa_port_speed(struct octep_softc *sc, uint32_t port, uint32_t *mbit);
+int	octep_nwa_port_duplex(struct octep_softc *sc, uint32_t port, uint32_t *duplex);
 /*
  * What one NetAgent transaction returned, as the caller's own copy. nwa_last_* in the softc is the
  * operator's record of the LAST transaction and is overwritten by the next; a caller that read it
