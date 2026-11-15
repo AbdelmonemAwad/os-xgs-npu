@@ -93,7 +93,7 @@ the same log.
 - **The XGS 136's rate** through Suricata with more rings was [measured on 2026-11-11](flowid-136-2026-11-11.md),
   not again here.
 - **A port on the XGS 136's own netmap adapter** (`hw.npuep.netmap`, off by default) has the rings that adapter
-  makes, and Suricata a thread for each of them: the setting does not change them.
+  makes, which the setting does not change; not tried here.
 - **The spread is the coprocessor's**: its hash places the connections, and eight of them fell on three rings in one
   run.
 - **What else the flow id moves**: on the XGS 3300 a frame the host forwards leaves on the transmit ring its flow id
