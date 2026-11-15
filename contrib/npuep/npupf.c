@@ -86,11 +86,13 @@ static npuep_pf_exists_t *npuep_pf_exists;
 static int		 npuep_pf_tried;
 
 /*
- * pfsync's update for a state, by pointer, for the states the keepalive restamps - octep_pf.c's
+ * pfsync's update for a state, by pointer, for the states npuep_pf_touch restamps - octep_pf.c's
  * octep_pf_sync, and everything its comment says holds here: a connection in hardware passes pf no
  * packet, so pfsync never refreshed the peer's copy, whose expiry then removed the live state
  * (#1160); the pointer is pf's VNET variable, read at every call through curvnet's base, and
- * optional.
+ * optional. npuep_pf_touch has no caller yet: this driver's keepalive asks whether a state exists
+ * and gives pf its counts (npuflow_keepalive), and does not restamp it, so a UDP state of a
+ * connection in hardware lapses at its own timeout here, with or without pfsync.
  */
 typedef void npuep_pfsync_update_t(struct pf_kstate *);
 static caddr_t		 npuep_pfsync_sym;

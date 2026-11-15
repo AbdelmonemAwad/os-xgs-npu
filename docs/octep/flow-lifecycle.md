@@ -573,8 +573,10 @@ E), which it was on the older commit.
   sent back a delete that removed the live state - measured with a UDP connection, replaced 60 to 70
   seconds in with pfsync to a peer and never without
   ([#1160](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/1160)). The keepalive's restamp is told
-  to pfsync now, as a packet's would be (`octep_pf_sync` in `contrib/octep/octep_pf.c`,
-  `npuep_pf_sync` in `contrib/npuep/npupf.c`).
+  to pfsync now, as a packet's would be (`octep_pf_sync` in `contrib/octep/octep_pf.c`). The XGS 136's
+  keepalive does not restamp a state in hardware at all - `npuep_pf_touch` in `contrib/npuep/npupf.c`,
+  which would and which tells pfsync (`npuep_pf_sync`), has no caller - so a UDP state there lapses at
+  its own timeout with or without pfsync.
 - **No measurement of the RPC path under load.** The two-second figure is the driver's timeout
   constant, not an observed latency. The observed cost of a NetAgent request is 12 ms healthy and up
   to four seconds when it is not (`docs/npuep/netagent.md:166`); RPC has no equivalent measurement.
