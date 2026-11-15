@@ -439,6 +439,13 @@ int	npunwa_set_promisc(int idx, int on);
 int	npugiu_promisc_wanted(int idx);
 int	npugiu_allmulti_wanted(int idx);
 int	npugiu_mtu_wanted(int idx);
+/*
+ * The medium a switch socket's interface was asked for (ifconfig media), as its ifmedia word, 0 if
+ * none since attach or not a socket; and whether its running link is half duplex, which the agent
+ * reads beside the speed. The agent's link poll sets the medium, as it sets the MTU.
+ */
+int	npugiu_media_wanted(int idx);
+void	npugiu_set_half(int idx, int half);
 
 int	npurpc_attach(struct npuep_facility *fac);
 void	npurpc_detach(void);

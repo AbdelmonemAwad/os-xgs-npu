@@ -47,6 +47,10 @@
 #include <machine/resource.h>
 #include <sys/rman.h>
 
+#include <sys/socket.h>
+#include <net/if.h>
+#include <net/if_media.h>	/* IFM_*: a switch socket's medium (npunwa_media_apply) */
+
 #include "npuep.h"
 #include "npunwa.h"
 
@@ -105,6 +109,9 @@ struct npunwa_port {
 	 */
 	int		mtu;
 	int		mtu_fail;
+	/* And its medium as set: the ifmedia word last applied, 0 none; media_set_fail as mtu_fail. */
+	int		media_set;
+	int		media_set_fail;
 	/*
 	 * The port's own address, as the agent answers a GET of NWA_SUB_MAC: one of the appliance's
 	 * range, which the board's VPD EEPROM holds and the coprocessor read at its own boot. Taken
@@ -744,6 +751,52 @@ npunwa_bring_up(struct npunwa_softc *sc)
 }
 
 /*
+ * A switch socket's speed and duplex, as its interface asked (npugiu_media_change): KSETTINGS
+ * (0x55) {autonegotiation, megabits, full duplex}, then what autonegotiation advertises (0x43) -
+ * second, because turning autonegotiation on rewrites what the PHY advertises. The OCTEON TX
+ * driver's octep_dp_media_change, the same mapping: autoselect is autonegotiation with all of
+ * 10, 100 and 1000 full advertised; 1000baseT is autonegotiation with 1000 full alone, as a
+ * gigabit copper link is never forced; 100baseTX and 10baseT are forced, full or half.
+ *
+ * The agent takes the port down and up for a set, so a set is skipped when a GET of KSETTINGS - and,
+ * with autonegotiation, of what is advertised - already answers what is asked: an autoselect asked
+ * again does not bounce the link. Under sc->mtx, from the link poll.
+ */
+static int
+npunwa_media_apply(struct npunwa_softc *sc, int n, int m)
+{
+	uint32_t tag = npuep_front_ports[n].tag, ks[3], cur[3], adv, have;
+	int err;
+
+	switch (IFM_SUBTYPE(m)) {
+	case IFM_AUTO:
+		ks[0] = 1; ks[1] = 1000; ks[2] = 1; adv = NWA_ADV_ALL;
+		break;
+	case IFM_1000_T:
+		ks[0] = 1; ks[1] = 1000; ks[2] = 1; adv = NWA_ADV_1000F;
+		break;
+	case IFM_100_TX:
+		ks[0] = 0; ks[1] = 100; ks[2] = (m & IFM_FDX) != 0; adv = 0;
+		break;
+	case IFM_10_T:
+		ks[0] = 0; ks[1] = 10; ks[2] = (m & IFM_FDX) != 0; adv = 0;
+		break;
+	default:
+		return (EINVAL);
+	}
+	/* what is in place already is not set again: a set bounces the link */
+	if (npunwa_command(sc, NWA_OP_GET, NWA_SUB_KSETTINGS, tag, 0, cur, 3) == 0 &&
+	    cur[0] == ks[0] && cur[1] == ks[1] && cur[2] == ks[2] &&
+	    (ks[0] == 0 || (npunwa_command(sc, NWA_OP_GET, NWA_SUB_ADV, tag, 0, &have, 1) == 0 &&
+	    have == adv)))
+		return (0);
+	err = npunwa_command_n(sc, NWA_OP_SET, NWA_SUB_KSETTINGS, tag, ks, 3, NULL, 0);
+	if (err == 0 && ks[0] == 1)
+		err = npunwa_command(sc, NWA_OP_SET, NWA_SUB_ADV, tag, adv, NULL, 0);
+	return (err);
+}
+
+/*
  * One port per tick. Reports a change and nothing else, so the log says when a cable moved rather
  * than repeating itself once a second forever.
  */
@@ -785,6 +838,25 @@ npunwa_link_step(struct npunwa_softc *sc)
 				p->speed = (int)v;
 			else
 				p->speed = 0;
+			/*
+			 * And whether it runs half duplex, read beside the speed: a forced 10 or 100
+			 * comes up half against a partner that negotiates, and so may a partner forced
+			 * half; ifconfig and XGS: Ports say it. 1 full, 0 half; 0xff, an error or a
+			 * port that does not answer it (the SoC ports) is taken as full.
+			 */
+			npugiu_set_half(n, link && npunwa_port_get(sc, n, NWA_SUB_DUPLEX, &v) == 0 &&
+			    v == 0);
+			/*
+			 * And the port's address named again when its carrier comes up, by the
+			 * reconcile below in this same turn - as the OCTEON TX driver's
+			 * octep_dp_link_change does: a port the agent took down and up comes back with
+			 * its "this is my address" entry closed, measured on the XGS 3300, and a
+			 * medium set here does just that. Told while the port was still down, on
+			 * 2026-11-15, the XGS 136's Port8 once passed no unicast after 1000baseT was
+			 * set; one request at each carrier up.
+			 */
+			if (link)
+				memset(p->told_mac, 0, sizeof(p->told_mac));
 			npugiu_link_change(n, link, p->speed);
 		}
 	}
@@ -878,6 +950,34 @@ npunwa_link_step(struct npunwa_softc *sc)
 			} else if (++p->mtu_fail >= 3)
 				device_printf(sc->fac.dev, "nwa: %s refused MTU %d three times - not asking "
 				    "again\n", npuep_front_ports[n].label, want);
+		}
+	}
+
+	/*
+	 * THE MEDIUM of a switch socket, as its interface asked for it (npugiu_media_change), set the
+	 * way the MTU is: compared with what the agent last took, and asked again at the port's next
+	 * turn if refused, three times. The agent takes the port down and up for it, which closes the
+	 * port's "this is my address" entry: so the link is read again as never read, and the address
+	 * is named again when the carrier comes up (above).
+	 */
+	if (p->up && p->media_set_fail < 3) {
+		int want = npugiu_media_wanted(n);
+
+		if (want != 0 && want != p->media_set) {
+			if (npunwa_media_apply(sc, n, want) == 0) {
+				p->media_set = want;
+				p->media_set_fail = 0;
+				p->link = -1;	/* read again; its address is named again at carrier up */
+				device_printf(sc->fac.dev, "nwa: %s medium set: %s%s\n",
+				    npuep_front_ports[n].label,
+				    IFM_SUBTYPE(want) == IFM_AUTO ? "autoselect" :
+				    IFM_SUBTYPE(want) == IFM_1000_T ? "1000baseT" :
+				    IFM_SUBTYPE(want) == IFM_100_TX ? "100baseTX" : "10baseT",
+				    IFM_SUBTYPE(want) == IFM_AUTO || IFM_SUBTYPE(want) == IFM_1000_T ? "" :
+				    ((want & IFM_FDX) != 0 ? " full duplex" : " half duplex"));
+			} else if (++p->media_set_fail >= 3)
+				device_printf(sc->fac.dev, "nwa: %s refused its medium three times - not "
+				    "asking again\n", npuep_front_ports[n].label);
 		}
 	}
 
