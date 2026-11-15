@@ -198,6 +198,9 @@ int	npuep_pf_count(const struct npuep_pf_tuple *tup, const uint64_t *pk, const u
 int	npuep_pf_tcp_scan(const struct npuep_pf_tuple *tup, struct npuep_pf_tcp *out);
 int	npuep_pf_tos_scan(const struct npuep_pf_tuple *tup, uint16_t dscp[2]);
 int	npuep_pf_handback(const struct npuep_pf_tuple *tup, const uint8_t *seq, const uint8_t *scale);
+int	npuep_pf_numbers(const struct npuep_pf_tuple *tup, const uint8_t *seq, const uint8_t *scale);
+bool	npuep_pf_pfsync_up(void);
+int	npuep_pf_peer_room(const struct npuep_pf_tuple *t);
 
 /* npunhop.c. A hint_port with NPUEP_HINT_LAGG_ONLY added stands in for a lagg's route only, not a bridge's. */
 #define	NPUEP_HINT_LAGG_ONLY	0x4000

@@ -7588,6 +7588,11 @@ octep_dp_flow_make(struct octep_softc *sc, const struct octep_pf_tuple *tin, uin
 	 */
 	marked = sc->dp_pf_sloppy != 0 ?
 	    octep_pf_mark_sloppy(&tup[0]) + octep_pf_mark_sloppy(&tup[1]) : 0;
+	/* and with a pfsync peer, the room its copy needs from here (octep_pf_peer_room) */
+	if (marked > 0 && t.proto == IPPROTO_TCP && sc->dp_ka_pfsync_numbers != 0 &&
+	    octep_pf_pfsync_up())
+		sc->dp_pf_peer_room += (uint64_t)(octep_pf_peer_room(&tup[0]) +
+		    octep_pf_peer_room(&tup[1]));
 
 	sbuf_printf(sb, "connection %u%s: %s%s%s programmed, %d pf state(s) marked sloppy%s\n", idx,
 	    attach ? " (attached)" : "",
@@ -8104,10 +8109,13 @@ octep_flow_keepalive(struct octep_softc *sc)
 	uint64_t gp[2], gb[2];
 	uint32_t i, k, valid, rev, stamp;
 	uint16_t crev;
-	int d, reads, alive, err, silent, give, ns;
+	uint8_t seq[OCTEP_TCP_SEQ_LEN], scale[2];
+	int d, reads, alive, err, silent, give, ns, peer, nums;
 
 	if (sc->dp_keepalive == 0 || !octep_pf_present())
 		return;
+	/* a pfsync peer to keep up to date: once a pass, not once a connection */
+	peer = sc->dp_ka_pfsync_numbers != 0 && octep_pf_pfsync_up();
 	/*
 	 * A far side that did not answer is left alone for a period. Without this each poll would
 	 * come to the next connection that is due and wait its own two seconds with the transmit
@@ -8156,6 +8164,31 @@ octep_flow_keepalive(struct octep_softc *sc)
 			c->mf[d].ka_seen = 1;
 			c->mf[d].ka_stamp = stamp;
 		}
+		/*
+		 * With a pfsync peer: pf's numbers for the connection stopped at the make, and the peer's
+		 * copy holds those, so a peer taking over would drop the live connection's segments. One
+		 * still moving has the fast path's numbers read (CONN_GET_FP_TCP_STATE, which leaves it
+		 * where it is, as the closing check reads them), for its states and the restamp below that
+		 * hands them to pfsync.
+		 */
+		nums = 0;
+		if (alive && peer && !c->tcp_on && c->tuple[0].proto == IPPROTO_TCP)
+			sc->dp_ka_numbers_unchecked++;	/* made or revived unchecked: none kept there */
+		if (alive && peer && c->tcp_on && !silent) {
+			sc->rpc_quiet = sc->dp_ka_silent;
+			err = octep_rpc_conn_tcp_state(sc, i, (uint16_t)c->conn_rev, seq);
+			sc->rpc_quiet = 0;
+			reads++;
+			if (err == 0) {
+				scale[0] = c->tcp_scale[0];
+				scale[1] = c->tcp_scale[1];
+				nums = 1;
+			} else {
+				sc->dp_ka_numbers_failed++;
+				if (err == ETIMEDOUT)
+					silent = 1;
+			}
+		}
 		if (alive && c->dropped)
 			c->drop_alive = time_uptime;	/* frames still coming: kept by the sweep */
 		tup[0] = c->tuple[0];
@@ -8175,6 +8208,12 @@ octep_flow_keepalive(struct octep_softc *sc)
 		}
 		mtx_unlock(&sc->mtx);
 
+		if (nums) {
+			if (octep_pf_numbers(tup, seq, scale) > 0)
+				sc->dp_ka_numbers++;
+			else
+				sc->dp_ka_numbers_none++;
+		}
 		if (alive && octep_pf_touch(&tup[0]) + octep_pf_touch(&tup[1]) != 0)
 			sc->dp_ka_touched++;
 		else if (!silent)
@@ -9621,6 +9660,31 @@ octep_dp_add_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
 	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "ka_idle",
 	    CTLFLAG_RD, &sc->dp_ka_idle, 0,
 	    "times a connection was found quiet, or its microflows gone: left to pf's own timer");
+	sc->dp_ka_pfsync_numbers = 1;
+	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "pfsync_numbers",
+	    CTLFLAG_RW, &sc->dp_ka_pfsync_numbers, 0,
+	    "1 (default): while pfsync0 is up, the keep-alive writes the fast path's TCP numbers into "
+	    "the pf states of each connection still moving - they stay sloppy here - so that a pfsync "
+	    "peer's copy follows the connection and a peer taking over passes its segments; 0 off");
+	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "ka_numbers",
+	    CTLFLAG_RD, &sc->dp_ka_numbers, 0,
+	    "times the keep-alive wrote a connection's TCP numbers into its pf states for pfsync");
+	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "ka_numbers_none",
+	    CTLFLAG_RD, &sc->dp_ka_numbers_none, 0,
+	    "times the numbers were read and no state took them: none found, one that modulates "
+	    "sequence numbers or timestamps, or numbers that do not look like a window");
+	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "pf_peer_room",
+	    CTLFLAG_RD, &sc->dp_pf_peer_room, 0,
+	    "pf states of TCP connections given a gigabyte past their right edges at the make, for a "
+	    "pfsync peer's copy, while pfsync0 is up");
+	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "ka_numbers_failed",
+	    CTLFLAG_RD, &sc->dp_ka_numbers_failed, 0,
+	    "times the fast path did not answer with a connection's TCP numbers");
+	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "ka_numbers_unchecked",
+	    CTLFLAG_RD, &sc->dp_ka_numbers_unchecked, 0,
+	    "times a moving TCP connection had no numbers to give pfsync: made or revived with its "
+	    "window unchecked in hardware (dp.tcp_revive 0 revives so), its peer's copy left as pf "
+	    "had it");
 	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "flow_unsettled",
 	    CTLFLAG_RD, &sc->dp_flow_unsettled, 0,
 	    "attempts to make a connection that were put off because pf's states for it were not "

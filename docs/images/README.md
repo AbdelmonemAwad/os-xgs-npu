@@ -19,10 +19,10 @@ to a new image, and the checks fail on one without them.
 |---|---|---|
 | [screens/](screens/) | The web interface, page by page, in English and in Arabic | 108 |
 | [hardware/](hardware/) | Photographs and drawings of the appliances, one folder each | 41 |
-| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 875 |
+| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 881 |
 | [readme/](readme/) | The README's banner and status board, drawn by tools/readme-art.py | 6 |
 
-1069 images in all.
+1075 images in all.
 
 ## The web interface
 
@@ -1012,6 +1012,19 @@ The page: [pfsync-2026-11-15.md](../measurements/pfsync-2026-11-15.md).
 |---|---|---|
 | [01-before-the-state-replaced.png](measurements/pfsync-2026-11-15/01-before-the-state-replaced.png) | Before the change, octep.ko 8c359419: the stream's state 1:06 old at second 68, then 0:01 at second 73 - replaced | [pfsync-2026-11-15.md](../measurements/pfsync-2026-11-15.md) |
 | [02-after-the-state-kept.png](measurements/pfsync-2026-11-15/02-after-the-state-kept.png) | After it, octep.ko 2cec49f9: the state's age rising from 0:05 to 1:45, never replaced | [pfsync-2026-11-15.md](../measurements/pfsync-2026-11-15.md) |
+
+### measurements/pfsync-numbers-2026-11-15/ (6)
+
+The page: [pfsync-numbers-2026-11-15.md](../measurements/pfsync-numbers-2026-11-15.md).
+
+| image | what it shows | used on |
+|---|---|---|
+| [01-before-the-copy-stands-still.png](measurements/pfsync-numbers-2026-11-15/01-before-the-copy-stands-still.png) | Before the change: the XGS 3300's state and the XGS 136's copy at the make's numbers, the copy strict, 250 MB behind at the end | [pfsync-numbers-2026-11-15.md](../measurements/pfsync-numbers-2026-11-15.md) |
+| [02-before-the-live-segment-refused.png](measurements/pfsync-numbers-2026-11-15/02-before-the-live-segment-refused.png) | Before: a segment with the live numbers refused by the XGS 136's strict copy, state-mismatch 1687 to 1688 | [pfsync-numbers-2026-11-15.md](../measurements/pfsync-numbers-2026-11-15.md) |
+| [03-after-the-copy-follows.png](measurements/pfsync-numbers-2026-11-15/03-after-the-copy-follows.png) | After: the XGS 3300's numbers written at each pass and the XGS 136's copy following; the stream stood still from about 18 s, the test machine's adapters | [pfsync-numbers-2026-11-15.md](../measurements/pfsync-numbers-2026-11-15.md) |
+| [04-after-the-live-segment-passed.png](measurements/pfsync-numbers-2026-11-15/04-after-the-live-segment-passed.png) | After, octep.ko 9b42f139: the strict copy a gigabyte past its right edge, the live segment passed and the old one refused | [pfsync-numbers-2026-11-15.md](../measurements/pfsync-numbers-2026-11-15.md) |
+| [05-after-unchecked-the-room-from-the-make.png](measurements/pfsync-numbers-2026-11-15/05-after-unchecked-the-room-from-the-make.png) | After, a connection made unchecked: the copy's room from the make, the live segment 7 MB ahead passed | [pfsync-numbers-2026-11-15.md](../measurements/pfsync-numbers-2026-11-15.md) |
+| [06-the-xgs-136-writes-them-too.png](measurements/pfsync-numbers-2026-11-15/06-the-xgs-136-writes-them-too.png) | The XGS 136 carrying: its own state's numbers written at each keepalive pass | [pfsync-numbers-2026-11-15.md](../measurements/pfsync-numbers-2026-11-15.md) |
 
 ### measurements/plugin-releases-2026-11-06/ (7)
 
