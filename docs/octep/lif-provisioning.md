@@ -37,7 +37,7 @@ ports behind the switch, the same pair at
 `sc ${S}.rpc.cmd=3; sc ${S}.rpc.post=1` (`src/opnsense/scripts/octep/bringup.sh:544`).
 
 Command 3 is `LIF_ADD_UPDATE` and command 5 is `PPORT_UPDATE`
-(`contrib/octep/octep.h:2667`, `contrib/octep/octep.h:2894`). The flags are set once before both loops, at
+(`contrib/octep/octep.h:2669`, `contrib/octep/octep.h:2896`). The flags are set once before both loops, at
 `sc ${S}.rpc.lif_mtu=1500 ${S}.rpc.lif_fwd=2 ${S}.rpc.lif_mask=255`
 (`src/opnsense/scripts/octep/bringup.sh:310`).
 
@@ -93,7 +93,7 @@ entry in that range is what a correctly provisioned table looks like when you re
 
 ### The table cannot be swept contiguously, which is why this is easy to get wrong
 
-A read's answer is bounded by `OCTEP_RPC_DATA_MAX_SIZE` (`contrib/octep/octep.h:2616`), which is
+A read's answer is bounded by `OCTEP_RPC_DATA_MAX_SIZE` (`contrib/octep/octep.h:2618`), which is
 4096 bytes, less the eight-byte response header and the four-byte done magic. At twelve to sixteen
 bytes per entry that is a few hundred entries at most, against a span of 0 to 45056. **There is no
 range that contains all twelve.** They have to be probed at the twelve computed indices, one read
@@ -205,7 +205,7 @@ usable logical interface behind it yet"* (`src/opnsense/scripts/octep/bringup.sh
 
 `octep` carries the same rule in its own header, measured rather than quoted: a new entry needs the
 full mask and an existing one a partial mask, with `OCTEP_LIF_M_ALL` as 0xff
-(`contrib/octep/octep.h:1367`), and `bringup.sh` passes `lif_mask=255` unconditionally
+(`contrib/octep/octep.h:1368`), and `bringup.sh` passes `lif_mask=255` unconditionally
 (`src/opnsense/scripts/octep/bringup.sh:310`). So **a second run of `bringup.sh` against a surviving
 table is refused `rc 1` on every port** - and nothing notices, because nothing reads the result.
 That is not a defect today only because the first run's entries are usually gone.

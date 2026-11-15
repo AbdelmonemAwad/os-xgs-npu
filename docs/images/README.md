@@ -19,10 +19,10 @@ to a new image, and the checks fail on one without them.
 |---|---|---|
 | [screens/](screens/) | The web interface, page by page, in English and in Arabic | 108 |
 | [hardware/](hardware/) | Photographs and drawings of the appliances, one folder each | 41 |
-| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 881 |
+| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 882 |
 | [readme/](readme/) | The README's banner and status board, drawn by tools/readme-art.py | 6 |
 
-1075 images in all.
+1076 images in all.
 
 ## The web interface
 
@@ -816,13 +816,14 @@ The page: [media-136-2026-11-15.md](../measurements/media-136-2026-11-15.md).
 | [01-port8-set-from-the-136.png](measurements/media-136-2026-11-15/01-port8-set-from-the-136.png) | Port8 set from the XGS 136's side: 100 and 10 half, 1000baseT and autoselect, TCP through each | [media-136-2026-11-15.md](../measurements/media-136-2026-11-15.md) |
 | [02-the-ports-page-says-it.png](measurements/media-136-2026-11-15/02-the-ports-page-says-it.png) | XGS: Ports on the XGS 136 with Port8 set to 100baseTX: "100M, half duplex", fixed | [media-136-2026-11-15.md](../measurements/media-136-2026-11-15.md) |
 
-### measurements/media-3300-2026-11-15/ (1)
+### measurements/media-3300-2026-11-15/ (2)
 
 The page: [media-3300-2026-11-15.md](../measurements/media-3300-2026-11-15.md).
 
 | image | what it shows | used on |
 |---|---|---|
 | [01-port3-set-from-the-3300.png](measurements/media-3300-2026-11-15/01-port3-set-from-the-3300.png) | Port3 set from the XGS 3300's side: 100 and 10 half with TCP through them, 1000baseT, autoselect, and a cage refusing | [media-3300-2026-11-15.md](../measurements/media-3300-2026-11-15.md) |
+| [02-a-half-partner-said-half.png](measurements/media-3300-2026-11-15/02-a-half-partner-said-half.png) | The second XGS 3300's Port8, autoselect, facing the XGS 136's Port8 set by hand: half at 100 and 10, full at 1000 and autoselect, a ping through each | [media-3300-2026-11-15.md](../measurements/media-3300-2026-11-15.md) |
 
 ### measurements/mgmt-link-2026-10-23/ (6)
 
