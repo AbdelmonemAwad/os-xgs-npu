@@ -1,0 +1,52 @@
+#!/bin/sh
+#-
+# SPDX-License-Identifier: BSD-2-Clause
+# Copyright (c) 2026 Abdelmonem Awad <eg2@live.com>
+#
+# A CARP change of master, and the coprocessor's hardware following it (XGS: Settings, "Hardware follows the
+# CARP master", off by default). OPNsense runs the carp hooks for each virtual address that changes state,
+# with its vhid@interface and MASTER, BACKUP or INIT.
+#
+# Leaving master, the hardware is emptied: the flow maker stopped and the coprocessor's connection table
+# dropped (fw_rev_bump, what the firewall hook does before a ruleset load), so a box that is no longer master
+# does not go on forwarding, without pf, connections it carried in hardware - measured 2026-11-15, the second
+# XGS 3300 demoted with a TCP stream through it: it kept the connection in hardware for about 16 seconds
+# after the XGS 136 took over, and forwarded it for 6 of them. A box still master of another address carries
+# traffic, and is left alone.
+#
+# Taking master, the flow maker goes back to what XGS: Settings asks (flow_auto); the connections pfsync
+# brought are made in hardware from their next frames, their pf numbers kept up to date by the old master
+# (dp.pfsync_numbers, flow.pfsync_numbers).
+#
+# Quick and never failing: the carp hooks run one after another.
+ON=$(/usr/local/bin/php -r 'require_once("config.inc"); echo $config["OPNsense"]["XGS"]["general"]["ha_follow"] ?? "0";' 2>/dev/null)
+[ "${ON}" = "1" ] || exit 0
+
+if /sbin/sysctl -q dev.octep.0.dp.auto > /dev/null 2>&1; then
+	AUTO=dev.octep.0.dp.auto
+	FLUSH=dev.octep.0.rpc.fw_rev_bump
+elif /sbin/sysctl -q dev.npuep.0.flow.auto > /dev/null 2>&1; then
+	AUTO=dev.npuep.0.flow.auto
+	FLUSH=dev.npuep.0.flow.fw_rev_bump
+else
+	exit 0
+fi
+
+case "${2}" in
+MASTER)
+	WANT=$(/usr/local/bin/php -r 'require_once("config.inc"); echo (($config["OPNsense"]["XGS"]["general"]["flow_auto"] ?? "1") === "1") ? "1" : "0";' 2>/dev/null)
+	[ "${WANT}" = "0" ] || WANT=1
+	/sbin/sysctl -q ${AUTO}=${WANT} > /dev/null 2>&1
+	/usr/bin/logger -t xgs-carp "${1} MASTER: the flow maker back to ${WANT}"
+	;;
+BACKUP|INIT)
+	if /sbin/ifconfig | /usr/bin/grep -q 'carp: MASTER'; then
+		/usr/bin/logger -t xgs-carp "${1} ${2}: still master of another address, the hardware left as it is"
+		exit 0
+	fi
+	/sbin/sysctl -q ${AUTO}=0 > /dev/null 2>&1
+	/sbin/sysctl -q ${FLUSH}=1 > /dev/null 2>&1
+	/usr/bin/logger -t xgs-carp "${1} ${2}: master of nothing here, the flow maker stopped and the hardware emptied"
+	;;
+esac
+exit 0

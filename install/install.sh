@@ -156,6 +156,9 @@ install -d -m 0755 "${PREFIX}/etc/rc.syshook.d/stop"
 install -m 0755 "${SRC}/src/etc/rc.syshook.d/start/08-xgs-watchdog" "${PREFIX}/etc/rc.syshook.d/start/08-xgs-watchdog"
 install -m 0755 "${SRC}/src/etc/rc.syshook.d/stop/23-xgs-watchdog" "${PREFIX}/etc/rc.syshook.d/stop/23-xgs-watchdog"
 rm -f "${PREFIX}/etc/rc.syshook.d/stop/05-xgs-watchdog"
+# A CARP change of master, the coprocessor's hardware following it when XGS: Settings asks (ha_follow).
+install -d -m 0755 "${PREFIX}/etc/rc.syshook.d/carp"
+install -m 0755 "${SRC}/src/etc/rc.syshook.d/carp/20-xgs-flows" "${PREFIX}/etc/rc.syshook.d/carp/20-xgs-flows"
 install -m 0644 "${SRC}/contrib/mvsw/mvsw" "${PREFIX}/share/os-xgs-npu/mvsw"
 # Block lists whose additions cut the connections already open (scripts/xgs/lists_cut.py): once a
 # minute, on both families, from /usr/local/etc/cron.d like the kernel follower - OPNsense

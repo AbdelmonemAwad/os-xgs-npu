@@ -132,6 +132,12 @@
             <help>With Inspect, then hardware on, a new connection the coprocessor carries goes to the Intrusion Detection first. While Suricata does not read it - stopped, restarting, or exited - its frames are dropped with this on, so no connection runs in hardware uninspected; off, they pass and the connection runs in hardware without inspection, as before. It does nothing while the Intrusion Detection is off or in IDS mode, or while Inspect, then hardware is off, so a new install, whose Intrusion Detection is off, drops nothing. Followed within two seconds when the Intrusion Detection is turned on or off. On in a new install.</help>
         </field>
         <field>
+            <id>xgs.general.ha_follow</id>
+            <label>Hardware follows the CARP master</label>
+            <type>checkbox</type>
+            <help>With High Availability: an appliance that is no longer master of any virtual address stops putting connections in hardware and empties it, so it does not go on forwarding them without pf; one that becomes master puts them in hardware again, as Accelerate connections automatically asks. A connection's numbers reach the peer through pfsync either way. Off by default: in a planned failover measured with it on, a stream waited about 5 seconds for TCP to resend before the new master carried it.</help>
+        </field>
+        <field>
             <id>xgs.general.anomaly_watch</id>
             <label>Watch for unusual traffic</label>
             <type>checkbox</type>
