@@ -213,7 +213,31 @@ function xgs_configure()
      */
     return [
         'bootup' => ['xgs_mgmt_link_bootup'],
+        'ipsec' => ['xgs_ipsec_configure'],
     ];
+}
+
+function xgs_ipsec_configure($verbose = false)
+{
+    /*
+     * XGS: Settings' additions to OPNsense's swanctl.conf (plan 01, package 3.4): swanctl/conf.d/xgs.conf,
+     * which swanctl.conf includes, naming connections and children by their uuids - written again here,
+     * each time OPNsense configures IPsec, so a child added or taken away is never left out of it nor
+     * named by it. OPNsense has written swanctl.conf and reloaded strongSwan by then
+     * (ipsec_configure_do; the plugins are configured in their files' order), so strongSwan is
+     * reloaded once more when, and only when, this file changed. Never fails the configure.
+     */
+    $f = '/usr/local/etc/swanctl/conf.d/xgs.conf';
+    $before = @file_get_contents($f);
+    try {
+        (new \OPNsense\Core\Backend())->configdRun('template reload OPNsense/XGS');
+    } catch (\Throwable $e) {
+        syslog(LOG_ERR, 'xgs: swanctl/conf.d/xgs.conf not written: ' . $e->getMessage());
+        return;
+    }
+    if (@file_get_contents($f) !== $before && isvalidpid('/var/run/charon.pid')) {
+        mwexecfb('/usr/local/etc/rc.d/strongswan onereload');
+    }
 }
 
 function xgs_mgmt_link_bootup()

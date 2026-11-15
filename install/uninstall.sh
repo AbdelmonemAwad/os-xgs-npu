@@ -193,6 +193,12 @@ rm -f "${PREFIX}/opnsense/scripts/xgs/npu-log.sh" "${PREFIX}/etc/rc.syshook.d/st
     "${PREFIX}/etc/syslog-ng.conf.d/xgs-coprocessor.conf"
 # and its way to the remote servers: the overlay, and what it wrote, which names that source and
 # would stop syslog-ng without it
+# IPsec's additions to swanctl.conf: the template and what it wrote; strongSwan forgets them at its next
+# reload, which OPNsense's own IPsec apply does.
+rm -f "${PREFIX}/opnsense/service/templates/OPNsense/XGS/+TARGETS" \
+    "${PREFIX}/opnsense/service/templates/OPNsense/XGS/xgs-swanctl.conf" \
+    "${PREFIX}/etc/swanctl/conf.d/xgs.conf"
+rmdir "${PREFIX}/opnsense/service/templates/OPNsense/XGS" 2>/dev/null || true
 rm -f "${PREFIX}/opnsense/service/templates/OPNsense/Syslog/+TARGETS.D/xgs.TARGET" \
     "${PREFIX}/opnsense/service/templates/OPNsense/Syslog/xgs-coprocessor-remote.conf" \
     "${PREFIX}/etc/syslog-ng.conf.d/xgs-coprocessor-remote.conf"

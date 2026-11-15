@@ -267,6 +267,30 @@
                 <Required>Y</Required>
                 <Default>1</Default>
             </ipsec_soft_crypto>
+            <!-- IPsec additions to OPNsense's swanctl.conf (plan 01, package 3.4, 2026-11-15), written to
+                 swanctl/conf.d/xgs.conf by the template OPNsense/XGS/xgs-swanctl.conf, which swanctl.conf
+                 includes: the random margin taken off every connection's and child's rekey times, in
+                 seconds (empty: strongSwan's own, the gap between life and rekey times), and the
+                 children that compress what they carry (ipcomp) - not while IPsec is in the
+                 coprocessor's engine, where compression has not been measured. Rendered again by the
+                 plugin's ipsec configure hook each time OPNsense writes swanctl.conf. -->
+            <ipsec_rand_time type="IntegerField">
+                <Required>N</Required>
+                <MinimumValue>0</MinimumValue>
+                <MaximumValue>86400</MaximumValue>
+                <ValidationMessage>Seconds, from 0 to 86400, or empty for strongSwan's own.</ValidationMessage>
+            </ipsec_rand_time>
+            <ipsec_ipcomp type="ModelRelationField">
+                <Model>
+                    <child>
+                        <source>OPNsense.IPsec.Swanctl</source>
+                        <items>children.child</items>
+                        <display>description</display>
+                    </child>
+                </Model>
+                <Multiple>Y</Multiple>
+                <Required>N</Required>
+            </ipsec_ipcomp>
             <!-- ARMADA only: the receive poll, measured in docs/findings/a-hundred-polls-a-second-on-the-armada.md. -->
             <rx_poll_ms type="IntegerField">
                 <Required>Y</Required>

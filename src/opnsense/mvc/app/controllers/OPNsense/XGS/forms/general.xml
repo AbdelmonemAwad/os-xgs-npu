@@ -187,6 +187,18 @@
             <type>checkbox</type>
             <help>XGS 136 only. The host's AMD crypto engine (ccp) fails every AES-GCM operation it is given, so a tunnel the coprocessor does not take would drop every packet. On, IPsec's sessions go to the CPU's AES instructions and ccp stays loaded for its random-number source. Applied at every boot; leave it on.</help>
         </field>
+        <field>
+            <id>xgs.general.ipsec_rand_time</id>
+            <label>Random margin off rekey times (s)</label>
+            <type>text</type>
+            <help>For the tunnels of VPN: IPsec: Connections: up to this many seconds, chosen at random each time, are taken off when a connection and its children rekey, so tunnels made together do not all rekey at the same moment. Empty: strongSwan's own, the gap between a tunnel's lifetime and its rekey time. Written beside OPNsense's own configuration, which includes it, and applied when you save and each time the IPsec configuration is applied.</help>
+        </field>
+        <field>
+            <id>xgs.general.ipsec_ipcomp</id>
+            <label>Compress what these tunnels carry (IPComp)</label>
+            <type>select_multiple</type>
+            <help>The children of VPN: IPsec: Connections whose traffic is compressed (IPComp) before it is encrypted, when the far end agrees. Not while IPsec runs in the coprocessor's engine, above: compression has not been measured there, and nothing is written while that is on. Applied as the margin above is.</help>
+        </field>
     </tab>
     <tab id="xgs-hardware" description="Hardware">
         <field>

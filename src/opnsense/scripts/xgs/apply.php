@@ -41,6 +41,8 @@
  *   rx_doorbells       the loader tunable hw.npuep.giu.rx_msix, read when the receive queues are
  *                      added, so a reboot takes it; XGS 136 only
  *   ipsec_soft_crypto  net.inet.ipsec.crypto_support now, and 07-npuep at every boot, XGS 136 only
+ *   ipsec_rand_time, ipsec_ipcomp  swanctl/conf.d/xgs.conf through the template OPNsense/XGS, and
+ *                      strongSwan reloaded when it changed and charon runs
  *   switch_jumbo       read by switch-jumbo.sh at the end of every boot; nothing to apply now
  *   watchdog           watchdog.sh start or stop now, and the start hook 08-xgs-watchdog at every boot
  *   flow_max           the loader tunable hw.octep.flow_max or hw.npuep.flow_max; 0 removes it
@@ -478,6 +480,26 @@ if (($ra_was === false ? '|' : $ra_was) !== $ra_now) {
     (new \OPNsense\Core\Backend())->configdRun('filter reload');
     $steps[] = 'router advertisements: ' . ($get('ra_guard', '') === '' ? 'from anyone, as OPNsense has it' :
         'only from the allowed senders on ' . str_replace(',', ', ', $get('ra_guard', ''))) . ' - the firewall reloaded';
+}
+
+/*
+ * IPsec's additions to swanctl.conf (OPNsense/XGS/xgs-swanctl.conf): written now, and strongSwan reloaded
+ * when they changed and it runs. Compression is not written while IPsec is in the coprocessor's engine.
+ */
+$swan = '/usr/local/etc/swanctl/conf.d/xgs.conf';
+$swan_before = @file_get_contents($swan);
+(new \OPNsense\Core\Backend())->configdRun('template reload OPNsense/XGS');
+$swan_after = @file_get_contents($swan);
+if ($swan_after !== $swan_before) {
+    $running = trim((string)shell_exec('/bin/pgrep -x charon 2>/dev/null')) !== '';
+    if ($running) {
+        shell_exec('/usr/local/etc/rc.d/strongswan onereload > /dev/null 2>&1');
+    }
+    $steps[] = 'IPsec: ' . ($get('ipsec_rand_time', '') === '' ? 'rekey times as strongSwan has them' :
+        'up to ' . $get('ipsec_rand_time', '') . ' s taken off rekey times at random') .
+        ($get('ipsec_ipcomp', '') === '' ? '' : ($get('ipsec_offload', '1') === '1' ?
+        '; compression not written while IPsec is in the coprocessor\'s engine' : '; compression on the tunnels chosen')) .
+        ($running ? ' - strongSwan reloaded' : '');
 }
 
 /* What is never offloaded, on the running driver - flow_exclude.php reads and writes it. */

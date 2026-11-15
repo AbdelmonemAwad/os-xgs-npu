@@ -372,6 +372,13 @@ install -m 0644 "${SRC}/src/opnsense/service/templates/OPNsense/Syslog/+TARGETS.
     "${PREFIX}/opnsense/service/templates/OPNsense/Syslog/+TARGETS.D/xgs.TARGET"
 install -m 0644 "${SRC}/src/opnsense/service/templates/OPNsense/Syslog/xgs-coprocessor-remote.conf" \
     "${PREFIX}/opnsense/service/templates/OPNsense/Syslog/xgs-coprocessor-remote.conf"
+# IPsec's additions to OPNsense's swanctl.conf (XGS: Settings, plan 01 package 3.4): a template of its own,
+# rendered by apply.php and by the ipsec configure hook in plugins.inc.d/xgs.inc into swanctl/conf.d.
+install -d -m 0755 "${PREFIX}/opnsense/service/templates/OPNsense/XGS"
+install -m 0644 "${SRC}/src/opnsense/service/templates/OPNsense/XGS/+TARGETS" \
+    "${PREFIX}/opnsense/service/templates/OPNsense/XGS/+TARGETS"
+install -m 0644 "${SRC}/src/opnsense/service/templates/OPNsense/XGS/xgs-swanctl.conf" \
+    "${PREFIX}/opnsense/service/templates/OPNsense/XGS/xgs-swanctl.conf"
 
 # A bridge's link acted on as an Ethernet port's (issue 911): devd reads its directory at start.
 install -d -m 0755 "${PREFIX}/etc/devd"
