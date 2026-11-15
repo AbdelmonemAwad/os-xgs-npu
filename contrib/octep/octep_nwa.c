@@ -973,6 +973,26 @@ octep_nwa_port_speed(struct octep_softc *sc, uint32_t port, uint32_t *mbit)
 }
 
 /*
+ * The duplex a port's link runs at, DUPLEX (0x0d), read as LINK gives the speed: 1 full, 0 half,
+ * 0xff while it has no link. The XGS 136's driver reads the same attribute at its carrier up
+ * (npunwa.c). The caller must not hold sc->mtx: octep_nwa_request() sleeps.
+ */
+int
+octep_nwa_port_duplex(struct octep_softc *sc, uint32_t port, uint32_t *duplex)
+{
+	struct octep_nwa_reply r;
+	int err;
+
+	err = octep_nwa_request(sc, OCTEP_NWA_OP_GET, OCTEP_NWA_SUB_DUPLEX, port, 0, 0, &r);
+	if (err != 0)
+		return (err);
+	if (r.status != 0 || r.words < 1)
+		return (ENXIO);
+	*duplex = r.data[0];
+	return (0);
+}
+
+/*
  * Ask a front port to pass multicast, or to stop.
  *
  * The caller must not hold sc->mtx: octep_nwa_request() sleeps. This is called from the link

@@ -22,7 +22,7 @@ The four changes of section D are built, in two pull requests:
 
 After #283 the one function is `octep_nwa_request()`
 (`contrib/octep/octep_nwa.c:630`): op, sub, port and the two payload words are arguments, and the
-reply is copied into the caller's `struct octep_nwa_reply` (`contrib/octep/octep.h:2714`) before the
+reply is copied into the caller's `struct octep_nwa_reply` (`contrib/octep/octep.h:2716`) before the
 mutex is dropped. The five port functions call it with a local reply. The `nwa.request` sysctl is
 served by `octep_nwa_do_request()` (`contrib/octep/octep_nwa.c:850`), which reads the staged `nwa.*`
 fields under the lock and passes them on, so the staging block exists for the operator alone. The
@@ -59,11 +59,11 @@ race and leaves the window race open. The shape below closes both and adds no se
 
 ### The request block
 
-    uint32_t		 nwa_req_op;           contrib/octep/octep.h:1681
+    uint32_t		 nwa_req_op;           contrib/octep/octep.h:1682
     uint32_t		 nwa_req_sub;
     uint32_t		 nwa_req_port;
     uint32_t		 nwa_req_param;
-    uint32_t		 nwa_req_param2;       contrib/octep/octep.h:1685
+    uint32_t		 nwa_req_param2;       contrib/octep/octep.h:1686
 
 Filled by each caller before the call, with no lock. `octep_nwa_do_request()` reads four of them
 under the mutex at `op = sc->nwa_req_op;` (`contrib/octep/octep_nwa.c:412`) and the fifth later, at
@@ -72,9 +72,9 @@ under the mutex, but the *writes* that put them there were not.
 
 ### The result block
 
-    uint32_t		 nwa_last_op;          contrib/octep/octep.h:1670
+    uint32_t		 nwa_last_op;          contrib/octep/octep.h:1671
     ...
-    uint32_t		 nwa_last_status;      contrib/octep/octep.h:1677
+    uint32_t		 nwa_last_status;      contrib/octep/octep.h:1678
 
 Written under the mutex at `sc->nwa_last_op = op;` (`contrib/octep/octep_nwa.c:524`) and by
 `octep_nwa_xfer()` (`:528`), and then read by every caller *after* the mutex has been dropped at
@@ -114,9 +114,9 @@ by calling `octep_nwa_request` with arguments (the sysctl still goes through the
 |---|---|---|
 | `octep_nwa_port_mac` - `contrib/octep/octep_nwa.c:916` | 665 | the bring-up path |
 | `octep_nwa_port_speed` - `contrib/octep/octep_nwa.c:961` | 710 | the link poll |
-| `octep_nwa_port_filter` - `contrib/octep/octep_nwa.c:991` | 740 | the link poll |
-| `octep_nwa_port_promisc` - `contrib/octep/octep_nwa.c:1017` | 766 | the link poll |
-| `octep_nwa_port_link` - `contrib/octep/octep_nwa.c:1032` | 781 | the link poll, `taskqueue_thread` |
+| `octep_nwa_port_filter` - `contrib/octep/octep_nwa.c:1011` | 740 | the link poll |
+| `octep_nwa_port_promisc` - `contrib/octep/octep_nwa.c:1037` | 766 | the link poll |
+| `octep_nwa_port_link` - `contrib/octep/octep_nwa.c:1052` | 781 | the link poll, `taskqueue_thread` |
 | `octep_sysctl_nwa_request` - `contrib/octep/octep_nwa.c:866` | 645 | a user process, via `nwa.request` |
 
 The poll's four cannot overlap each other: one task, one thread, issued in sequence. So reaching
@@ -218,19 +218,19 @@ has: the `0xFFFFFFFF` endpoint check and a `!sc->nwa_running` check so detach is
 This change alone is a strict improvement and depends on nothing else.
 
 **2. Add the one field** - `int nwa_busy;` beside the existing NetAgent state in
-`contrib/octep/octep.h:1664` - and gate the transaction on it, in the shape at
+`contrib/octep/octep.h:1665` - and gate the transaction on it, in the shape at
 `contrib/npuep/npunwa.c:410`. `wakeup(&sc->nwa_busy)` on teardown, as at
 `contrib/npuep/npunwa.c:1414`.
 
 **3. Turn the request block into arguments.** `octep_nwa_do_request(sc)` becomes
 `octep_nwa_xact(sc, op, sub, port, param, param2, reply, nreply, &status)` or similar, and
-`contrib/octep/octep.h:1681` through `:1672` are deleted. The five internal callers pass what they
+`contrib/octep/octep.h:1682` through `:1672` are deleted. The five internal callers pass what they
 already set; each of them currently writes five fields and then calls, so each becomes one call.
 
 **4. Keep `nwa_last_*` as a diagnostic, and only that.** The `nwa.request` sysctl and `nwa.last`
 exist to send a request by hand and read what came back, and that is worth keeping - it is how
 `bringup.sh` reads a port's MAC, and the repository names it as the way to find out whether a
-firmware refuses an attribute (`nwa.request`, `contrib/octep/octep_dp.c:13029`). So the sysctl path keeps writing the
+firmware refuses an attribute (`nwa.request`, `contrib/octep/octep_dp.c:13034`). So the sysctl path keeps writing the
 `nwa_last_*` block under the lock, as *the last transaction*, which is what it is called and what it
 honestly is. The five internal callers stop reading it and take their results through arguments. The
 race disappears not because the block is locked but because **nothing that matters reads it any

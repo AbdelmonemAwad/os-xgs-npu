@@ -485,7 +485,7 @@ sent~~ **were never sent before 2026-11-10**.
 
 **Measured 2026-11-10, on the second XGS 3300 (vendor version 22)**: `VLAN_DELETE` (op 0x07) of VLAN
 4094, which nothing uses, and `BRIDGE_DELETE` (op 0x11) of bridge 0 were sent to its network agent
-by hand, through octep's raw request sysctls, `nwa.op` to `nwa.request` (`contrib/octep/octep_nwa.c:1298-1324`).
+by hand, through octep's raw request sysctls, `nwa.op` to `nwa.request` (`contrib/octep/octep_nwa.c:1318-1344`).
 Each was answered with status 1 and no payload - what every operation with no handler answers
 ([netagent.md](../npuep/netagent.md)) - and the ports went on as before ([measured](../measurements/switch-3300-2026-11-10.md)).
 So this agent does not act on them; 21 switched two ports through the chip's own registers instead,

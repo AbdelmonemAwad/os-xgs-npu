@@ -12960,8 +12960,13 @@ octep_dp_media_status(if_t ifp, struct ifmediareq *ifmr)
 	ifmr->ifm_status = IFM_AVALID;
 	if (dif != NULL && dif->link == 1) {
 		ifmr->ifm_status |= IFM_ACTIVE;
-		/* Forced half is half; anything negotiated has been full on every port seen. */
-		ifmr->ifm_active |= dif->media_half ? IFM_HDX : IFM_FDX;
+		/*
+		 * Half when this side forced it (media_half) or when the link runs half all the same -
+		 * negotiated with a partner forced to half (link_half, octep_dp_link_change). This
+		 * said full of the second until 2026-11-15: the XGS 136's Port8 forced to 100 half, and
+		 * the second XGS 3300's Port8 facing it reported 100baseTX full-duplex.
+		 */
+		ifmr->ifm_active |= (dif->media_half || dif->link_half) ? IFM_HDX : IFM_FDX;
 		switch (dif->speed) {
 		case 10:
 			ifmr->ifm_active |= IFM_10_T;
@@ -13461,6 +13466,26 @@ octep_dp_port_down(struct octep_softc *sc, struct octep_dp_if *dif)
  * ACTIVE a minute later. So on the way up the speed is asked first and the baudrate set before the
  * change is announced, as npuep does. The caller must not hold sc->mtx: the request sleeps.
  */
+/*
+ * A switch socket's duplex, read from the network agent (DUPLEX, 0x0d) when its link comes up and
+ * when its speed changes: a partner forced to half makes the negotiated link half, and only the
+ * agent knows. A cage is left full. One request, and none when it fails - the duplex then stays as
+ * it was. The caller must not hold sc->mtx: the request sleeps.
+ */
+static void
+octep_dp_link_duplex(struct octep_softc *sc, struct octep_dp_if *dif)
+{
+	uint32_t dx = 0xff;
+	int half;
+
+	if (dif->cage || octep_nwa_port_duplex(sc, dif->nwaport, &dx) != 0 || dx > 1)
+		return;
+	half = (dx == 0);
+	if (half != dif->link_half)
+		if_printf(dif->ifp, "%s duplex\n", half ? "half" : "full");
+	dif->link_half = (uint8_t)half;
+}
+
 static void
 octep_dp_link_change(struct octep_softc *sc, struct octep_dp_if *dif, int up)
 {
@@ -13472,6 +13497,11 @@ octep_dp_link_change(struct octep_softc *sc, struct octep_dp_if *dif, int up)
 		dif->speed = mbit;
 		if_setbaudrate(dif->ifp, (uint64_t)mbit * 1000000);
 	}
+	/* and a socket's duplex, which a partner forced to half makes half here too */
+	if (up)
+		octep_dp_link_duplex(sc, dif);
+	else
+		dif->link_half = 0;
 	/*
 	 * And the port's address, named again on the way up. A port taken down and up at the switch
 	 * comes back with its "this is my address" entry closed, passing broadcast and multicast and
@@ -13550,6 +13580,8 @@ octep_dp_link_poll(void *arg, int pending __unused)
 						if_printf(dif->ifp, "%u Mbit/s\n", mbit);
 					dif->speed = mbit;
 					if_setbaudrate(dif->ifp, (uint64_t)mbit * 1000000);
+					/* a new speed is a new negotiation: its duplex too */
+					octep_dp_link_duplex(sc, dif);
 				}
 			} else if (dif->link != 1 && dif->speed != 0) {
 				dif->speed = 0;
