@@ -3867,6 +3867,7 @@ struct octep_softc {
 	uint64_t		 dp_flow_nonhop;	/* not made: no next hop for the frame's direction */
 	uint64_t		 dp_flow_v6_refused;	/* IPv6 not made: translated, or a policy covers it */
 	uint64_t		 dp_flow_ppp_refused;	/* not made: the route leaves by a PPP link (PPPoE) */
+	uint64_t		 dp_flow_port_down;	/* taken out: a port a direction leaves by lost its link */
 	uint64_t		 dp_flow_excluded;	/* times not made or taken out: the owner keeps it */
 	uint64_t		 dp_flow_released;	/* connections handed back from the Flows page */
 	uint32_t		 dp_netmap_gate;	/* 1: none made automatically through netmap mode */

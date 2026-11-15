@@ -7130,11 +7130,13 @@ octep_dp_flow_make(struct octep_softc *sc, const struct octep_pf_tuple *tin, uin
 		    "port" :
 		    err == EWOULDBLOCK ? "the neighbour is not resolved yet, and asking for it has "
 		    "just been done - try again in a moment" :
+		    err == ENETDOWN ? "the route leaves by a front port that has no link" :
 		    err == ENETUNREACH ? (hint < 0 ? "the route leaves by an interface this driver "
 		    "does not own, and the other direction of this connection has not been punted "
 		    "from a front port, so there is nothing to say which port the destination is on" :
 		    "the route leaves by an interface this driver does not own, and the port the "
-		    "other direction arrives on has no link") : tunmiss ? "a tunnelled connection's "
+		    "other direction arrives on has no link, or is not a member of the lagg the "
+		    "route leaves by") : tunmiss ? "a tunnelled connection's "
 		    "encrypted direction must leave by the interface its association is on, and its "
 		    "decrypted direction by another" : "no route");
 		return (err);
@@ -9513,6 +9515,10 @@ octep_dp_add_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
 	    "attempts whose route leaves by a PPP link - PPPoE, PPTP or L2TP: the coprocessor is "
 	    "given nothing that can carry a PPP header, so the host keeps the connection. Counted in "
 	    "flow_nonhop as well");
+	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "flow_port_down",
+	    CTLFLAG_RD, &sc->dp_flow_port_down, 0,
+	    "connections taken back to the host because a front port one of their directions leaves "
+	    "by lost its link (octep_dp_port_down)");
 	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "flow_other_closing",
 	    CTLFLAG_RD, &sc->dp_flow_other_closing, 0,
 	    "attempts put off because the other direction had carried a FIN or RST not yet read");
@@ -13311,6 +13317,77 @@ octep_sysctl_dp_vlan_lif_table(SYSCTL_HANDLER_ARGS)
 }
 
 /*
+ * A front port's link went: every connection with a direction that leaves by it is taken back to the
+ * host, which sends its frames by the ports that still have a link and makes the connection again
+ * from there.
+ *
+ * A direction in hardware leaves by the port chosen when it was made, and nothing else moves it:
+ * measured 2026-11-15 with a lagg (LACP) over the second XGS 3300's Port3 and Port4, Port3 taken down
+ * at the switch for 10 s while the far side sent to the lagg (issue #1162): the connections whose
+ * data left by Port3 stayed in hardware sending into the dead port, kept alive by the far side's
+ * own retransmissions, and two of eight moved nothing for 24 and 32 of 40 seconds - on after the
+ * port was back, by then waiting out TCP's backed-off retransmission timer. The same holds for any
+ * port: a WAN port that loses its link with a route still naming it.
+ *
+ * Taken out rather than moved: rewriting a next hop in place for a lagg's other member would keep
+ * them in hardware, but no command has been measured to do that to an entry microflows name, and
+ * a take-out is the walk the sweep already makes. A direction that only ARRIVES by the port needs
+ * nothing - its frames come in elsewhere now, miss its microflow, and are made again - so the walk
+ * looks at the next hop of each programmed direction. The resolvers refuse a port with no link
+ * from here on (ENETDOWN), so what is taken out is not made again by the dead port.
+ *
+ * One connection at a time under the lock, as octep_netmap_sweep: a far side that stops answering
+ * ends the walk, its connection marked doomed for the audit. Called from the link poll, without
+ * sc->mtx, after the stack has been told - so that a lagg has moved off the port before the host
+ * starts sending these connections' frames.
+ */
+static void
+octep_dp_port_down(struct octep_softc *sc, struct octep_dp_if *dif)
+{
+	struct octep_conn *c;
+	uint32_t iface, nh;
+	int d, k, out, n;
+
+	if (dif->lif_iface == OCTEP_DP_IF_PORT_AUTO)
+		return;
+	iface = dif->lif_iface;
+	n = 0;
+	for (k = (int)sc->dp_conn_nlive - 1; k >= 0; k--) {
+		mtx_lock(&sc->mtx);
+		if ((uint32_t)k >= sc->dp_conn_nlive) {
+			mtx_unlock(&sc->mtx);
+			continue;
+		}
+		c = &sc->dp_conn[sc->dp_conn_live[k]];
+		out = 0;
+		if (c->used && !c->doomed)
+			for (d = 0; d < 2 && !out; d++) {
+				nh = c->mf[d].nhop;
+				out = c->mf[d].state == OCTEP_MF_PROGRAMMED && nh != 0 &&
+				    nh < OCTEP_NHOP_MAX && sc->dp_nhop[nh].used &&
+				    sc->dp_nhop[nh].iface == iface;
+			}
+		if (out) {
+			if (octep_conn_takeout(sc, c, 1) == ETIMEDOUT) {
+				mtx_unlock(&sc->mtx);
+				octep_dp_handback_run(sc);
+				if_printf(dif->ifp, "link down: the far side stopped answering after %d "
+				    "connection(s) leaving by it were taken back\n", n);
+				return;
+			}
+			sc->dp_flow_port_down++;
+			n++;
+		}
+		mtx_unlock(&sc->mtx);
+		if (out)
+			octep_dp_handback_run(sc);
+	}
+	if (n != 0)
+		if_printf(dif->ifp, "link down: %d connection(s) leaving by it taken back to the "
+		    "host\n", n);
+}
+
+/*
  * A link change, told to the stack with the speed already in place.
  *
  * The speed used to be asked for on the visit after the link came up, so the stack heard "up" with a
@@ -13343,6 +13420,8 @@ octep_dp_link_change(struct octep_softc *sc, struct octep_dp_if *dif, int up)
 		(void)octep_dp_tell_mac(sc, dif, dif->mac_told);
 	dif->link = up;
 	if_link_state_change(dif->ifp, up ? LINK_STATE_UP : LINK_STATE_DOWN);
+	if (!up)
+		octep_dp_port_down(sc, dif);
 }
 
 static void

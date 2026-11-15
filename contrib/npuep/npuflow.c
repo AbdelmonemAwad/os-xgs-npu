@@ -137,6 +137,7 @@ struct npuflow_conn {
 	uint64_t	hw_pf_pkts[2];
 	uint64_t	hw_pf_bytes[2];
 	time_t		hw_moved;
+	time_t		ka_touch;	/* when the keepalive last restamped its pf states, 0 never */
 	uint8_t		hw_seen;
 	/*
 	 * Its verdict is DROP on the coprocessor (discovery 3, XGS: Settings "Cut in hardware"): its
@@ -242,6 +243,7 @@ struct npuflow_conn {
  * sweep stopped: a million connections asked every second would be the whole of a core.
  */
 #define	NPUFLOW_KA_PER_SWEEP	16384
+#define	NPUFLOW_TOUCH_PERIOD	5	/* seconds: a connection's states restamped at most this often */
 /* How long a dropped connection pf no longer holds is kept with no count of it moving, in seconds. */
 #define	NPUFLOW_DROP_HOLD	15
 /* A candidate not punted for this long has been made, or has ended: its slot is cleared. */
@@ -338,6 +340,10 @@ struct npuflow_softc {
 	uint32_t		 conn_used, nhop_used;
 	uint64_t		 made, taken, auto_made, auto_gone, flow_full, nhop_full, v6_refused;
 	uint64_t		 ppp_refused;	/* candidate passes whose route leaves by a PPP link (PPPoE) */
+	uint64_t		 make_nonhop;	/* makes refused: a direction's next hop did not resolve */
+	uint64_t		 port_down_out;	/* taken out: a port a direction leaves by lost its link */
+	uint64_t		 ka_touched;	/* keepalive restamps: the coprocessor counted traffic */
+	volatile u_int		 ports_down;	/* front ports whose link went, for the sweep: npuflow_port_down */
 	uint64_t		 ipsec_refused;	/* makes refused: an IPsec policy covers the connection */
 	uint64_t		 ipsec_taken;	/* in hardware, then a policy came to cover it: taken out */
 	uint32_t		 spgen_seen;	/* the kernel's policy generation the last policy sweep saw */
@@ -492,6 +498,7 @@ static int	npuflow_takeout_all(struct npuflow_softc *);
 static int	npuflow_kept(struct npuflow_softc *, const struct npuep_pf_tuple *, int);
 static int	npuflow_kept_locked(struct npuflow_softc *, const struct npuep_pf_tuple *, int);
 static void	npuflow_held_sweep(struct npuflow_softc *);
+static void	npuflow_ports_down_sweep(struct npuflow_softc *);
 static void	npuflow_vlan_lifs(struct npuflow_softc *);
 static void	npuflow_policy_sweep(struct npuflow_softc *);
 static void	npuflow_ipsec_account(struct npuflow_softc *);
@@ -720,6 +727,30 @@ npuflow_cand_push(int port, uint16_t tag, uint32_t id, uint32_t rev,
 		taskqueue_enqueue(sc->tq, &sc->fast_task);
 }
 
+/* What a next hop's refusal means, for the make's answer: ": " and words, or "". */
+static const char *
+npuflow_nhop_why(int err)
+{
+
+	switch (err) {
+	case ENETDOWN:
+		return (": the route leaves by a front port that has no link");
+	case ENETUNREACH:
+		return (": the route leaves by an interface that is not a front port - a bridge or a "
+		    "lagg - and no port of the flow's own stands in for it");
+	case EHOSTUNREACH:
+		return (": no route, or the route is this host's own");
+	case EWOULDBLOCK:
+		return (": the neighbour is not resolved yet, and has just been asked for");
+	case EPROTONOSUPPORT:
+		return (": a PPP link, the host keeps it");
+	case EPFNOSUPPORT:
+		return (": not Ethernet underneath");
+	default:
+		return ("");
+	}
+}
+
 static int
 npuflow_nhop_for(const struct npuep_pf_tuple *t, const uint32_t *dst6, uint32_t dst, int hint,
     struct npuep_nhop *nh)
@@ -898,6 +929,7 @@ npuflow_sweep(void *arg, int pending __unused)
 		npuflow_tables_alloc(sc);
 	npuflow_vlan_lifs(sc);
 	npuflow_held_sweep(sc);
+	npuflow_ports_down_sweep(sc);	/* before the keepalive: a dead port's connections go first */
 	npuflow_keepalive(sc);
 	npuflow_netmap_sweep(sc);	/* flow.netmap_gate's give-backs and released cuts */
 	npuflow_policy_sweep(sc);
@@ -1408,6 +1440,7 @@ npuflow_conn_alloc(struct npuflow_softc *sc, const struct npuep_pf_tuple tup[2],
 	memset(c->hw_pf_pkts, 0, sizeof(c->hw_pf_pkts));
 	memset(c->hw_pf_bytes, 0, sizeof(c->hw_pf_bytes));
 	c->hw_moved = 0;
+	c->ka_touch = 0;
 	c->hw_seen = 0;
 	c->dropped = 0;
 	c->ips = 0;
@@ -2454,17 +2487,28 @@ npuflow_make(struct npuflow_softc *sc, uint32_t id, int slot, struct sbuf *sb)
 			return (err);
 		}
 	} else {
-		/* Both next hops, resolved with the lock dropped: the original out toward the
-		 * destination, the reply back to the opener by the flow's own port as the bridge hint. */
-		err = npuflow_nhop_for(&tup[0], tup[0].dip6, tup[0].dip, -1, &nho);
+		/*
+		 * Both next hops, resolved with the lock dropped: the original out toward the
+		 * destination, the reply back to the opener by the flow's own port as the bridge hint.
+		 * The original takes the port the destination's own frames arrive on as its hint, for a
+		 * lagg's route only (NPUEP_HINT_LAGG_ONLY): a destination behind a lagg of front ports
+		 * was refused, its route naming the lagg and no port; a bridge's is left as it was. The
+		 * OCTEON TX driver's octep_dp_flow_make takes the same port for it.
+		 */
+		err = npuflow_nhop_for(&tup[0], tup[0].dip6, tup[0].dip,
+		    ((d == 0) ? r.port : c.port) | NPUEP_HINT_LAGG_ONLY, &nho);
 		if (err != 0) {
-			if (sb != NULL) sbuf_printf(sb, "the original direction's next hop did not resolve (%d)\n", err);
+			sc->make_nonhop++;
+			if (sb != NULL) sbuf_printf(sb, "the original direction's next hop did not resolve "
+			    "(%d%s)\n", err, npuflow_nhop_why(err));
 			return (err);
 		}
 		err = npuflow_nhop_for(&tup[0], st.orig_src6, st.orig_src, lan_port, &nhr);
 		if (err != 0) {
-			if (sb != NULL) sbuf_printf(sb, "the reply direction's next hop did not resolve (%d) - "
-			    "the opener may have left the neighbour cache\n", err);
+			sc->make_nonhop++;
+			if (sb != NULL) sbuf_printf(sb, "the reply direction's next hop did not resolve "
+			    "(%d%s) - the opener may have left the neighbour cache\n", err,
+			    npuflow_nhop_why(err));
 			return (err);
 		}
 		/* leaving by a VLAN, with flow.vlan_flows 0: the host's, as one arriving by one is above */
@@ -3242,11 +3286,74 @@ npuflow_give_pf(struct npuflow_softc *sc, int ci)
 	FLOW_UNLOCK(sc);
 }
 
+/*
+ * A front port lost its link (npugiu_link_change): every connection with a direction that leaves by
+ * it is taken back to the host by the next sweep, which sends its frames by the ports that still have
+ * a link and makes the connection again from there. The OCTEON TX driver's octep_dp_port_down, whose
+ * comment has the measurement: a direction in hardware leaves by the port chosen when it was made,
+ * and with that port's link gone a lagg's connections stayed in hardware sending into it, two of
+ * eight moving nothing for 24 and 32 seconds of 40. Set here with no lock, as the link change is
+ * told; the take-outs need sc->sx, which the sweep holds.
+ */
+void
+npuflow_port_down(int port)
+{
+	struct npuflow_softc *sc = npuflow_sc;
+
+	if (sc != NULL && port >= 0 && port < 32)
+		atomic_set_int(&sc->ports_down, 1u << port);
+}
+
+static void
+npuflow_ports_down_sweep(struct npuflow_softc *sc)
+{
+	u_int down;
+	uint32_t k, nh;
+	uint8_t iface;
+	int i, d, p, out, n;
+
+	down = atomic_readandclear_int(&sc->ports_down);
+	if (down == 0 || sc->conn == NULL)
+		return;
+	for (p = 0; p < npuep_nfront && p < 32; p++) {
+		/* a link back by now keeps its connections: their next hops are good again */
+		if ((down & (1u << p)) == 0 || npugiu_port_link(p) != 0)
+			continue;
+		iface = npugiu_port_iface(p);
+		n = 0;
+		/* from the end: a takeout moves the last live connection into the place it frees */
+		for (k = sc->conn_nlive; k-- > 0;) {
+			FLOW_LOCK(sc);
+			if (k >= sc->conn_nlive) {
+				FLOW_UNLOCK(sc);
+				continue;
+			}
+			i = (int)sc->conn_live[k];
+			out = 0;
+			if (sc->conn[i].used && !sc->conn[i].making)
+				for (d = 0; d < 2 && !out; d++) {
+					nh = sc->conn[i].nhop[d];
+					out = nh != 0 && nh < sc->nhop_cap && sc->nhop[nh].used &&
+					    sc->nhop[nh].iface == iface;
+				}
+			FLOW_UNLOCK(sc);
+			if (out) {
+				npuflow_takeout(sc, i);
+				sc->port_down_out++;
+				n++;
+			}
+		}
+		if (n != 0)
+			device_printf(sc->dev, "%s lost its link: %d connection(s) leaving by it taken "
+			    "back to the host\n", npuep_front_ports[p].label, n);
+	}
+}
+
 static void
 npuflow_keepalive(struct npuflow_softc *sc)
 {
-	struct npuep_pf_tuple t;
-	int i, pf_dir, gone, budget, kept = 0, held;
+	struct npuep_pf_tuple t, tt[2];
+	int i, pf_dir, gone, budget, kept = 0, held, touch;
 	time_t last;
 	uint32_t k;
 
@@ -3278,6 +3385,26 @@ npuflow_keepalive(struct npuflow_softc *sc)
 		if (!gone) {
 			/* and what the coprocessor counted for it since the last visit, to pf */
 			npuflow_give_pf(sc, i);
+			/*
+			 * And its states restamped, as octep_flow_keepalive restamps them, when the
+			 * coprocessor has counted traffic for it since the last restamp - at most every
+			 * NPUFLOW_TOUCH_PERIOD seconds a connection - each restamp told to pfsync
+			 * (npuep_pf_touch). Until 2026-11-15 nothing called npuep_pf_touch, so the states
+			 * of a UDP connection in hardware lapsed at their timeout - 60 s for udp.multiple -
+			 * and the connection left hardware with them, and a pfsync peer's copy too.
+			 */
+			FLOW_LOCK(sc);
+			touch = sc->conn[i].used && sc->conn[i].hw_moved != 0 &&
+			    sc->conn[i].hw_moved > sc->conn[i].ka_touch &&
+			    time_uptime - sc->conn[i].ka_touch >= NPUFLOW_TOUCH_PERIOD;
+			if (touch) {
+				tt[0] = sc->conn[i].tuple[0];
+				tt[1] = sc->conn[i].tuple[1];
+				sc->conn[i].ka_touch = time_uptime;
+			}
+			FLOW_UNLOCK(sc);
+			if (touch && npuep_pf_touch(&tt[0]) + npuep_pf_touch(&tt[1]) != 0)
+				sc->ka_touched++;
 			kept++;
 			continue;
 		}
@@ -5620,6 +5747,15 @@ npuflow_attach(device_t dev, struct sysctl_ctx_list *ctx, struct sysctl_oid *par
 		    &sc->ppp_refused, 0, "candidate passes whose route leaves by a PPP link - PPPoE, PPTP or "
 		    "L2TP: the coprocessor is given nothing that can carry a PPP header, so the host keeps "
 		    "the connection");
+		SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "make_nonhop", CTLFLAG_RD,
+		    &sc->make_nonhop, 0, "makes refused because a direction's next hop did not resolve - "
+		    "flow.accelerate says why for a make by hand");
+		SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "port_down_out", CTLFLAG_RD,
+		    &sc->port_down_out, 0, "connections taken back to the host because a front port one of "
+		    "their directions leaves by lost its link (npuflow_port_down)");
+		SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "ka_touched", CTLFLAG_RD,
+		    &sc->ka_touched, 0, "keepalive visits that restamped a connection's pf states, the "
+		    "coprocessor having counted traffic for it - each restamp told to pfsync");
 		SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "ipsec_refused", CTLFLAG_RD,
 		    &sc->ipsec_refused, 0, "connections left with the host because an IPsec policy covers "
 		    "them (the host applies it; made as plain flows they would leave in the clear)");

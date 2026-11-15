@@ -19,10 +19,10 @@ to a new image, and the checks fail on one without them.
 |---|---|---|
 | [screens/](screens/) | The web interface, page by page, in English and in Arabic | 108 |
 | [hardware/](hardware/) | Photographs and drawings of the appliances, one folder each | 41 |
-| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 865 |
+| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 873 |
 | [readme/](readme/) | The README's banner and status board, drawn by tools/readme-art.py | 6 |
 
-1059 images in all.
+1067 images in all.
 
 ## The web interface
 
@@ -702,6 +702,17 @@ The page: [ja4-cut-2026-10-19.md](../measurements/ja4-cut-2026-10-19.md).
 | [01-xgs3300-now.png](measurements/ja4-cut-2026-10-19/01-xgs3300-now.png) | XGS 3300, the fingerprint listed at second 10 | [ja4-cut-2026-10-19.md](../measurements/ja4-cut-2026-10-19.md) |
 | [02-xgs3300-listed.png](measurements/ja4-cut-2026-10-19/02-xgs3300-listed.png) | XGS 3300, the fingerprint listed before the streams | [ja4-cut-2026-10-19.md](../measurements/ja4-cut-2026-10-19.md) |
 
+### measurements/lag-136-2026-11-15/ (4)
+
+The page: [lag-136-2026-11-15.md](../measurements/lag-136-2026-11-15.md).
+
+| image | what it shows | used on |
+|---|---|---|
+| [01-before-the-lagg-jail-sending.png](measurements/lag-136-2026-11-15/01-before-the-lagg-jail-sending.png) | Before, npuep.ko 520d842b, the lagg jail sending: none of the jail's connections in hardware, the CPUs 30 % busy | [lag-136-2026-11-15.md](../measurements/lag-136-2026-11-15.md) |
+| [02-before-the-far-jail-sending.png](measurements/lag-136-2026-11-15/02-before-the-far-jail-sending.png) | Before, npuep.ko 520d842b, the far jail sending: none in hardware, the CPUs 27 % busy | [lag-136-2026-11-15.md](../measurements/lag-136-2026-11-15.md) |
+| [03-after-both-ways.png](measurements/lag-136-2026-11-15/03-after-both-ways.png) | After, npuep.ko 03554cd2, both ways: 11 and 8 of the jail's connections in hardware, the CPUs 4 % busy | [lag-136-2026-11-15.md](../measurements/lag-136-2026-11-15.md) |
+| [04-port7-link-lost.png](measurements/lag-136-2026-11-15/04-port7-link-lost.png) | Port7's link lost: 11 connections taken back to the host | [lag-136-2026-11-15.md](../measurements/lag-136-2026-11-15.md) |
+
 ### measurements/lag-3300-2026-11-15/ (3)
 
 The page: [lag-3300-2026-11-15.md](../measurements/lag-3300-2026-11-15.md).
@@ -711,6 +722,15 @@ The page: [lag-3300-2026-11-15.md](../measurements/lag-3300-2026-11-15.md).
 | [01-lacp-the-lagg-side-sends.png](measurements/lag-3300-2026-11-15/01-lacp-the-lagg-side-sends.png) | LACP, the lagg side sending: 915 to 922 Mbit/s, both members carrying traffic, the CPUs 1 to 4 % busy | [lag-3300-2026-11-15.md](../measurements/lag-3300-2026-11-15.md) |
 | [02-lacp-the-lagg-side-receives.png](measurements/lag-3300-2026-11-15/02-lacp-the-lagg-side-receives.png) | LACP, the lagg side receiving: 796 to 859 Mbit/s, both members carrying traffic, the CPUs 0 to 2 % busy | [lag-3300-2026-11-15.md](../measurements/lag-3300-2026-11-15.md) |
 | [03-failover-the-master-lost-and-back.png](measurements/lag-3300-2026-11-15/03-failover-the-master-lost-and-back.png) | Failover: the master lost at the switch at second 10 and brought back at 20, the rate 892 to 952 Mbit/s throughout | [lag-3300-2026-11-15.md](../measurements/lag-3300-2026-11-15.md) |
+
+### measurements/lag-member-loss-3300-2026-11-15/ (2)
+
+The page: [lag-member-loss-3300-2026-11-15.md](../measurements/lag-member-loss-3300-2026-11-15.md).
+
+| image | what it shows | used on |
+|---|---|---|
+| [01-before-the-far-jail-sending.png](measurements/lag-member-loss-3300-2026-11-15/01-before-the-far-jail-sending.png) | Before, octep.ko 2cec49f9, the far jail sending: four connections stood still 30 seconds of 40 | [lag-member-loss-3300-2026-11-15.md](../measurements/lag-member-loss-3300-2026-11-15.md) |
+| [02-after-the-far-jail-sending.png](measurements/lag-member-loss-3300-2026-11-15/02-after-the-far-jail-sending.png) | After, octep.ko 92ee29bb, the far jail sending: the connections leaving by Port3 taken back, each still 2 to 3 seconds | [lag-member-loss-3300-2026-11-15.md](../measurements/lag-member-loss-3300-2026-11-15.md) |
 
 ### measurements/lif-delete-2026-10-24/ (1)
 
@@ -1565,6 +1585,15 @@ The page: [tunflows-136-2026-10-20.md](../measurements/tunflows-136-2026-10-20.m
 | [04-set-in-xgs-settings.png](measurements/tunflows-136-2026-10-20/04-set-in-xgs-settings.png) | The build that ships, the setting made in XGS: Settings and taken at boot: the same | [tunflows-136-2026-10-20.md](../measurements/tunflows-136-2026-10-20.md) |
 | [05-lifetime-before.png](measurements/tunflows-136-2026-10-20/05-lifetime-before.png) | Before: the stream in hardware, the kernel's associations counting nothing | [tunflows-136-2026-10-20.md](../measurements/tunflows-136-2026-10-20.md) |
 | [06-lifetime-after.png](measurements/tunflows-136-2026-10-20/06-lifetime-after.png) | After: the kernel's associations counting what the engine encrypted, 57 hand-overs | [tunflows-136-2026-10-20.md](../measurements/tunflows-136-2026-10-20.md) |
+
+### measurements/udp-state-136-2026-11-15/ (2)
+
+The page: [udp-state-136-2026-11-15.md](../measurements/udp-state-136-2026-11-15.md).
+
+| image | what it shows | used on |
+|---|---|---|
+| [01-before-the-state-replaced.png](measurements/udp-state-136-2026-11-15/01-before-the-state-replaced.png) | Before, npuep.ko 520d842b: the state replaced at second 64, and the stream out of hardware from then on | [udp-state-136-2026-11-15.md](../measurements/udp-state-136-2026-11-15.md) |
+| [02-after-the-state-kept.png](measurements/udp-state-136-2026-11-15/02-after-the-state-kept.png) | After, npuep.ko 03554cd2: the state's age rising to 1:46, the stream in hardware throughout | [udp-state-136-2026-11-15.md](../measurements/udp-state-136-2026-11-15.md) |
 
 ### measurements/unload-780-2026-10-25/ (3)
 

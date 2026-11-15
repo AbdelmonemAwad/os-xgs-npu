@@ -200,7 +200,7 @@ is not a teardown.
 
 Two points of shape, not of mechanism, come from this tree rather than from FreeBSD. `npuep` says
 why a taskqueue and not a callout (`contrib/npuep/npunwa.c:136`), and `octep` says the same at
-`octep_dp_link_poll` (`contrib/octep/octep_dp.c:13349`), which is enqueued on `taskqueue_thread`
+`octep_dp_link_poll` (`contrib/octep/octep_dp.c:13428`), which is enqueued on `taskqueue_thread`
 (`contrib/octep/octep_dp.c:2777`) because `octep_nwa_do_request()` sleeps
 (`contrib/octep/octep_nwa.c:850`). A new consumer of the RPC path should have **its own**
 taskqueue rather than adding two-second items to `taskqueue_thread`, which is single-threaded and
@@ -480,10 +480,10 @@ act on the difference, repeatedly.
 **And this tree already has that pattern, with the scar tissue to prove it.** The receive-filter
 reconcile in `octep` keeps two pieces of state per attribute and no more - what is wanted, and what
 the far side was last *successfully* told (`filt_want`, `filt_have`, `contrib/octep/octep.h:2509`). The wanted value is
-read fresh each pass rather than recorded from an event (`IFF_PROMISC`, `contrib/octep/octep_dp.c:13022`), so there
+read fresh each pass rather than recorded from an event (`IFF_PROMISC`, `contrib/octep/octep_dp.c:13028`), so there
 is no transition to miss and no second copy to go stale. A request that fails records nothing, so
 the comparison still disagrees and the next sweep asks again - the whole of the retry, with no
-counter, no budget and no latch. The comment at `contrib/octep/octep_dp.c:7215` records what the
+counter, no budget and no latch. The comment at `contrib/octep/octep_dp.c:7217` records what the
 alternative cost: a state machine of five fields per attribute, a retry budget and a refusal latch,
 three rounds of review, wrong in a new way after each of the first two. It was replaced by the shape
 `npuep` had used since it first carried a bridge.
@@ -574,9 +574,9 @@ E), which it was on the older commit.
   seconds in with pfsync to a peer and never without
   ([#1160](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/1160)). The keepalive's restamp is told
   to pfsync now, as a packet's would be (`octep_pf_sync` in `contrib/octep/octep_pf.c`). The XGS 136's
-  keepalive does not restamp a state in hardware at all - `npuep_pf_touch` in `contrib/npuep/npupf.c`,
-  which would and which tells pfsync (`npuep_pf_sync`), has no caller - so a UDP state there lapses at
-  its own timeout with or without pfsync.
+  keepalive restamped nothing until the same day - `npuep_pf_touch` in `contrib/npuep/npupf.c` had no
+  caller - and does now when the coprocessor has counted traffic for a connection, telling pfsync the same
+  way (`npuep_pf_sync`; measured in `docs/measurements/udp-state-136-2026-11-15.md`).
 - **No measurement of the RPC path under load.** The two-second figure is the driver's timeout
   constant, not an observed latency. The observed cost of a NetAgent request is 12 ms healthy and up
   to four seconds when it is not (`docs/npuep/netagent.md:166`); RPC has no equivalent measurement.

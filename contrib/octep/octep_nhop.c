@@ -27,6 +27,8 @@
 
 #include <net/if.h>
 #include <net/if_var.h>
+/* struct ifnet whole, for a lagg member's if_lagg (octep_nhop_hint_fits): see octep_dp.c's include of it */
+#include <net/if_private.h>
 #include <net/if_dl.h>
 #include <net/if_types.h>
 #include <net/ethernet.h>
@@ -120,6 +122,32 @@ octep_nhop_not_ether(struct ifnet *ifp)
 }
 
 /*
+ * Whether a front port may stand in for the interface a route leaves by. For a bridge, any port with
+ * a link, as before. For a lagg, only a member of that lagg: a lagg's route names the lagg, the hint
+ * is the port the flow's own frames come in on, and a port outside it would send the connection out
+ * of the wrong cable. A lagg is told by its driver's name: the lagg interface is IFT_ETHER, and it is
+ * its MEMBERS that if_lagg.c retypes IFT_IEEE8023ADLAG while they are in it. A member's if_lagg is its
+ * entry in its lagg, if_lagg.h's struct lagg_port, whose head is restated here and checked at every
+ * use - lp_ifp must be the port itself - and whose lp_softc is the lagg's softc, the lagg interface's
+ * if_softc. Read in the net epoch, which if_lagg.c frees a port's entry after.
+ */
+struct octep_lagg_member {	/* the head of if_lagg.h's struct lagg_port */
+	struct ifnet	*lp_ifp;	/* the member */
+	void		*lp_softc;	/* its lagg */
+};
+
+static int
+octep_nhop_hint_fits(struct ifnet *route_ifp, struct ifnet *port)
+{
+	const struct octep_lagg_member *lp;
+
+	if (strcmp(if_getdname((if_t)route_ifp), "lagg") != 0)
+		return (1);
+	lp = port->if_lagg;
+	return (lp != NULL && lp->lp_ifp == port && lp->lp_softc == route_ifp->if_softc);
+}
+
+/*
  * Resolve one destination to a front port and a MAC.
  *
  * dst is in network order, as everything else in this driver's flow path is.
@@ -136,6 +164,7 @@ octep_nhop_not_ether(struct ifnet *ifp)
  * (EPFNOSUPPORT) - both final, because no frame of theirs can leave by a port - a route out of an
  * interface this driver does not own and no usable hint, or a neighbour whose address is not known
  * yet - and the last of those fixes itself, because arpresolve sends the request on the way out.
+ * And a route out of a front port with no link (ENETDOWN), which fixes itself when the link comes back.
  */
 int
 octep_nhop_resolve(struct octep_softc *sc, uint32_t dst, int hint_dif,
@@ -205,6 +234,16 @@ octep_nhop_resolve(struct octep_softc *sc, uint32_t dst, int hint_dif,
 		dif = &sc->dp_if[i];
 
 	/*
+	 * A front port with no link: nothing sent out of it arrives. The route can still name it - a
+	 * static route, or a gateway the host has not marked down yet - and a connection made out of it
+	 * in hardware would lose every frame. 0 only: -1 is a port whose link has not been read yet.
+	 */
+	if (dif != NULL && dif->link == 0) {
+		NET_EPOCH_EXIT(et);
+		return (ENETDOWN);
+	}
+
+	/*
 	 * The bridge, and the only reason this function takes a hint.
 	 *
 	 * The route is right and names an interface that is not a port: eleven of this appliance's
@@ -215,12 +254,14 @@ octep_nhop_resolve(struct octep_softc *sc, uint32_t dst, int hint_dif,
 	 *
 	 * The link is checked because a port with no link cannot be where the machine is, whatever
 	 * was recorded. It costs one load and turns a moved cable from silent misdelivery into an
-	 * ordinary refusal.
+	 * ordinary refusal. A lagg's route takes the same hint, from one of its own members only
+	 * (octep_nhop_hint_fits).
 	 */
 	if (dif == NULL && hint_dif >= 0 && hint_dif < OCTEP_DP_IF_MAX &&
 	    sc->dp_if[hint_dif].ifp != NULL &&
 	    sc->dp_if[hint_dif].lif_iface != OCTEP_DP_IF_PORT_AUTO &&
-	    sc->dp_if[hint_dif].link == 1) {
+	    sc->dp_if[hint_dif].link == 1 &&
+	    octep_nhop_hint_fits(ifp, (struct ifnet *)sc->dp_if[hint_dif].ifp)) {
 		dif = &sc->dp_if[hint_dif];
 		i = hint_dif;
 		out->from_flow = 1;
@@ -324,10 +365,16 @@ octep_nhop_resolve6(struct octep_softc *sc, const uint8_t *dst6, int hint_dif,
 	/* a VLAN subinterface of a front port, as octep_nhop_resolve takes it */
 	if (dif == NULL && (i = octep_nhop_vlan_port(sc, ifp, &out->vlan)) >= 0)
 		dif = &sc->dp_if[i];
+	/* a front port with no link, as octep_nhop_resolve refuses it */
+	if (dif != NULL && dif->link == 0) {
+		NET_EPOCH_EXIT(et);
+		return (ENETDOWN);
+	}
 	if (dif == NULL && hint_dif >= 0 && hint_dif < OCTEP_DP_IF_MAX &&
 	    sc->dp_if[hint_dif].ifp != NULL &&
 	    sc->dp_if[hint_dif].lif_iface != OCTEP_DP_IF_PORT_AUTO &&
-	    sc->dp_if[hint_dif].link == 1) {
+	    sc->dp_if[hint_dif].link == 1 &&
+	    octep_nhop_hint_fits(ifp, (struct ifnet *)sc->dp_if[hint_dif].ifp)) {
 		dif = &sc->dp_if[hint_dif];
 		i = hint_dif;
 		out->from_flow = 1;
