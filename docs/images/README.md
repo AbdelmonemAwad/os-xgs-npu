@@ -19,10 +19,10 @@ to a new image, and the checks fail on one without them.
 |---|---|---|
 | [screens/](screens/) | The web interface, page by page, in English and in Arabic | 108 |
 | [hardware/](hardware/) | Photographs and drawings of the appliances, one folder each | 41 |
-| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 882 |
+| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 885 |
 | [readme/](readme/) | The README's banner and status board, drawn by tools/readme-art.py | 6 |
 
-1076 images in all.
+1079 images in all.
 
 ## The web interface
 
@@ -263,6 +263,16 @@ The page: [capture-10g-2026-11-11.md](../measurements/capture-10g-2026-11-11.md)
 | [06-teardown-100.png](measurements/capture-10g-2026-11-11/06-teardown-100.png) | The teardown after the 100 Mbit/s runs: no iperf3 server left on the bench VM, the 3300's word 7 as before the test, no tcpdump left, the capture on the cards stopped | [capture-10g-2026-11-11.md](../measurements/capture-10g-2026-11-11.md) |
 | [07-copies-on-500.png](measurements/capture-10g-2026-11-11/07-copies-on-500.png) | 500 Mbit/s with the copies on: the cards counted 447,078 frames sent and 447,078 received; tcpdump on the 3300 captured 447,065 frames on each port and the kernel dropped 0 and 0; the host took 721,188 frames from the coprocessor | [capture-10g-2026-11-11.md](../measurements/capture-10g-2026-11-11.md) |
 | [08-copies-off-500.png](measurements/capture-10g-2026-11-11/08-copies-off-500.png) | 500 Mbit/s with the copies put back off: the cards counted 443,882 and 443,882; tcpdump captured 140,234 frames on each port, the kernel dropped 0 and 0; then the teardown, the word 7 as before the test | [capture-10g-2026-11-11.md](../measurements/capture-10g-2026-11-11.md) |
+
+### measurements/carp-failover-2026-11-15/ (3)
+
+The page: [carp-failover-2026-11-15.md](../measurements/carp-failover-2026-11-15.md).
+
+| image | what it shows | used on |
+|---|---|---|
+| [01-numbers-off-the-connection-dies.png](measurements/carp-failover-2026-11-15/01-numbers-off-the-connection-dies.png) | Numbers off: the XGS 3300 demoted at 15 s, the XGS 136's copy refusing 29 segments, the stream dead | [carp-failover-2026-11-15.md](../measurements/carp-failover-2026-11-15.md) |
+| [02-numbers-on-the-connection-goes-on.png](measurements/carp-failover-2026-11-15/02-numbers-on-the-connection-goes-on.png) | Numbers on: the stream going on through the failover, all 18.8 MB delivered | [carp-failover-2026-11-15.md](../measurements/carp-failover-2026-11-15.md) |
+| [03-the-hook-empties-the-old-master.png](measurements/carp-failover-2026-11-15/03-the-hook-empties-the-old-master.png) | Numbers on and the carp hook: the XGS 3300's hardware emptied at once, the stream still about 5 s and then on, no segment refused | [carp-failover-2026-11-15.md](../measurements/carp-failover-2026-11-15.md) |
 
 ### measurements/channel-claim-wait-2026-10-24/ (3)
 

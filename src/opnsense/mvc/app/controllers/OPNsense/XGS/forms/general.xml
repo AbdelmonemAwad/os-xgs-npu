@@ -42,6 +42,12 @@
             <help>The flow maker: the driver puts established connections in hardware on its own (dp.auto on the XGS 3300, flow.auto on the XGS 136, which also opens its ports to the coprocessor's flow table). Nothing leaves the firewall's path while this is off, even with offloading on. On in a new install. A connection on a port the Intrusion Detection reads in IPS mode is never put in hardware. Applied when you save and at every boot. Suricata sees how a connection in hardware starts and, with Inspect, then hardware on the Security tab, its first megabyte; what it must see in full goes in Never offloaded below, or this stays off.</help>
         </field>
         <field>
+            <id>xgs.general.ha_follow</id>
+            <label>Hardware follows the CARP master</label>
+            <type>checkbox</type>
+            <help>With High Availability: an appliance that is no longer master of any virtual address stops putting connections in hardware and empties it, so it does not go on forwarding them without pf; one that becomes master puts them in hardware again, as Accelerate connections automatically asks. A connection's numbers reach the peer through pfsync either way. Off by default: in a planned failover measured with it on, a stream waited about 5 seconds for TCP to resend before the new master carried it.</help>
+        </field>
+        <field>
             <id>xgs.general.count_to_pf</id>
             <label>Count hardware traffic in pf</label>
             <type>checkbox</type>

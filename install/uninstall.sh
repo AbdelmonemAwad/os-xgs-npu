@@ -140,6 +140,8 @@ rm -rf /var/db/os-xgs-npu/lists /var/db/os-xgs-npu/ja4 /var/db/os-xgs-npu/anomal
 rm -f "${PREFIX}/opnsense/scripts/xgs/watchdog.sh" "${PREFIX}/etc/rc.syshook.d/start/08-xgs-watchdog" \
     "${PREFIX}/etc/rc.syshook.d/stop/23-xgs-watchdog" "${PREFIX}/etc/rc.syshook.d/stop/05-xgs-watchdog"
 rm -f "${PREFIX}/opnsense/scripts/xgs/switch-jumbo.sh" "${PREFIX}/etc/rc.syshook.d/start/09-xgs-switch-jumbo"
+# The carp hook. OPNsense's own carp hooks stay in their directory.
+rm -f "${PREFIX}/etc/rc.syshook.d/carp/20-xgs-flows"
 # The hand-set switch tool and its state. What it set stays in the chip until the coprocessor next
 # boots, which erases the switch's registers; nothing is left to set it again.
 rm -f "${PREFIX}/opnsense/scripts/xgs/switch.sh" /var/db/os-xgs-npu/switch.state

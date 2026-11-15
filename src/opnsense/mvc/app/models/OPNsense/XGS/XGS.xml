@@ -184,6 +184,16 @@
                 <Required>Y</Required>
                 <Default>0</Default>
             </capture_copies>
+            <!-- Hardware follows the CARP master (plan 01, package 1.1, 2026-11-15): the carp hook
+                 rc.syshook.d/carp/20-xgs-flows stops the flow maker and empties the coprocessor's
+                 hardware on a box that is master of no address any more, and puts the flow maker back
+                 as flow_auto asks when it becomes master. Off by default: in a planned failover
+                 measured with it on, the stream waited about 5 s for TCP to resend before the new
+                 master carried it (docs/measurements/carp-failover-2026-11-15.md). -->
+            <ha_follow type="BooleanField">
+                <Required>Y</Required>
+                <Default>0</Default>
+            </ha_follow>
             <!-- Unusual traffic reported, never blocked: scripts/xgs/anomaly.py, every minute from
                  cron.d/xgs-anomaly, which ends at once while this is off. Each alert also goes to
                  /var/db/os-xgs-npu/anomaly/alerts.jsonl for os-netreport to send. On in a new install
