@@ -19,10 +19,10 @@ to a new image, and the checks fail on one without them.
 |---|---|---|
 | [screens/](screens/) | The web interface, page by page, in English and in Arabic | 108 |
 | [hardware/](hardware/) | Photographs and drawings of the appliances, one folder each | 41 |
-| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 859 |
+| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 865 |
 | [readme/](readme/) | The README's banner and status board, drawn by tools/readme-art.py | 6 |
 
-1053 images in all.
+1059 images in all.
 
 ## The web interface
 
@@ -702,6 +702,16 @@ The page: [ja4-cut-2026-10-19.md](../measurements/ja4-cut-2026-10-19.md).
 | [01-xgs3300-now.png](measurements/ja4-cut-2026-10-19/01-xgs3300-now.png) | XGS 3300, the fingerprint listed at second 10 | [ja4-cut-2026-10-19.md](../measurements/ja4-cut-2026-10-19.md) |
 | [02-xgs3300-listed.png](measurements/ja4-cut-2026-10-19/02-xgs3300-listed.png) | XGS 3300, the fingerprint listed before the streams | [ja4-cut-2026-10-19.md](../measurements/ja4-cut-2026-10-19.md) |
 
+### measurements/lag-3300-2026-11-15/ (3)
+
+The page: [lag-3300-2026-11-15.md](../measurements/lag-3300-2026-11-15.md).
+
+| image | what it shows | used on |
+|---|---|---|
+| [01-lacp-the-lagg-side-sends.png](measurements/lag-3300-2026-11-15/01-lacp-the-lagg-side-sends.png) | LACP, the lagg side sending: 915 to 922 Mbit/s, both members carrying traffic, the CPUs 1 to 4 % busy | [lag-3300-2026-11-15.md](../measurements/lag-3300-2026-11-15.md) |
+| [02-lacp-the-lagg-side-receives.png](measurements/lag-3300-2026-11-15/02-lacp-the-lagg-side-receives.png) | LACP, the lagg side receiving: 796 to 859 Mbit/s, both members carrying traffic, the CPUs 0 to 2 % busy | [lag-3300-2026-11-15.md](../measurements/lag-3300-2026-11-15.md) |
+| [03-failover-the-master-lost-and-back.png](measurements/lag-3300-2026-11-15/03-failover-the-master-lost-and-back.png) | Failover: the master lost at the switch at second 10 and brought back at 20, the rate 892 to 952 Mbit/s throughout | [lag-3300-2026-11-15.md](../measurements/lag-3300-2026-11-15.md) |
+
 ### measurements/lif-delete-2026-10-24/ (1)
 
 The page: [lif-delete-2026-10-24.md](../measurements/lif-delete-2026-10-24.md).
@@ -776,6 +786,14 @@ The page: [many-tunnels-3300-2026-10-20.md](../measurements/many-tunnels-3300-20
 | image | what it shows | used on |
 |---|---|---|
 | [01-sixteen-tunnels.png](measurements/many-tunnels-3300-2026-10-20/01-sixteen-tunnels.png) | Sixteen IPsec tunnels at once between the two XGS 3300s: 16 of 16 established, 34 and 32 associations in the engines, 9,019 Mbit/s together | [many-tunnels-3300-2026-10-20.md](../measurements/many-tunnels-3300-2026-10-20.md) |
+
+### measurements/media-3300-2026-11-15/ (1)
+
+The page: [media-3300-2026-11-15.md](../measurements/media-3300-2026-11-15.md).
+
+| image | what it shows | used on |
+|---|---|---|
+| [01-port3-set-from-the-3300.png](measurements/media-3300-2026-11-15/01-port3-set-from-the-3300.png) | Port3 set from the XGS 3300's side: 100 and 10 half with TCP through them, 1000baseT, autoselect, and a cage refusing | [media-3300-2026-11-15.md](../measurements/media-3300-2026-11-15.md) |
 
 ### measurements/mgmt-link-2026-10-23/ (6)
 
@@ -956,6 +974,15 @@ The page: [pcie-order-2026-10-25.md](../measurements/pcie-order-2026-10-25.md).
 | [01-sfos21-before-the-change.png](measurements/pcie-order-2026-10-25/01-sfos21-before-the-change.png) | The XGS 136 on npuep.ko 590205fb: no line in the kernel's log, no pcie_order sysctl, and pciconf's PCI-Express line ending in RO NS - the two attributes on, as the firmware left them | [pcie-order-2026-10-25.md](../measurements/pcie-order-2026-10-25.md) |
 | [02-sfos21-cleared-at-attach-and-measured.png](measurements/pcie-order-2026-10-25/02-sfos21-cleared-at-attach-and-measured.png) | The XGS 136 on npuep.ko c79fa33b: the driver's line "PCIe relaxed ordering and no-snoop cleared (device control 0x2040, was 0x2850)", RO NS gone from pciconf's line; as the driver leaves them it received 1000 MB at 959 Mbit/s and sent at 991; with the two set back on, 990 and 991; malformed 0 and unknown port 0 throughout | [pcie-order-2026-10-25.md](../measurements/pcie-order-2026-10-25.md) |
 | [03-sfos21-ten-receives-alternated.png](measurements/pcie-order-2026-10-25/03-sfos21-ten-receives-alternated.png) | Ten 1 GB receives by the XGS 136 each way, alternated: cleared 990 once and 991 nine times; on 991 eight times, 950 and 943 once each; the receive path's malformed and unknown port counts 0 at the end | [pcie-order-2026-10-25.md](../measurements/pcie-order-2026-10-25.md) |
+
+### measurements/pfsync-2026-11-15/ (2)
+
+The page: [pfsync-2026-11-15.md](../measurements/pfsync-2026-11-15.md).
+
+| image | what it shows | used on |
+|---|---|---|
+| [01-before-the-state-replaced.png](measurements/pfsync-2026-11-15/01-before-the-state-replaced.png) | Before the change, octep.ko 8c359419: the stream's state 1:06 old at second 68, then 0:01 at second 73 - replaced | [pfsync-2026-11-15.md](../measurements/pfsync-2026-11-15.md) |
+| [02-after-the-state-kept.png](measurements/pfsync-2026-11-15/02-after-the-state-kept.png) | After it, octep.ko 2cec49f9: the state's age rising from 0:05 to 1:45, never replaced | [pfsync-2026-11-15.md](../measurements/pfsync-2026-11-15.md) |
 
 ### measurements/plugin-releases-2026-11-06/ (7)
 
