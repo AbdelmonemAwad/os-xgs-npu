@@ -106,6 +106,21 @@ else
     esac
 fi
 
+# TACACS+ as a server type of System: Access: Servers (plan 01, package 3.10), on every family: the
+# connector (library/OPNsense/Auth/TacacsPlus.php) asks the server through FreeBSD's own libtacplus,
+# which OPNsense's PHP has no binding to, so a small C tool does it, built here with the appliance's
+# own cc as the sensor tool is (tools/tacacs/xgs-tacauth.c). Without it the type answers with an error.
+if [ -f "${SRC}/tools/tacacs/xgs-tacauth.c" ] && command -v cc > /dev/null 2>&1 &&
+    cc -O -o "${PREFIX}/sbin/xgs-tacauth" "${SRC}/tools/tacacs/xgs-tacauth.c" -ltacplus -lmd 2> /dev/null; then
+    chmod 0755 "${PREFIX}/sbin/xgs-tacauth"
+    echo "   TACACS+: ${PREFIX}/sbin/xgs-tacauth built"
+else
+    echo "   NOTE: the TACACS+ tool did not build; System: Access: Servers' TACACS+ type answers with an error until it does"
+fi
+install -d -m 0755 "${PREFIX}/opnsense/mvc/app/library/OPNsense/Auth"
+install -m 0644 "${SRC}/src/opnsense/mvc/app/library/OPNsense/Auth/TacacsPlus.php" \
+    "${PREFIX}/opnsense/mvc/app/library/OPNsense/Auth/TacacsPlus.php"
+
 # The board reader itself goes on every appliance, because the hooks ask it at every boot.
 install -d -m 0755 "${PREFIX}/opnsense/scripts/xgs"
 install -m 0755 "${SRC}/src/opnsense/scripts/xgs/board.sh" "${PREFIX}/opnsense/scripts/xgs/board.sh"
@@ -972,6 +987,7 @@ fi
     for f in "${PREFIX}/etc/inc/plugins.inc.d/xgs.inc" \
         "${PREFIX}/opnsense/service/conf/actions.d/actions_xgs.conf" \
         "${PREFIX}/opnsense/mvc/app/library/OPNsense/System/Status/XGSReporterStatus.php" \
+        "${PREFIX}/opnsense/mvc/app/library/OPNsense/Auth/TacacsPlus.php" \
         "${PREFIX}"/etc/rc.syshook.d/*/*-xgs-* "${PREFIX}"/etc/rc.syshook.d/*/*-octep* \
         "${PREFIX}"/etc/rc.syshook.d/*/*-npuep* "${PREFIX}"/etc/rc.syshook.d/*/*-npuctl*; do
         [ -f "${f}" ] && echo "${f}"

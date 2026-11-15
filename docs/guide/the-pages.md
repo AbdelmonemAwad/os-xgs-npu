@@ -483,6 +483,15 @@ stores it as any import: a certificate with its key, an authority as an authorit
 
 ![XGS: Certificate Import on the second XGS 3300: a PKCS#12 file read, a certificate with its key and its authority listed](../images/measurements/settings-batch-2026-11-15/08-certificate-import-read.png)
 
+## TACACS+ in System: Access: Servers
+
+Since 2026-11-15 OPNsense's own page of authentication servers has a third type beside LDAP and RADIUS,
+**TACACS+**: the server's IPv4 address or name, its port (49), the shared secret, a timeout and the method -
+PAP, ASCII or CHAP. Chosen for the web GUI's login under System: Settings: Administration, or for any other
+service that asks OPNsense, it lets in a user the server accepts, if that user exists on the firewall with its
+groups ([measured](../measurements/tacacs-2026-11-15.md)). It asks through FreeBSD's own libtacplus, by a small
+tool the installer builds.
+
 ## XGS: Log File
 
 ![XGS: Log File on the second XGS 3300, in English: at the Warning filter over the last day, two lines from xgs-sensors - fan 1 and fan 0 under speed](../images/screens/en/09-xgs-log-file.png)
