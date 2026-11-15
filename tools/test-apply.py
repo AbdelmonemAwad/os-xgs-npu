@@ -10,7 +10,9 @@ And the rows of System: Settings: Tunables an apply removes: a sized tunable set
 maker's own two, which OPNsense set at each boot over the page's setting until 2026-11-06 (the review's
 G5). And the inspector's depth a save sets while "Inspect, then hardware" is on: a quarter over
 Suricata's stream.reassembly.depth, so Suricata reaches its own depth and bypasses a connection before
-the driver puts it in hardware (issue 1148). Reading the file through PHP also says the whole of
+the driver puts it in hardware (issue 1148). And "Inspection threads per port" (ids_threads): the netmap
+rings it gives each port - Suricata takes a thread a ring - and the drivers' flow id, on with more than one
+ring, from 1 to 8, nothing for one or empty. Reading the file through PHP also says the whole of
 apply.php parses.
 
     python3 tools/test-apply.py"""
@@ -26,7 +28,9 @@ HARNESS = r'''
 putenv('XGS_APPLY_FUNCTIONS_ONLY=1');
 include $argv[1];
 $c = json_decode($argv[2], true);
-if (array_key_exists('depth', $c)) {
+if (array_key_exists('ids_threads', $c)) {
+    echo json_encode(xgs_ids_rings($c['ids_threads']));
+} elseif (array_key_exists('depth', $c)) {
     echo json_encode(xgs_ips_depth($c['now'], $c['depth']));
 } elseif (isset($c['rows'])) {
     echo json_encode((object)xgs_rows_removed($c['rows'], $c['unset']));
@@ -60,6 +64,10 @@ def written(on, now, row=None):
 
 def raised(now, depth):
     return php({'depth': depth, 'now': now})
+
+
+def rings(field):
+    return php({'ids_threads': field})
 
 
 def removed(rows, unset=()):
@@ -100,6 +108,24 @@ check('no row of its own: nothing removed',
       removed({'a1b2c3d4-0000-4000-8000-000000000002': 'hw.npuep.giu.poll_ms'}, ['hw.npuep.flow_max']), {})
 check('a row merely like the flow maker\'s stays',
       removed({'a1b2c3d4-0000-4000-8000-000000000006': 'dev.npuep.0.flow.auto_made'}), {})
+
+check("the rings' row goes when the setting is empty, as one netmap ring a port",
+      removed({'a1b2c3d4-0000-4000-8000-000000000007': 'dev.netmap.generic_rings'}, ['dev.netmap.generic_rings']),
+      {'a1b2c3d4-0000-4000-8000-000000000007': "dev.netmap.generic_rings removed: one netmap ring a port, FreeBSD's own"})
+check("the rings' row stays while the setting names more than one",
+      removed({'a1b2c3d4-0000-4000-8000-000000000007': 'dev.netmap.generic_rings'}, ['hw.octep.flow_max']), {})
+
+# Inspection threads per port: the rings and the drivers' flow id.
+ONE = {'rings': None, 'flowid': '0'}
+check('empty: no row, one ring, no flow id', rings(''), ONE)
+check('1: the same as empty', rings('1'), ONE)
+check('0, which the page refuses: the same as empty', rings('0'), ONE)
+check('2: two rings, the flow id on', rings('2'), {'rings': '2', 'flowid': '1'})
+check('4 with spaces around it', rings(' 4 '), {'rings': '4', 'flowid': '1'})
+check('8, the most', rings('8'), {'rings': '8', 'flowid': '1'})
+check('12, more than the page allows: 8', rings('12'), {'rings': '8', 'flowid': '1'})
+check('not a number: the same as empty', rings('four'), ONE)
+check('a negative number: the same as empty', rings('-3'), ONE)
 
 # The inspector's depth against Suricata's, as --dump-config prints it.
 check("OPNsense's 1mb, the driver's 1 MiB: raised a quarter", raised('1048576', '1mb'), '1310720')

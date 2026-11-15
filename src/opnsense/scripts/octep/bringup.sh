@@ -771,6 +771,14 @@ if [ -x /usr/local/opnsense/scripts/xgs/offload.sh ] && [ -x /usr/local/bin/php 
 		0|1) sysctl -q dev.octep.0.dp.${KV#*:}=${V} > /dev/null 2>&1 && log "${KV%%:*} ${V}" ;;
 		esac
 	done
+	# Inspection threads per port, above one: each received frame's ring as its flow id, so netmap's
+	# rings (dev.netmap.generic_rings, which its row of System: Settings: Tunables gives) keep a
+	# connection with one Suricata thread (scripts/xgs/apply.php, xgs_ids_rings).
+	T=$(/usr/local/bin/php -r 'require_once("config.inc"); echo trim((string)($config["OPNsense"]["XGS"]["general"]["ids_threads"] ?? ""));' 2>/dev/null)
+	case "${T}" in
+	''|0|1|*[!0-9]*) ;;
+	*) sysctl -q dev.octep.0.dp.rx_flowid=1 > /dev/null 2>&1 && log "inspection threads per port ${T}: each frame's ring as its flow id" ;;
+	esac
 fi
 
 # Make the two sides agree about the firewall revision, once, by writing it.

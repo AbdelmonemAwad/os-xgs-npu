@@ -20,6 +20,9 @@
  *                      while on, the running driver's dp.ips_depth or flow.ips_depth a quarter over
  *                      Suricata's stream depth (xgs_ips_depth)
  *   failclose          the running driver's dp.ips_loop or ips.loop, through failclose.py (and from cron)
+ *   ids_threads        dev.netmap.generic_rings now and as a row of System: Settings: Tunables, the
+ *                      running driver's dp.rx_flowid or giu.rx_flowid (and at boot), and the Intrusion
+ *                      Detection restarted when it runs in IPS mode and the rings changed (xgs_ids_rings)
  *   flood_cut          lists_cut.py, which watches pf's overload tables as well while it is on
  *   inspect_pass_invalid  the same overlay (stream.drop-invalid: no), while inspect_then_hardware is on,
  *                      and the running driver's dp.netmap_gate_cut or flow.netmap_gate_cut, 1 while it
@@ -89,6 +92,8 @@ function xgs_rows_removed(array $rows, array $unset): array
     foreach ($rows as $uuid => $name) {
         if ($name === 'dev.octep.0.dp.auto' || $name === 'dev.npuep.0.flow.auto') {
             $removed[$uuid] = $name . ' removed from the tunables: this page sets the flow maker, now and at every boot';
+        } elseif ($name === 'dev.netmap.generic_rings' && in_array($name, $unset, true)) {
+            $removed[$uuid] = $name . ' removed: one netmap ring a port, FreeBSD\'s own';
         } elseif (in_array($name, $unset, true)) {
             $removed[$uuid] = $name . ' removed: the driver chooses';
         }
@@ -139,6 +144,27 @@ function xgs_ips_depth(?string $now, ?string $depth): ?string
     }
     $want = intdiv($s * 5 + 3, 4);
     return (int)$now >= $want ? null : (string)$want;
+}
+
+/*
+ * Inspection threads per port (ids_threads, plan 01 package 3.1): the rings netmap's emulated
+ * adapter gives each port Suricata reads in IPS mode, and with them Suricata's threads - it takes one
+ * a ring ("threads: auto") and opens one ring per thread with no check against their number (Suricata
+ * 8.0, runmode-netmap.c and source-netmap.c), so a thread count of its own that differs from the
+ * rings leaves rings unread or stops it. $field is the setting as config.xml holds it. The answer: the
+ * rings, as the row of System: Settings: Tunables for dev.netmap.generic_rings holds them (null: no
+ * row, one ring, FreeBSD's own), and the drivers' flow-id switch (dp.rx_flowid, giu.rx_flowid), on
+ * with more than one ring so that a connection's frames stay in the ring of the receive queue the
+ * coprocessor chose for it. At most 8, the XGS 3300's receive rings.
+ */
+function xgs_ids_rings(string $field): array
+{
+    $f = trim($field);
+    $n = preg_match('/^[0-9]+$/', $f) ? (int)$f : 0;
+    if ($n <= 1) {
+        return ['rings' => null, 'flowid' => '0'];
+    }
+    return ['rings' => (string)min($n, 8), 'flowid' => '1'];
 }
 
 // The tests include this file for the functions above alone.
@@ -275,6 +301,33 @@ if ($inspect && !$have_if) {
     }
     $steps[] = 'inspect, then hardware off' . ($have_if ? "; the coprocessor's inspector function stays until the next reboot" : '');
 }
+/*
+ * Inspection threads per port (xgs_ids_rings, above): the rings now, and the drivers' flow id. A
+ * port's emulated adapter is made with the rings when Suricata opens it, so Suricata is restarted
+ * below with the overlay's restart when the rings changed; the row of System: Settings: Tunables,
+ * written with the others further down, gives them at every boot, before the Intrusion Detection
+ * starts.
+ */
+$rings = xgs_ids_rings($get('ids_threads', ''));
+$rings_want = $rings['rings'] ?? '1';
+$rings_now = sysctl_get('dev.netmap.generic_rings');
+$rings_changed = false;
+if ($rings_now !== null && $rings_now !== $rings_want) {
+    if (sysctl_set('dev.netmap.generic_rings', $rings_want)) {
+        $rings_changed = true;
+        $steps[] = 'inspection threads per port: ' . $rings_want . ' netmap ring' . ($rings_want === '1' ? '' : 's') .
+            ' a port, a Suricata thread for each';
+    } else {
+        $ok = false;
+        $steps[] = 'inspection threads per port: dev.netmap.generic_rings refused ' . $rings_want;
+    }
+}
+$flowid_oid = $family === 'octeontx' ? 'dev.octep.0.dp.rx_flowid' : 'dev.npuep.0.giu.rx_flowid';
+$flowid_now = sysctl_get($flowid_oid);
+if ($flowid_now !== null && $flowid_now !== $rings['flowid'] && !sysctl_set($flowid_oid, $rings['flowid'])) {
+    $ok = false;
+    $steps[] = 'inspection threads per port: the driver refused ' . $flowid_oid . '=' . $rings['flowid'];
+}
 $before = @file_get_contents($overlay);
 $backend = new \OPNsense\Core\Backend();
 $backend->configdRun('template reload OPNsense/IDS');
@@ -283,9 +336,10 @@ if ($before === false) {
     $backend->configdRun('template reload OPNsense/IDS');
 }
 $after = @file_get_contents($overlay);
-if ($after !== false && $after !== $before && $ids_on) {
+if ($ids_on && (($after !== false && $after !== $before) || ($rings_changed && $ids_ips))) {
     $backend->configdRun('ids restart');
-    $steps[] = 'the Intrusion Detection restarted to read ' . (strpos($after, 'oxips0') !== false ? 'oxips0 as well' : 'only its own interfaces');
+    $steps[] = 'the Intrusion Detection restarted to read ' . (strpos((string)$after, 'oxips0') !== false ? 'oxips0 as well' : 'only its own interfaces') .
+        ($rings_changed && $ids_ips ? ', ' . $rings_want . ' ring' . ($rings_want === '1' ? '' : 's') . ' a port' : '');
 }
 /*
  * A front port the Intrusion Detection inspects in IPS mode at an MTU its netmap adapter cuts
@@ -452,6 +506,12 @@ foreach ($sized as $name => $value) {
     } else {
         $unset[] = $name;
     }
+}
+/* Inspection threads per port: the rings at every boot, or no row for one (xgs_ids_rings). */
+if ($rings['rings'] !== null) {
+    $tunables['dev.netmap.generic_rings'] = $rings['rings'];
+} else {
+    $unset[] = 'dev.netmap.generic_rings';
 }
 $model = new \OPNsense\Core\Tunables();
 $changed = false;
