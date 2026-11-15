@@ -138,6 +138,12 @@
             <help>With Inspect, then hardware on, a new connection the coprocessor carries goes to the Intrusion Detection first. While Suricata does not read it - stopped, restarting, or exited - its frames are dropped with this on, so no connection runs in hardware uninspected; off, they pass and the connection runs in hardware without inspection, as before. It does nothing while the Intrusion Detection is off or in IDS mode, or while Inspect, then hardware is off, so a new install, whose Intrusion Detection is off, drops nothing. Followed within two seconds when the Intrusion Detection is turned on or off. On in a new install.</help>
         </field>
         <field>
+            <id>xgs.general.ids_threads</id>
+            <label>Inspection threads per port</label>
+            <type>text</type>
+            <help>How many threads the Intrusion Detection inspects each of its ports with in IPS mode (Netmap): each port gets this many netmap rings, Suricata takes one thread a ring, and the coprocessor's driver gives every frame it receives the number of its receive queue, which the coprocessor chooses by the connection, so a connection stays with one thread. Empty: one ring and one thread a port, as before. Saving restarts the Intrusion Detection when it runs in IPS mode, which is when the rings change, and the number is kept under System: Settings: Tunables as dev.netmap.generic_rings for every boot. More threads use more processors, and help only where one thread was the limit; the inspector's interface, oxips0, keeps one busy thread whatever this says.</help>
+        </field>
+        <field>
             <id>xgs.general.anomaly_watch</id>
             <label>Watch for unusual traffic</label>
             <type>checkbox</type>

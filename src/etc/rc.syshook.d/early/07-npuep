@@ -144,6 +144,14 @@ after_ports() {
         0|1) /sbin/sysctl -q dev.npuep.0.flow.${KV#*:}=${V} > /dev/null 2>&1 && log "${KV%%:*} ${V}" ;;
         esac
     done
+    # Inspection threads per port, above one: each received frame's receive queue as its flow id, so
+    # netmap's rings (dev.netmap.generic_rings, which its row of System: Settings: Tunables gives)
+    # keep a connection with one Suricata thread (scripts/xgs/apply.php, xgs_ids_rings).
+    T=$(/usr/local/bin/php -r 'require_once("config.inc"); echo trim((string)($config["OPNsense"]["XGS"]["general"]["ids_threads"] ?? ""));' 2>/dev/null)
+    case "${T}" in
+    ''|0|1|*[!0-9]*) ;;
+    *) /sbin/sysctl -q dev.npuep.0.giu.rx_flowid=1 > /dev/null 2>&1 && log "inspection threads per port ${T}: each frame's receive queue as its flow id" ;;
+    esac
 }
 
 # After a reset under the running host - a reload, a recovery in place - the gate waits for the rpc

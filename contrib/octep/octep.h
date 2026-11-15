@@ -4348,6 +4348,7 @@ struct octep_softc {
 	int			 dp_ips_on;
 	uint32_t		 dp_ips_ring;
 	uint32_t		 dp_ips_loop;		/* 1: hand every frame straight back */
+	uint32_t		 dp_rx_flowid;		/* 1: a received frame's ring as its flow id */
 	uint32_t		 dp_ips_pkind;
 	uint64_t		 dp_ips_rx;
 	uint64_t		 dp_ips_back;

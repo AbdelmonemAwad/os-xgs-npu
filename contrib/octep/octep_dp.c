@@ -10286,6 +10286,10 @@ octep_dp_add_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
 	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "pkind",
 	    CTLFLAG_RW, &sc->dp_pkind, 0,
 	    "the PKIND the coprocessor assigned; 40 + num_vfs");
+	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "rx_flowid",
+	    CTLFLAG_RW, &sc->dp_rx_flowid, 0,
+	    "1: a received frame carries the ring it arrived on as its flow id, so netmap's emulated "
+	    "adapter with dev.netmap.generic_rings above 1 keeps a connection in one ring (default 0)");
 	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "ips_loop",
 	    CTLFLAG_RW, &sc->dp_ips_loop, 0,
 	    "1 hands every frame the fast path sends the inspector straight back, as an inspector "
@@ -11833,6 +11837,19 @@ octep_dp_oq_pass(struct octep_softc *sc, struct octep_dma *bufs, uint32_t ring, 
 		}
 		m->m_pkthdr.rcvif = dif->ifp;
 		m->m_nextpkt = NULL;
+		/*
+		 * The ring the coprocessor put it on, as its flow id (dp.rx_flowid, off by default): the
+		 * coprocessor chooses among this function's rings by the connection, both directions of
+		 * one on one ring and connections spread over the eight (measured 2026-11-15 on the second
+		 * XGS 3300), so netmap's emulated adapter with dev.netmap.generic_rings above 1 - which
+		 * picks a frame's ring by its flow id - gives each Suricata thread whole connections, as
+		 * npuep's giu.rx_flowid does on the XGS 136 (XGS: Settings, "Inspection threads per
+		 * port"). A frame forwarded then leaves on the transmit ring of the same number.
+		 */
+		if (sc->dp_rx_flowid != 0) {
+			m->m_pkthdr.flowid = ring - sc->dp_ring;
+			M_HASHTYPE_SET(m, M_HASHTYPE_OPAQUE);
+		}
 		if ((saw & 0xffffu) != 0) {
 			/*
 			 * Decrypted in place by the coprocessor: terminated and delivered by

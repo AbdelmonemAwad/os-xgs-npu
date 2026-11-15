@@ -176,6 +176,22 @@
                 <Required>Y</Required>
                 <Default>1</Default>
             </failclose>
+            <!-- Inspection threads per port (plan 01, package 3.1, 2026-11-15): the rings netmap's
+                 emulated adapter gives each port the Intrusion Detection reads in IPS mode, and with
+                 them Suricata's threads - it takes one a ring ("threads: auto" in OPNsense's
+                 suricata.yaml) and opens one ring per thread with no check against their number
+                 (Suricata 8.0, runmode-netmap.c and source-netmap.c), so the rings are what is set,
+                 not a thread count of Suricata's own, which below the rings leaves rings unread and
+                 above them stops it. Written to dev.netmap.generic_rings (a row of System: Settings:
+                 Tunables) with the driver's receive queue as each frame's flow id (dp.rx_flowid,
+                 giu.rx_flowid), by scripts/xgs/apply.php (xgs_ids_rings) and at every boot. Empty:
+                 one ring a port, FreeBSD's own. At most 8, the coprocessor's receive rings on the
+                 XGS 3300. -->
+            <ids_threads type="IntegerField">
+                <MinimumValue>1</MinimumValue>
+                <MaximumValue>8</MaximumValue>
+                <ValidationMessage>From 1 to 8, or empty for one.</ValidationMessage>
+            </ids_threads>
             <!-- Copies for packet capture (discoveries 12 and 17, 2026-10-25): the fast path's
                  FP_PKT_DUMP bit, 0x10 of its configuration word, written by offload.sh with the gate;
                  the copies it then sends (control message type 6) go to the port's BPF in the
