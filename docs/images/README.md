@@ -19,10 +19,10 @@ to a new image, and the checks fail on one without them.
 |---|---|---|
 | [screens/](screens/) | The web interface, page by page, in English and in Arabic | 108 |
 | [hardware/](hardware/) | Photographs and drawings of the appliances, one folder each | 41 |
-| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 890 |
+| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 900 |
 | [readme/](readme/) | The README's banner and status board, drawn by tools/readme-art.py | 6 |
 
-1084 images in all.
+1094 images in all.
 
 ## The web interface
 
@@ -1445,6 +1445,23 @@ The page: [sa23-2026-10-25.md](../measurements/sa23-2026-10-25.md).
 |---|---|---|
 | [01-before.png](measurements/sa23-2026-10-25/01-before.png) | Before: the first XGS 3300 over vendor version 23, octep.ko fdc4e281 - no association mirrored; the coprocessor refused the inbound and the outbound association, rc 0x0001; 40 pings through the tunnel answered, the kernel's ESP counts rising, the engine's not | [sa23-2026-10-25.md](../measurements/sa23-2026-10-25.md) |
 | [02-after.png](measurements/sa23-2026-10-25/02-after.png) | After: octep.ko 4c844f00 - the inbound association at coprocessor index 1 and the outbound at index 2, the outbound started a million numbers past the kernel's counter; 40 pings through the tunnel, decrypted and encrypted by the engine, 40 and 40, and none by the kernel | [sa23-2026-10-25.md](../measurements/sa23-2026-10-25.md) |
+
+### measurements/settings-batch-2026-11-15/ (10)
+
+The page: [settings-batch-2026-11-15.md](../measurements/settings-batch-2026-11-15.md).
+
+| image | what it shows | used on |
+|---|---|---|
+| [01-a-rules-tag-on-the-xgs-3300.png](measurements/settings-batch-2026-11-15/01-a-rules-tag-on-the-xgs-3300.png) | The second XGS 3300: the tagged port 5211 not in hardware and refused 75 times, the untagged 5212 in, 5211 in with the setting empty, and two of three connections in hardware six seconds after the setting was cleared | [settings-batch-2026-11-15.md](../measurements/settings-batch-2026-11-15.md) |
+| [02-a-rules-tag-on-the-xgs-136.png](measurements/settings-batch-2026-11-15/02-a-rules-tag-on-the-xgs-136.png) | The XGS 136: names the driver refuses and takes; the tagged port 5316 not in hardware and refused 76 times, the untagged 5317 in, 5316 in with the tag empty | [settings-batch-2026-11-15.md](../measurements/settings-batch-2026-11-15.md) |
+| [03-router-advertisements.png](measurements/settings-batch-2026-11-15/03-router-advertisements.png) | The second XGS 3300: router advertisements guarded on Port4, one from a sender not listed blocked, one from a listed sender passed, a global address refused by the field | [settings-batch-2026-11-15.md](../measurements/settings-batch-2026-11-15.md) |
+| [04-rekey-margin.png](measurements/settings-batch-2026-11-15/04-rekey-margin.png) | The second XGS 3300: rand_time 1800 written for both connections and their children, a child to rekey in 2357 s, and one at 3359 s once the setting was emptied | [settings-batch-2026-11-15.md](../measurements/settings-batch-2026-11-15.md) |
+| [05-ipcomp-only-on-the-host.png](measurements/settings-batch-2026-11-15/05-ipcomp-only-on-the-host.png) | The second XGS 3300: IPComp on a chosen child not written while IPsec is in the coprocessor's engine, written with the engine off, strongSwan loading it without error | [settings-batch-2026-11-15.md](../measurements/settings-batch-2026-11-15.md) |
+| [06-certificate-files.png](measurements/settings-batch-2026-11-15/06-certificate-files.png) | The second XGS 3300: fourteen test files through the converter, each read as its kind or refused with its reason | [settings-batch-2026-11-15.md](../measurements/settings-batch-2026-11-15.md) |
+| [07-pppoe-probe-aliases.png](measurements/settings-batch-2026-11-15/07-pppoe-probe-aliases.png) | The second XGS 3300: the PPPoE reconnect's cron line, the TCP probe's alert at the third failure and its success, and the thirteen service aliases added | [settings-batch-2026-11-15.md](../measurements/settings-batch-2026-11-15.md) |
+| [08-certificate-import-read.png](measurements/settings-batch-2026-11-15/08-certificate-import-read.png) | XGS: Certificate Import on the second XGS 3300: a PKCS#12 file read, a certificate with its key and its authority listed | [the-pages.md](../guide/the-pages.md), [settings-batch-2026-11-15.md](../measurements/settings-batch-2026-11-15.md) |
+| [09-certificate-import-added.png](measurements/settings-batch-2026-11-15/09-certificate-import-added.png) | XGS: Certificate Import: both added to System: Trust, the Import button off | [settings-batch-2026-11-15.md](../measurements/settings-batch-2026-11-15.md) |
+| [10-in-system-trust.png](measurements/settings-batch-2026-11-15/10-in-system-trust.png) | System: Trust: Certificates: the imported certificate, its issuer the imported authority | [settings-batch-2026-11-15.md](../measurements/settings-batch-2026-11-15.md) |
 
 ### measurements/sfos-versions-2026-10-25/ (8)
 
