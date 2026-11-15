@@ -134,9 +134,10 @@ check('the port: 1 to 65535', r['checks']['tacplus_port'], {'49': True, '65535':
 check('the timeout: 1 to 60 seconds', r['checks']['tacplus_timeout'], {'1': True, '60': True, '0': False, '61': False})
 check('the method: PAP, ASCII or CHAP', r['checks']['tacplus_method'], {'pap': True, 'ascii': True, 'chap': True, 'mschap': False})
 check('the secret: one line', r['checks']['tacplus_secret'], {'one line': True, 'two\nlines': False})
+# compared here and only the verdict printed: what the tool was given holds the shared secret
 check('the eight lines on the tool\'s standard input, in their order, and nothing on its command line',
-      r['seen'], {'lines': ['tacacs.example.net', '4949', 'a "quoted" secret', '3', 'chap', '192.0.2.10', 'lab-admin', 'right', ''],
-                  'argv': []})
+      r['seen'] == {'lines': ['tacacs.example.net', '4949', 'a "quoted" secret', '3', 'chap', '192.0.2.10', 'lab-admin',
+                              'right', ''], 'argv': []}, True)
 check('a PASS: accepted, the server\'s words kept', [r['result'], r['errors'], r['properties']],
       [True, [], {'tacacs_message': 'welcome'}])
 
@@ -157,7 +158,7 @@ check('the tool not built: refused, said in the system log',
       [r['result'], r['seen'], len(r['logged'])], [False, None, 1])
 r = run('lab-admin', 'right', server=dict(SERVER, tacplus_method='mschap', tacplus_port='', tacplus_timeout=''))
 check('an unknown method, an empty port and timeout: PAP, 49 and 5 seconds',
-      r['seen']['lines'][1:5], ['49', 'a "quoted" secret', '5', 'pap'])
+      [r['seen']['lines'][1], r['seen']['lines'][3], r['seen']['lines'][4]], ['49', '5', 'pap'])
 
 shutil.rmtree(tmp, ignore_errors=True)
 print('%d failure(s)' % failures)
