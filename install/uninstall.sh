@@ -98,6 +98,8 @@ rm -f "${PREFIX}/opnsense/scripts/xgs/certimport.inc"
 rm -f "${PREFIX}/opnsense/scripts/xgs/service_aliases.php"
 # The scheduled PPPoE reconnect; its cron job goes with the plugin hook that gives it.
 rm -f "${PREFIX}/opnsense/scripts/xgs/pppoe_reconnect.php"
+# The gateway quality alerts and what they remember between looks.
+rm -f "${PREFIX}/opnsense/scripts/xgs/gw_probe.py" /var/db/os-xgs-npu/gw-probe.json
 rm -f "${PREFIX}/opnsense/scripts/xgs/status.py"
 rm -f "${PREFIX}/opnsense/scripts/xgs/offload.sh"
 rm -f "${PREFIX}/opnsense/scripts/xgs/update.py"

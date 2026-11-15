@@ -524,6 +524,12 @@ jobs:
           command -v php > /dev/null || sudo apt-get install -y --no-install-recommends php-cli > /dev/null
           python3 tools/test-pppoe-reconnect.py
 
+      # The gateway quality alerts (scripts/xgs/gw_probe.py): dpinger's figures read, an alert raised once
+      # when jitter crosses and once when it is back, the TCP probe's third failure in a row and the first
+      # success after, and its target. tools/test-gw-probe.py.
+      - name: The gateway quality alerts
+        run: python3 tools/test-gw-probe.py
+
   # contrib/mvsw/mvsw is the repository's one binary: the coprocessor's switch tool, built for aarch64,
   # which no appliance can build (contrib/mvsw/README.md). It is built again here from mvsw.c with its
   # own Makefile - freestanding, no build id, stripped, so the build is reproducible - in the Ubuntu

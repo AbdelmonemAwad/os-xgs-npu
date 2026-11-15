@@ -363,6 +363,12 @@ function xgs_cron()
      * every enabled PPPoE interface configured again (scripts/xgs/pppoe_reconnect.php). No job without
      * a time; apply.php restarts cron when it changes, so this list is read again.
      */
+    /*
+     * Gateway quality alerts (plan 01, package 3.8): scripts/xgs/gw_probe.py each minute, which stops
+     * at once while neither alert is set.
+     */
+    $jobs[]['autocron'] = ['/usr/local/opnsense/scripts/xgs/gw_probe.py > /dev/null', '*'];
+
     $at = (string)(config_read_array('OPNsense')['XGS']['general']['pppoe_reconnect'] ?? '');
     if (preg_match('/^([01][0-9]|2[0-3]):([0-5][0-9])$/', trim($at), $m)) {
         $jobs[]['autocron'] = ['/usr/local/bin/php /usr/local/opnsense/scripts/xgs/pppoe_reconnect.php > /dev/null',

@@ -408,6 +408,21 @@
                 <Mask>/^(([01][0-9]|2[0-3]):[0-5][0-9])?$/</Mask>
                 <ValidationMessage>A time of day as HH:MM, from 00:00 to 23:59, or empty for none.</ValidationMessage>
             </pppoe_reconnect>
+            <!-- Gateway quality alerts (plan 01, package 3.8, 2026-11-15), scripts/xgs/gw_probe.py from the
+                 plugin's cron job each minute: a monitored gateway's jitter over gw_jitter_alert ms (0:
+                 none), and a TCP probe to gw_tcp_probe, host:port (empty: none). Alerts only, through
+                 os-netreport's alert files: OPNsense's own monitoring keeps deciding a gateway's state. -->
+            <gw_jitter_alert type="IntegerField">
+                <Required>Y</Required>
+                <Default>0</Default>
+                <MinimumValue>0</MinimumValue>
+                <MaximumValue>10000</MaximumValue>
+            </gw_jitter_alert>
+            <gw_tcp_probe type="TextField">
+                <Required>N</Required>
+                <Mask>/^((\[[0-9A-Fa-f:.]+\]|[A-Za-z0-9.-]{1,253}):[0-9]{1,5})?$/</Mask>
+                <ValidationMessage>A host and a port, as host:port or [IPv6 address]:port, or empty for none.</ValidationMessage>
+            </gw_tcp_probe>
             <ecc_alert type="IntegerField">
                 <Required>Y</Required>
                 <Default>10</Default>

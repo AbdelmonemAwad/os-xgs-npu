@@ -285,6 +285,18 @@
             <help>A time of day, HH:MM: each enabled PPPoE interface is connected again then, as Interfaces does when it is applied - for a provider that ends a session after a day, at a quiet hour of your choosing instead of its own. Empty: never, as OPNsense has it. OPNsense's own check of a PPPoE link stays as it is: an LCP echo every 10 seconds, and the link taken down after 60 seconds without an answer.</help>
         </field>
         <field>
+            <id>xgs.general.gw_jitter_alert</id>
+            <label>Gateway jitter alert (ms)</label>
+            <type>text</type>
+            <help>An alert, sent through os-netreport and written in the system log, when a monitored gateway's round-trip time varies by more than this many milliseconds - the standard deviation System: Gateways shows as RTTd - and another when it is back under. Checked every minute. 0: no alert. It decides nothing: whether a gateway is up and which one carries the traffic stays with OPNsense's own monitoring, so two monitors never pull one gateway two ways.</help>
+        </field>
+        <field>
+            <id>xgs.general.gw_tcp_probe</id>
+            <label>TCP probe</label>
+            <type>text</type>
+            <help>host:port, or [IPv6 address]:port: each minute the firewall opens a TCP connection to it, through its routing table, and three failures in a row raise an alert through os-netreport, the first success after them another - for a path that answers the gateway monitor's ICMP and drops TCP, or the reverse. Empty: no probe. An alert only, as above.</help>
+        </field>
+        <field>
             <type>header</type>
             <label>Port assignment</label>
         </field>
