@@ -77,9 +77,30 @@ static octep_pf_find_t	*octep_pf_find;
 static octep_pf_exists_t *octep_pf_exists;
 static int		 octep_pf_tried;
 
+/*
+ * pfsync's update for a state, by pointer, for the states the keepalive restamps.
+ *
+ * pfsync tells its peer about a state when pf passes one of its packets, and a connection in
+ * hardware passes none. Restamped here and nowhere else, the peer's copy was never refreshed: it
+ * expired on its class's timeout, and the delete its expiry sends back removed the live state on
+ * this box - measured 2026-11-14, a UDP connection's state replaced 60 to 70 s in with pfsync to a
+ * peer and never without (#1160). So a restamp is told to pfsync as a packet would have been: the
+ * same call, on the same state, under the same lock.
+ *
+ * The pointer is a VNET variable of pf's that pfsync fills when it loads and empties when it goes;
+ * pf calls through it the same way, reading it each time, and so does this - never keeping the
+ * function, so a pfsync loaded or unloaded since is followed. The symbol is looked up by name like
+ * pf_find_state_all, and being a VNET variable's it is the master copy's address: curvnet's base
+ * added to it gives this vnet's own, which is what VNET() itself does. Optional: without it (a pf
+ * that renamed it) the restamp goes on as before, and pfsync is not told.
+ */
+typedef void octep_pfsync_update_t(struct pf_kstate *);
+static caddr_t		 octep_pfsync_sym;
+
 struct octep_pf_hunt {
 	caddr_t	find;
 	caddr_t	exists;
+	caddr_t	sync;
 };
 
 static int
@@ -97,6 +118,8 @@ octep_pf_in_file(linker_file_t lf, void *arg)
 		h->find = linker_file_lookup_symbol(lf, "pf_find_state_all", 0);
 	if (h->exists == NULL)
 		h->exists = linker_file_lookup_symbol(lf, "pf_find_state_all_exists", 0);
+	if (h->sync == NULL)
+		h->sync = linker_file_lookup_symbol(lf, "vnet_entry_pfsync_update_state_ptr", 0);
 
 	return (0);
 }
@@ -121,12 +144,14 @@ octep_pf_present(void)
 
 	h.find = NULL;
 	h.exists = NULL;
+	h.sync = NULL;
 	(void)linker_file_foreach(octep_pf_in_file, &h);
 
 	/* Both or neither. Half of this facility is not worth having. */
 	if (h.find != NULL && h.exists != NULL) {
 		octep_pf_find = (octep_pf_find_t *)h.find;
 		octep_pf_exists = (octep_pf_exists_t *)h.exists;
+		octep_pfsync_sym = h.sync;
 		return (true);
 	}
 
@@ -550,6 +575,18 @@ octep_pf_settled(const struct octep_pf_tuple *t)
  * The caller decides that the connection is alive. Called unconditionally this would keep a dead
  * connection's state, and the driver's table entry with it, for ever.
  */
+static void
+octep_pf_sync(struct pf_kstate *s)
+{
+	octep_pfsync_update_t *f;
+
+	if (octep_pfsync_sym == NULL)
+		return;
+	f = *(octep_pfsync_update_t **)(curvnet->vnet_data_base + (uintptr_t)octep_pfsync_sym);
+	if (f != NULL)
+		f(s);	/* pfsync's own: queues the update, and leaves a state marked no-sync alone */
+}
+
 int
 octep_pf_touch(const struct octep_pf_tuple *t)
 {
@@ -568,6 +605,7 @@ octep_pf_touch(const struct octep_pf_tuple *t)
 				continue;
 			if (s->timeout < PFTM_MAX) {
 				s->expire = pf_get_uptime();
+				octep_pf_sync(s);
 				n++;
 			}
 			PF_STATE_UNLOCK(s);

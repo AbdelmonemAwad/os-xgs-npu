@@ -195,6 +195,12 @@
                         Number(counters.flow_released || 0).toLocaleString() + ' ' + "{{ lang._('returned by hand') }}",
                         "{{ lang._('the never-offloaded list said no') }}" + ' ' +
                         Number(counters.flow_excluded || 0).toLocaleString() + ' ' + "{{ lang._('times') }}"));
+                /* A firewall with a PPPoE link: why its connections out of it are never listed here. */
+                if (counters.flow_ppp_refused) {
+                    $('#xgs_cards').append(card('', 'fa-plug', "{{ lang._('PPP links') }}",
+                        Number(counters.flow_ppp_refused).toLocaleString() + ' ' + "{{ lang._('times') }}",
+                        "{{ lang._('a connection out of PPPoE stays with the host: the coprocessor has no field for its header') }}"));
+                }
                 $('#xgs_note').text(flows.length ? '' : plain("{{ lang._('No connection is forwarded by the coprocessor right now. With the flow maker on, a connection the firewall has let through is handed to it once it has settled.') }}"));
             });
         }

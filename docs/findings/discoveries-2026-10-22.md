@@ -181,7 +181,7 @@ number - set by `CONN_MODIFY_FP`, whose handler is present. It is the hook for p
 fast path takes the words and holds them, read back exactly, but two connections sharing a congested
 port kept their shares with the bit on one; what it would decide is not reachable with this firmware
 ([measured](../measurements/port-qos-2026-10-24.md)). The instrument is octep's alone, `dp.conn_qos`
-(`contrib/octep/octep_dp.c:9747`); npuep has the words' layout (`contrib/npuep/npuep.h:283-285`)
+(`contrib/octep/octep_dp.c:9760`); npuep has the words' layout (`contrib/npuep/npuep.h:283-285`)
 and nothing that writes them.
 
 ### The QoS commands
@@ -485,7 +485,7 @@ sent~~ **were never sent before 2026-11-10**.
 
 **Measured 2026-11-10, on the second XGS 3300 (vendor version 22)**: `VLAN_DELETE` (op 0x07) of VLAN
 4094, which nothing uses, and `BRIDGE_DELETE` (op 0x11) of bridge 0 were sent to its network agent
-by hand, through octep's raw request sysctls, `nwa.op` to `nwa.request` (`contrib/octep/octep_nwa.c:1222-1243`).
+by hand, through octep's raw request sysctls, `nwa.op` to `nwa.request` (`contrib/octep/octep_nwa.c:1298-1324`).
 Each was answered with status 1 and no payload - what every operation with no handler answers
 ([netagent.md](../npuep/netagent.md)) - and the ports went on as before ([measured](../measurements/switch-3300-2026-11-10.md)).
 So this agent does not act on them; 21 switched two ports through the chip's own registers instead,

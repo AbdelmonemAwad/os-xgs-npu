@@ -337,6 +337,7 @@ struct npuflow_softc {
 	uint32_t		 nhop_cap, nhop_hi;	/* nothing at or above nhop_hi is in use */
 	uint32_t		 conn_used, nhop_used;
 	uint64_t		 made, taken, auto_made, auto_gone, flow_full, nhop_full, v6_refused;
+	uint64_t		 ppp_refused;	/* candidate passes whose route leaves by a PPP link (PPPoE) */
 	uint64_t		 ipsec_refused;	/* makes refused: an IPsec policy covers the connection */
 	uint64_t		 ipsec_taken;	/* in hardware, then a policy came to cover it: taken out */
 	uint32_t		 spgen_seen;	/* the kernel's policy generation the last policy sweep saw */
@@ -875,6 +876,8 @@ npuflow_sweep(void *arg, int pending __unused)
 				sc->cand[i].st = st;
 			sc->cand[i].nh_err = err;
 			sc->cand[i].nh_ok = (err == 0);
+			if (err == EPROTONOSUPPORT)
+				sc->ppp_refused++;
 			if (err == 0)
 				sc->cand[i].nh = nh;
 		}
@@ -5211,7 +5214,9 @@ npuflow_sysctl_candidates(SYSCTL_HANDLER_ARGS)
 			    c.nh.dmac[2], c.nh.dmac[3], c.nh.dmac[4], c.nh.dmac[5],
 			    c.nh.from_hint ? " (by the flow's port)" : "");
 		else
-			sbuf_printf(sb, " | nhop error %d", c.nh_err);
+			sbuf_printf(sb, " | nhop error %d%s", c.nh_err, c.nh_err == EPROTONOSUPPORT ?
+			    " (a PPP link: the host keeps it)" : c.nh_err == EPFNOSUPPORT ?
+			    " (not Ethernet underneath)" : "");
 		if (c.nh_ok && c.nh.vlan != 0)
 			sbuf_printf(sb, " vlan %u", c.nh.vlan);
 		if (c.nm_port != 0)
@@ -5611,6 +5616,10 @@ npuflow_attach(device_t dev, struct sysctl_ctx_list *ctx, struct sysctl_oid *par
 		    &sc->flow_full, 0, "makes refused because the table was full or not allocated");
 		SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "v6_refused", CTLFLAG_RD,
 		    &sc->v6_refused, 0, "IPv6 connections left with the host because pf translates them");
+		SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "ppp_refused", CTLFLAG_RD,
+		    &sc->ppp_refused, 0, "candidate passes whose route leaves by a PPP link - PPPoE, PPTP or "
+		    "L2TP: the coprocessor is given nothing that can carry a PPP header, so the host keeps "
+		    "the connection");
 		SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "ipsec_refused", CTLFLAG_RD,
 		    &sc->ipsec_refused, 0, "connections left with the host because an IPsec policy covers "
 		    "them (the host applies it; made as plain flows they would leave in the clear)");

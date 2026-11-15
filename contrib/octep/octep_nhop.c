@@ -93,6 +93,33 @@ octep_nhop_ether(struct ifnet *ifp)
 }
 
 /*
+ * Whether that other interface is a PPP link: mpd5's netgraph interface, which OPNsense uses for
+ * PPPoE, PPTP and L2TP and names pppoeN, pptpN or l2tpN (its driver name stays "ng"), or ppp(8)'s
+ * tun. Its frames need a PPPoE and a PPP header, and nothing the coprocessor is given can carry
+ * one: its next hop holds MACs, an ethertype and a VLAN, with no session; its microflow key and
+ * its logical interface have none either. So a connection out of one stays with the host, and is
+ * told apart from the other refusals, because it is not a fault and nothing will change it.
+ */
+static int
+octep_nhop_ppp(struct ifnet *ifp)
+{
+
+	return (if_gettype((if_t)ifp) == IFT_PPP ||
+	    strcmp(if_getdname((if_t)ifp), "ng") == 0);
+}
+
+/*
+ * The refusal for a route out of an interface that is not Ethernet underneath: EPROTONOSUPPORT for
+ * a PPP link, EPFNOSUPPORT for any other - a tunnel's, or lo0.
+ */
+static int
+octep_nhop_not_ether(struct ifnet *ifp)
+{
+
+	return (octep_nhop_ppp(ifp) ? EPROTONOSUPPORT : EPFNOSUPPORT);
+}
+
+/*
  * Resolve one destination to a front port and a MAC.
  *
  * dst is in network order, as everything else in this driver's flow path is.
@@ -105,9 +132,10 @@ octep_nhop_ether(struct ifnet *ifp)
  *
  * Returns 0 and fills *out on success. The failures are all ordinary and all worth telling apart,
  * because each one means something different about what to do next: no route at all, a route out of
- * an interface this driver does not own and no usable hint, or a neighbour whose address is not
- * known yet - and the last of those fixes itself, because arpresolve sends the request on the way
- * out.
+ * a PPP link (EPROTONOSUPPORT) or of another interface that is not Ethernet underneath
+ * (EPFNOSUPPORT) - both final, because no frame of theirs can leave by a port - a route out of an
+ * interface this driver does not own and no usable hint, or a neighbour whose address is not known
+ * yet - and the last of those fixes itself, because arpresolve sends the request on the way out.
  */
 int
 octep_nhop_resolve(struct octep_softc *sc, uint32_t dst, int hint_dif,
@@ -147,8 +175,9 @@ octep_nhop_resolve(struct octep_softc *sc, uint32_t dst, int hint_dif,
 
 	ifp = nh->nh_ifp;
 	if (!octep_nhop_ether(ifp)) {
+		error = octep_nhop_not_ether(ifp);
 		NET_EPOCH_EXIT(et);
-		return (ENETUNREACH);
+		return (error);
 	}
 	is_gw = (nh->nh_flags & NHF_GATEWAY) != 0;
 
@@ -278,8 +307,9 @@ octep_nhop_resolve6(struct octep_softc *sc, const uint8_t *dst6, int hint_dif,
 	}
 	ifp = nh->nh_ifp;
 	if (!octep_nhop_ether(ifp)) {
+		error = octep_nhop_not_ether(ifp);
 		NET_EPOCH_EXIT(et);
-		return (ENETUNREACH);
+		return (error);
 	}
 	is_gw = (nh->nh_flags & NHF_GATEWAY) != 0;
 	dif = NULL;
