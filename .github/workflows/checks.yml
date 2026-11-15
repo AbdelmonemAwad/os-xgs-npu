@@ -502,6 +502,14 @@ jobs:
           command -v php > /dev/null || sudo apt-get install -y --no-install-recommends php-cli > /dev/null
           python3 tools/test-apply.py
 
+      # XGS: Certificate Import's reading of a certificate file into PEM (scripts/xgs/certimport.inc):
+      # DER, PKCS#7 in DER and PEM, PKCS#12 in today's encryption and the old one, PEM with a key, and a
+      # wrong password, an empty file and one that is no certificate. tools/test-certimport.py.
+      - name: "A certificate file read into PEM for System: Trust"
+        run: |
+          command -v php > /dev/null || sudo apt-get install -y --no-install-recommends php-cli > /dev/null
+          python3 tools/test-certimport.py
+
   # contrib/mvsw/mvsw is the repository's one binary: the coprocessor's switch tool, built for aarch64,
   # which no appliance can build (contrib/mvsw/README.md). It is built again here from mvsw.c with its
   # own Makefile - freestanding, no build id, stripped, so the build is reproducible - in the Ubuntu

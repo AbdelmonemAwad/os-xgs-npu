@@ -92,6 +92,8 @@ rmdir "${PREFIX}/opnsense/scripts/octep" 2>/dev/null || true
 
 # The board reader both appliances' hooks ask, the status reader, and the gate writer.
 rm -f "${PREFIX}/opnsense/scripts/xgs/board.sh"
+# XGS: Certificate Import's reading of a certificate file; its controllers go with the directory below.
+rm -f "${PREFIX}/opnsense/scripts/xgs/certimport.inc"
 rm -f "${PREFIX}/opnsense/scripts/xgs/status.py"
 rm -f "${PREFIX}/opnsense/scripts/xgs/offload.sh"
 rm -f "${PREFIX}/opnsense/scripts/xgs/update.py"

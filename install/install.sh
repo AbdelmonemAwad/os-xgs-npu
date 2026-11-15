@@ -288,6 +288,12 @@ install -m 0644 "${SRC}/src/opnsense/mvc/app/controllers/OPNsense/XGS/PingContro
     "${PREFIX}/opnsense/mvc/app/controllers/OPNsense/XGS/PingController.php"
 install -m 0644 "${SRC}/src/opnsense/mvc/app/controllers/OPNsense/XGS/Api/PingController.php" \
     "${PREFIX}/opnsense/mvc/app/controllers/OPNsense/XGS/Api/PingController.php"
+# XGS: Certificate Import, a certificate file read into PEM for System: Trust (plan 01, package 3.5).
+install -m 0644 "${SRC}/src/opnsense/mvc/app/controllers/OPNsense/XGS/CertimportController.php" \
+    "${PREFIX}/opnsense/mvc/app/controllers/OPNsense/XGS/CertimportController.php"
+install -m 0644 "${SRC}/src/opnsense/mvc/app/controllers/OPNsense/XGS/Api/CertimportController.php" \
+    "${PREFIX}/opnsense/mvc/app/controllers/OPNsense/XGS/Api/CertimportController.php"
+install -m 0644 "${SRC}/src/opnsense/scripts/xgs/certimport.inc" "${PREFIX}/opnsense/scripts/xgs/certimport.inc"
 install -m 0644 "${SRC}/src/opnsense/mvc/app/controllers/OPNsense/XGS/forms/general.xml" \
     "${PREFIX}/opnsense/mvc/app/controllers/OPNsense/XGS/forms/general.xml"
 install -m 0644 "${SRC}/src/opnsense/mvc/app/controllers/OPNsense/XGS/Api/StatusController.php" \

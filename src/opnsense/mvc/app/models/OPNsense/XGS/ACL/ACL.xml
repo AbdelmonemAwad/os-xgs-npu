@@ -29,6 +29,18 @@
             <pattern>api/xgs/ping/*</pattern>
         </patterns>
     </page-interfaces-diagnostics-xgs>
+    <page-system-trust-xgs-certimport>
+        <name>XGS: Certificate Import</name>
+        <!--
+            Reads a certificate file into PEM and nothing else: what it reads is stored by System:
+            Trust's own API, which the user needs the Trust privileges for as well.
+        -->
+        <description>Allow reading a certificate file in DER, PKCS#7 or PKCS#12 into PEM, for System: Trust to import</description>
+        <patterns>
+            <pattern>ui/xgs/certimport</pattern>
+            <pattern>api/xgs/certimport/*</pattern>
+        </patterns>
+    </page-system-trust-xgs-certimport>
     <page-system-settings-xgs>
         <name>XGS: Settings</name>
         <!--

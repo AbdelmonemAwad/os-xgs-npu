@@ -40,6 +40,8 @@
         <Flows order="45" VisibleName="Offloaded Flows" cssClass="fa fa-bolt fa-fw" url="/ui/xgs/flows"/>
         <Updates order="80" VisibleName="Updates" cssClass="fa fa-cloud-arrow-down fa-fw" url="/ui/xgs/updates"/>
         <Reports order="85" VisibleName="Problem Reports" cssClass="fa fa-bug fa-fw" url="/ui/xgs/reports"/>
+        <!-- a certificate file in DER, PKCS#7 or PKCS#12 read into System: Trust (plan 01, package 3.5) -->
+        <CertificateImport order="87" VisibleName="Certificate Import" cssClass="fa fa-certificate fa-fw" url="/ui/xgs/certimport"/>
         <!-- a ping from the coprocessor, over the management link (svc-1-10, 2026-11-14): a page of
              its own beside the Coprocessor Console, which is OPNsense's log viewer and takes no field -->
         <CoprocessorPing order="89" VisibleName="Coprocessor Ping" cssClass="fa fa-satellite-dish fa-fw" url="/ui/xgs/ping"/>
