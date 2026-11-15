@@ -141,6 +141,20 @@ check('no interface guarded: no rule',
 check('a refused router advertisement rule does not stop the reload',
       (lambda g: g['same'] if isinstance(g, dict) else g)(hook(CORE_26_7, RA_NONE, refuse='registerFilterRule')), True)
 
+# The field itself (models/OPNsense/XGS/XGS.xml, ra_allowed's Mask) refuses at the save what is not a
+# link-local address, so the owner is told there and then; the hook's own check above stays for what
+# a mask cannot see (fe80:::::1) and for a configuration written by other means.
+with open(os.path.join(ROOT, 'src', 'opnsense', 'mvc', 'app', 'models', 'OPNsense', 'XGS', 'XGS.xml'),
+          encoding='utf-8') as f:
+    mask = re.search(r'<ra_allowed type="TextField">.*?<Mask>/(.*?)/</Mask>', f.read(), re.S).group(1)
+saved = {v: re.match(mask, v) is not None for v in
+         ['', 'fe80::1', 'FE80:0:0:0:0:0:0:0001', 'fe80::1, fe80::1234:56ff:fe78:9abc', 'fe80::1\nfebf::2;fe90::3 ',
+          '2001:db8::1', 'fe80::1, 2001:db8::1', 'junk', 'fe80::1%oxp5', 'fec0::1']}
+check('the field: link-local addresses saved, separated by commas, semicolons or new lines',
+      [v for v in list(saved)[:5] if not saved[v]], [])
+check('the field: a global, a site-local or no address at all refused at the save',
+      [v for v in list(saved)[5:] if saved[v]], [])
+
 # Read from the source: every method the hook calls by its name is one every release above has, and a
 # name chosen at run time is chosen by method_exists().
 with open(HOOK, encoding='utf-8') as f:

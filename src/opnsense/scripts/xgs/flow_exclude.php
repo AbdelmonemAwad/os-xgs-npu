@@ -305,7 +305,8 @@ if (isset($config)) {
             exec('/sbin/sysctl ' . escapeshellarg($toid . '=' . $tag) . ' 2>&1', $out, $trc2);
             if ($trc2 === 0) {
                 exec('/sbin/sysctl -q ' . escapeshellarg($flush . '=1') . ' > /dev/null 2>&1');
-                $tag_message = 'the hardware emptied for the new tag';
+                $tag_message = $tag === '' ? 'the hardware emptied; the connections the old tag kept with the host go to it as they carry traffic'
+                    : 'the hardware emptied for the new tag';
                 syslog(LOG_NOTICE, 'xgs: never offloaded by a rule\'s tag: ' . ($tag === '' ? 'none' : $tag) .
                     '; the hardware emptied, its connections made again under it');
             } else {

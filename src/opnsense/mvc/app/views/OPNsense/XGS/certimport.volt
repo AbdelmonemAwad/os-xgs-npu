@@ -98,7 +98,8 @@
                         (why !== '' ? ' - ' + why : ''));
                     if (--left === 0) {
                         say(results.join('\n'), results.every(function (r) { return r.indexOf("{{ lang._('Added') }}") === 0; }) ? 'text-success' : 'text-danger');
-                        $btn.prop('disabled', false);
+                        /* the button stays off until a file is read again: a second press would add them twice */
+                        found = null;
                     }
                 });
             });
@@ -154,7 +155,7 @@
         <tbody></tbody>
     </table>
     <div style="padding: 0 15px 15px;">
-        <pre id="ci_msg" style="white-space: pre-wrap; margin: 0; border: 0; background: none;"></pre>
+        <div id="ci_msg" style="white-space: pre-line; padding: 6px 10px;"></div>
     </div>
 </div>
 

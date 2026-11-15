@@ -165,7 +165,7 @@
             <id>xgs.general.ra_allowed</id>
             <label>Allowed router advertisement senders</label>
             <type>textbox</type>
-            <help>The link-local addresses (fe80::...) of the routers whose advertisements the interfaces above let in, one per line or separated by commas. By address, since the firewall has no rule on a sender's MAC address. Empty: no advertisement is let in on those interfaces. An address that is not link-local is left out, and the log says so.</help>
+            <help>The link-local addresses (fe80::...) of the routers whose advertisements the interfaces above let in, one per line or separated by commas. By address, since the firewall has no rule on a sender's MAC address. Empty: no advertisement is let in on those interfaces. An address that is not link-local is refused when the page is saved.</help>
         </field>
         <field>
             <id>xgs.general.service_aliases</id>

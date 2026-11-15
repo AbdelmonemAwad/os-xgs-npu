@@ -242,7 +242,7 @@
             </ra_guard>
             <ra_allowed type="TextField">
                 <Required>N</Required>
-                <Mask>/^[0-9A-Fa-f:,;\s]{0,1000}$/</Mask>
+                <Mask>/^[\s,;]*([Ff][Ee][89ABab][0-9A-Fa-f]:[0-9A-Fa-f:]{0,40}([\s,;]+[Ff][Ee][89ABab][0-9A-Fa-f]:[0-9A-Fa-f:]{0,40}){0,31})?[\s,;]*$/</Mask>
                 <ValidationMessage>Link-local IPv6 addresses (fe80::...), separated by commas or new lines.</ValidationMessage>
             </ra_allowed>
             <!-- Ready-made service aliases (plan 01, package 3.6, 2026-11-15): port aliases for the

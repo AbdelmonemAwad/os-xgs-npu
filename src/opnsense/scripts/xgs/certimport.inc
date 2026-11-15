@@ -67,7 +67,9 @@ function xgs_cert_info(string $pem, ?string $key): ?array
 
 /*
  * A PKCS#12 file the PHP openssl could not open, through the openssl command and its legacy provider:
- * its certificates and key as PEM text, or null.
+ * its certificates and key as PEM text, or null. OPNsense 26.7's openssl.cnf loads that provider, so PHP
+ * opens the older encryption (RC2, 3DES) itself there - read 2026-11-15 - and this is for an OpenSSL set
+ * up without it.
  */
 function xgs_p12_legacy(string $data, string $password): ?string
 {
