@@ -3157,6 +3157,14 @@ npugiu_link_change(int idx, int up, int speed)
 	if_setbaudrate(pt->ifp, pt->speed > 0 ? IF_Mbps(pt->speed) : 0);
 
 	if_link_state_change(pt->ifp, up ? LINK_STATE_UP : LINK_STATE_DOWN);
+
+	/*
+	 * And with the link gone, the connections in hardware that leave by it are taken back to the
+	 * host by the flow table's next sweep (npuflow_port_down) - after the stack has been told, so
+	 * that a lagg has moved off the port before the host sends their frames.
+	 */
+	if (!up)
+		npuflow_port_down(idx);
 }
 
 /* At least one tick: with hz=1000 a millisecond is one, and nothing shorter exists. */

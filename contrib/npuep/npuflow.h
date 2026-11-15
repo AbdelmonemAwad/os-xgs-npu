@@ -199,9 +199,12 @@ int	npuep_pf_tcp_scan(const struct npuep_pf_tuple *tup, struct npuep_pf_tcp *out
 int	npuep_pf_tos_scan(const struct npuep_pf_tuple *tup, uint16_t dscp[2]);
 int	npuep_pf_handback(const struct npuep_pf_tuple *tup, const uint8_t *seq, const uint8_t *scale);
 
-/* npunhop.c */
+/* npunhop.c. A hint_port with NPUEP_HINT_LAGG_ONLY added stands in for a lagg's route only, not a bridge's. */
+#define	NPUEP_HINT_LAGG_ONLY	0x4000
 int	npuep_nhop_resolve(uint32_t dst, int hint_port, struct npuep_nhop *out);
 int	npuep_nhop_resolve6(const uint32_t *dst6, int hint_port, struct npuep_nhop *out);
+/* npuflow.c: a front port lost its link - its connections are taken back by the next sweep */
+void	npuflow_port_down(int port);
 
 /* npugiu.c: the ports, for the next-hop code and the candidate table. */
 int	npugiu_port_count(void);

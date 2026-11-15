@@ -122,6 +122,38 @@ npuep_port_bridge(struct ifnet *ifp)
 	return ((b != NULL && b->bif_ifp == ifp) ? b->bif_sc : NULL);
 }
 
+/*
+ * Whether a front port may stand in for the interface a route leaves by: for a bridge any port with a
+ * link, as before; for a lagg only one of its members. The OCTEON TX driver's octep_nhop_hint_fits,
+ * whose comment says why: a lagg told by its driver's name (the lagg interface is IFT_ETHER; its
+ * members are retyped IFT_IEEE8023ADLAG), if_lagg.h's struct lagg_port head restated, lp_ifp checked to
+ * be the port itself, lp_softc compared with the lagg interface's if_softc, read in the net epoch.
+ */
+struct npuep_lagg_member {	/* the head of if_lagg.h's struct lagg_port */
+	struct ifnet	*lp_ifp;	/* the member */
+	void		*lp_softc;	/* its lagg */
+};
+
+static int
+npuep_nhop_is_lagg(struct ifnet *ifp)
+{
+
+	return (strcmp(if_getdname((if_t)ifp), "lagg") == 0);
+}
+
+static int
+npuep_nhop_hint_fits(struct ifnet *route_ifp, struct ifnet *port)
+{
+	const struct npuep_lagg_member *lp;
+
+	if (port == NULL)
+		return (0);
+	if (!npuep_nhop_is_lagg(route_ifp))
+		return (1);
+	lp = port->if_lagg;
+	return (lp != NULL && lp->lp_ifp == port && lp->lp_softc == route_ifp->if_softc);
+}
+
 int
 npuep_ports_one_bridge(int a, int b)
 {
@@ -252,7 +284,12 @@ npuep_nhop_resolve(uint32_t dst, int hint_port, struct npuep_nhop *out)
 	struct ifnet *ifp;
 	u_char lh[LLE_MAX_LINKHDR];
 	uint32_t flags;
-	int i, n, port, is_gw, error;
+	int i, n, port, is_gw, error, lagg_only = 0;
+
+	if (hint_port >= 0 && (hint_port & NPUEP_HINT_LAGG_ONLY) != 0) {
+		lagg_only = 1;
+		hint_port &= ~NPUEP_HINT_LAGG_ONLY;
+	}
 
 	bzero(out, sizeof(*out));
 	out->port = -1;
@@ -300,12 +337,25 @@ npuep_nhop_resolve(uint32_t dst, int hint_port, struct npuep_nhop *out)
 		port = npuep_nhop_vlan_port(ifp, &out->vlan);
 
 	/*
+	 * A front port with no link: nothing sent out of it arrives, and the route can still name it -
+	 * a static route, or a gateway the host has not marked down yet. 0 only: -1 is a port whose
+	 * link the agent has not reported yet. As octep_nhop_resolve.
+	 */
+	if (port >= 0 && npugiu_port_link(port) == 0) {
+		NET_EPOCH_EXIT(et);
+		return (ENETDOWN);
+	}
+
+	/*
 	 * The bridge: a route to the LAN leaves by the bridge the front ports are members of, and
 	 * the bridge cannot be asked which member holds the address. The caller passes the port the
-	 * flow's own frames arrive on, and it is taken only while that port has link.
+	 * flow's own frames arrive on, and it is taken only while that port has link - and, for a
+	 * lagg's route, only when it is one of the lagg's members (npuep_nhop_hint_fits).
 	 */
 	if (port < 0 && hint_port >= 0 && hint_port < n && npugiu_port_ifp(hint_port) != NULL &&
-	    npugiu_port_link(hint_port) == 1) {
+	    npugiu_port_link(hint_port) == 1 &&
+	    (!lagg_only || npuep_nhop_is_lagg(ifp)) &&
+	    npuep_nhop_hint_fits(ifp, (struct ifnet *)npugiu_port_ifp(hint_port))) {
 		port = hint_port;
 		out->from_hint = 1;
 	}
@@ -367,7 +417,12 @@ npuep_nhop_resolve6(const uint32_t *dst6, int hint_port, struct npuep_nhop *out)
 	struct ifnet *ifp;
 	u_char lh[LLE_MAX_LINKHDR];
 	uint32_t flags;
-	int i, n, port, is_gw, error;
+	int i, n, port, is_gw, error, lagg_only = 0;
+
+	if (hint_port >= 0 && (hint_port & NPUEP_HINT_LAGG_ONLY) != 0) {
+		lagg_only = 1;
+		hint_port &= ~NPUEP_HINT_LAGG_ONLY;
+	}
 
 	bzero(out, sizeof(*out));
 	out->port = -1;
@@ -405,8 +460,15 @@ npuep_nhop_resolve6(const uint32_t *dst6, int hint_port, struct npuep_nhop *out)
 	 */
 	if (port < 0)
 		port = npuep_nhop_vlan_port(ifp, &out->vlan);
+	/* a front port with no link, as npuep_nhop_resolve refuses it */
+	if (port >= 0 && npugiu_port_link(port) == 0) {
+		NET_EPOCH_EXIT(et);
+		return (ENETDOWN);
+	}
 	if (port < 0 && hint_port >= 0 && hint_port < n && npugiu_port_ifp(hint_port) != NULL &&
-	    npugiu_port_link(hint_port) == 1) {
+	    npugiu_port_link(hint_port) == 1 &&
+	    (!lagg_only || npuep_nhop_is_lagg(ifp)) &&
+	    npuep_nhop_hint_fits(ifp, (struct ifnet *)npugiu_port_ifp(hint_port))) {
 		port = hint_port;
 		out->from_hint = 1;
 	}
