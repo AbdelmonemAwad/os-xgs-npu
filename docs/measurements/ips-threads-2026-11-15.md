@@ -8,7 +8,7 @@ now has **Inspection threads per port**, which sets those rings, and with them t
 
 ## Why the rings, and not Suricata's own thread count
 
-Suricata 8.0's netmap capture (`src/runmode-netmap.c` and `src/source-netmap.c`, read on its main-8.0.x branch)
+Suricata 8.0's netmap capture (its `runmode-netmap.c` and `source-netmap.c`, read on its main-8.0.x branch)
 gives each thread of a port one ring, in the order the threads open it - the first thread ring 0, the next ring 1 -
 and compares that count with the rings nowhere. A thread count below the rings leaves the others unread; one above
 them has a thread open a ring that does not exist, and Suricata stops. With `auto`, its default, the count is the
