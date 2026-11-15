@@ -530,6 +530,12 @@ jobs:
       - name: The gateway quality alerts
         run: python3 tools/test-gw-probe.py
 
+      # The read-only privileges (models/OPNsense/XGS/ACL/ACL.xml): with OPNsense's own pattern matching,
+      # each reaches the requests its page reads with on OPNsense 26.7 and none it saves with.
+      # tools/test-readonly-acl.py.
+      - name: The read-only privileges
+        run: python3 tools/test-readonly-acl.py
+
   # contrib/mvsw/mvsw is the repository's one binary: the coprocessor's switch tool, built for aarch64,
   # which no appliance can build (contrib/mvsw/README.md). It is built again here from mvsw.c with its
   # own Makefile - freestanding, no build id, stripped, so the build is reproducible - in the Ubuntu
