@@ -536,6 +536,14 @@ jobs:
       - name: The read-only privileges
         run: python3 tools/test-readonly-acl.py
 
+      # TACACS+ as a server type of System: Access: Servers (library/OPNsense/Auth/TacacsPlus.php): its
+      # fields and their checks, and an authentication through a stand-in for its tool - what it is given
+      # on standard input, a PASS, a FAIL and an ERROR. tools/test-tacacs.py.
+      - name: The TACACS+ server type
+        run: |
+          command -v php > /dev/null || sudo apt-get install -y --no-install-recommends php-cli > /dev/null
+          python3 tools/test-tacacs.py
+
   # contrib/mvsw/mvsw is the repository's one binary: the coprocessor's switch tool, built for aarch64,
   # which no appliance can build (contrib/mvsw/README.md). It is built again here from mvsw.c with its
   # own Makefile - freestanding, no build id, stripped, so the build is reproducible - in the Ubuntu

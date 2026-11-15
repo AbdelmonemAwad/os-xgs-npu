@@ -19,10 +19,10 @@ to a new image, and the checks fail on one without them.
 |---|---|---|
 | [screens/](screens/) | The web interface, page by page, in English and in Arabic | 108 |
 | [hardware/](hardware/) | Photographs and drawings of the appliances, one folder each | 41 |
-| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 908 |
+| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 910 |
 | [readme/](readme/) | The README's banner and status board, drawn by tools/readme-art.py | 6 |
 
-1102 images in all.
+1104 images in all.
 
 ## The web interface
 
@@ -1599,6 +1599,15 @@ The page: [switch-frame-limit-2026-10-24.md](../measurements/switch-frame-limit-
 | [01-136-boot-frame-limit-by-the-agent.png](measurements/switch-frame-limit-2026-10-24/01-136-boot-frame-limit-by-the-agent.png) | A clean boot: the agent sets the frame limit from each port's MTU, carrier changes only while the links came up, 8,000 bytes across Port8 | [switch-frame-limit-2026-10-24.md](../measurements/switch-frame-limit-2026-10-24.md) |
 | [02-136-the-old-hooks-reads-alone.png](measurements/switch-frame-limit-2026-10-24/02-136-the-old-hooks-reads-alone.png) | The old hook's reads alone: 300 reads, Port7 reported down for two seconds while its far end stayed up | [switch-frame-limit-2026-10-24.md](../measurements/switch-frame-limit-2026-10-24.md) |
 | [03-136-a-read-and-a-port-taken-down.png](measurements/switch-frame-limit-2026-10-24/03-136-a-read-and-a-port-taken-down.png) | The boot before: a read of the switch at second 130, Port7 reported down at second 131 | [switch-frame-limit-2026-10-24.md](../measurements/switch-frame-limit-2026-10-24.md) |
+
+### measurements/tacacs-2026-11-15/ (2)
+
+The page: [tacacs-2026-11-15.md](../measurements/tacacs-2026-11-15.md).
+
+| image | what it shows | used on |
+|---|---|---|
+| [01-the-tool.png](measurements/tacacs-2026-11-15/01-the-tool.png) | The second XGS 3300: xgs-tacauth against the lab TACACS+ server - PASS with the right password and FAIL with a wrong one for PAP, ASCII and CHAP, FAIL for an unknown user, ERROR for a wrong secret, a stopped server and an IPv6 address, no temporary folder left | [tacacs-2026-11-15.md](../measurements/tacacs-2026-11-15.md) |
+| [02-through-opnsense.png](measurements/tacacs-2026-11-15/02-through-opnsense.png) | The second XGS 3300: the TACACS+ type in OPNsense's list of server types with its five fields, and authenticate() accepting the right password and refusing a wrong one with each method, and refusing when the server is stopped | [tacacs-2026-11-15.md](../measurements/tacacs-2026-11-15.md) |
 
 ### measurements/tcp-window-2026-10-22/ (21)
 
