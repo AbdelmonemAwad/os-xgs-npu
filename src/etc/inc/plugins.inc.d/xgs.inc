@@ -39,6 +39,26 @@
  * would read like a feature.
  */
 
+/*
+ * The allowed router advertisement senders (XGS: Settings, ra_allowed): the link-local addresses in
+ * $list - separated by spaces, commas or semicolons - each in its short form, once, and what is not a
+ * link-local IPv6 address (fe80::/10) apart, to be named and left out.
+ */
+function xgs_ra_allowed(string $list): array
+{
+    $ok = [];
+    $refused = [];
+    foreach (preg_split('/[\s,;]+/', trim($list), -1, PREG_SPLIT_NO_EMPTY) as $item) {
+        $bin = @inet_pton($item);
+        if ($bin !== false && strlen($bin) === 16 && ord($bin[0]) === 0xfe && (ord($bin[1]) & 0xc0) === 0x80) {
+            $ok[inet_ntop($bin)] = true;
+        } else {
+            $refused[] = $item;
+        }
+    }
+    return [array_keys($ok), $refused];
+}
+
 function xgs_firewall($fw)
 {
     /*
@@ -90,6 +110,40 @@ function xgs_firewall($fw)
      * rc.bootup's, which leaves the machine at a single-user prompt (issue 969). The link's rules
      * are left out instead, and why is logged.
      */
+    /*
+     * IPv6 router advertisements only from allowed senders (plan 01, package 3.3; XGS: Settings): on
+     * each interface ra_guard names, ICMPv6 type 134 passes from the link-local addresses ra_allowed
+     * lists and is blocked, and logged, from any other - so a host on the network cannot make itself
+     * its router. Priority 0, ahead of OPNsense's own RFC 4890 rules (filter.lib.inc, priority 1),
+     * which pass any link-local sender's. By address: pf has no rule on a sender's MAC. A rule that
+     * cannot be registered is left out and logged, as the management link's are below, so the
+     * reload goes on.
+     */
+    $xg = config_read_array('OPNsense')['XGS']['general'] ?? [];
+    $guard = array_values(array_filter(explode(',', (string)($xg['ra_guard'] ?? ''))));
+    if (!empty($guard)) {
+        [$allowed, $refused] = xgs_ra_allowed((string)($xg['ra_allowed'] ?? ''));
+        if (!empty($refused)) {
+            syslog(LOG_WARNING, 'xgs: allowed router advertisement senders, not link-local and left out: ' .
+                implode(', ', $refused));
+        }
+        foreach ($guard as $key) {
+            try {
+                $ra = ['interface' => $key, 'direction' => 'in', 'ipprotocol' => 'inet6',
+                    'protocol' => 'ipv6-icmp', 'icmp6-type' => '134', 'quick' => true];
+                if (!empty($allowed)) {
+                    $fw->registerFilterRule(0, ['from' => implode(',', $allowed), 'statetype' => 'keep',
+                        'descr' => 'XGS: router advertisements from the allowed senders'], $ra);
+                }
+                $fw->registerFilterRule(0, ['type' => 'block', 'log' => true,
+                    'descr' => 'XGS: router advertisements from any other sender'], $ra);
+            } catch (\Throwable $e) {
+                syslog(LOG_ERR, 'xgs: the router advertisement rules for ' . $key . ' were left out: ' .
+                    $e->getMessage());
+            }
+        }
+    }
+
     foreach (config_read_array('interfaces') as $key => $intf) {
         if (empty($intf['if']) || !in_array($intf['if'], ['mvmgmt0', 'oxmgmt0'], true) ||
             empty($intf['enable'])) {

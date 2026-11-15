@@ -230,6 +230,21 @@
                 <Required>Y</Required>
                 <Default>1</Default>
             </anomaly_watch>
+            <!-- IPv6 router advertisements only from allowed senders (plan 01, package 3.3, 2026-11-15):
+                 on the interfaces ra_guard names, xgs_firewall() in plugins.inc.d/xgs.inc passes ICMPv6
+                 type 134 from the link-local addresses ra_allowed lists and blocks it from any other,
+                 both ahead of OPNsense's own RFC 4890 rules, which let any link-local sender's through.
+                 By address: pf has no rule on a sender's MAC. Applied by a firewall reload, which
+                 scripts/xgs/apply.php asks for when either changed. -->
+            <ra_guard type="InterfaceField">
+                <Required>N</Required>
+                <Multiple>Y</Multiple>
+            </ra_guard>
+            <ra_allowed type="TextField">
+                <Required>N</Required>
+                <Mask>/^[0-9A-Fa-f:,;\s]{0,1000}$/</Mask>
+                <ValidationMessage>Link-local IPv6 addresses (fe80::...), separated by commas or new lines.</ValidationMessage>
+            </ra_allowed>
             <!-- IPsec associations to the coprocessor's engine: the loader tunable hw.octep.ipsec_on
                  or hw.npuep.ipsec_on, read when the driver attaches - a reboot takes it. On in a new
                  install since 2026-11-14 (hw-02); the tunable is written by the first apply of the

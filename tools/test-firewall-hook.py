@@ -114,6 +114,33 @@ check('mvmgmt0, the ARMADA link, gets the same rules',
       names(hook(CORE_26_7, {'interfaces': {'opt1': {'if': 'mvmgmt0', 'enable': '1'}}})),
       ['registerFilterRule', 'registerFilterRule', 'registerForwardRule'])
 
+# Router advertisements only from allowed senders (package 3.3): on each interface ra_guard names, a pass
+# from the link-local senders in ra_allowed - each once, in its short form - and a block of any other, both
+# at priority 0, ahead of OPNsense's RFC 4890 rules; what is not link-local is left out.
+RA_BASE = {'interface': 'lan', 'direction': 'in', 'ipprotocol': 'inet6', 'protocol': 'ipv6-icmp',
+           'icmp6-type': '134', 'quick': True}
+RA_CONF = {'interfaces': {'lan': {'if': 'igb0', 'enable': '1'}},
+           'OPNsense': {'XGS': {'general': {'ra_guard': 'lan,opt1',
+                                            'ra_allowed': 'fe80::1, FE80:0:0:0:0:0:0:0001\n2001:db8::1;junk fe80::a:b'}}}}
+got = hook(CORE_26_7, RA_CONF)
+check('router advertisements: a pass and a block on each guarded interface, nothing else',
+      names(got), ['registerFilterRule'] * 4)
+if isinstance(got, dict) and len(got['calls']) == 4:
+    check('the pass: priority 0, from the link-local senders alone, each once',
+          [got['calls'][0][1][0], got['calls'][0][1][1]['from'], got['calls'][0][1][2]],
+          [0, 'fe80::1,fe80::a:b', RA_BASE])
+    check('the block: priority 0, logged, from anyone else',
+          [got['calls'][1][1][0], got['calls'][1][1][1]['type'], got['calls'][1][1][1]['log']], [0, 'block', True])
+    check('the second interface gets the same two', got['calls'][2][1][2]['interface'], 'opt1')
+RA_NONE = {'interfaces': {}, 'OPNsense': {'XGS': {'general': {'ra_guard': 'lan', 'ra_allowed': ''}}}}
+got = hook(CORE_26_7, RA_NONE)
+check('no allowed sender: only the block', [c[1][1].get('type') for c in got['calls']] if isinstance(got, dict) else got,
+      ['block'])
+check('no interface guarded: no rule',
+      names(hook(CORE_26_7, {'interfaces': {}, 'OPNsense': {'XGS': {'general': {'ra_allowed': 'fe80::1'}}}})), [])
+check('a refused router advertisement rule does not stop the reload',
+      (lambda g: g['same'] if isinstance(g, dict) else g)(hook(CORE_26_7, RA_NONE, refuse='registerFilterRule')), True)
+
 # Read from the source: every method the hook calls by its name is one every release above has, and a
 # name chosen at run time is chosen by method_exists().
 with open(HOOK, encoding='utf-8') as f:

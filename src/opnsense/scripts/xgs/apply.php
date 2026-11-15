@@ -20,6 +20,8 @@
  *                      while on, the running driver's dp.ips_depth or flow.ips_depth a quarter over
  *                      Suricata's stream depth (xgs_ips_depth)
  *   failclose          the running driver's dp.ips_loop or ips.loop, through failclose.py (and from cron)
+ *   ra_guard, ra_allowed  rules of the firewall hook (plugins.inc.d/xgs.inc): a firewall reload when
+ *                      either changed since the last save (/var/db/os-xgs-npu/ra-guard)
  *   ids_threads        dev.netmap.generic_rings now and as a row of System: Settings: Tunables, the
  *                      running driver's dp.rx_flowid or giu.rx_flowid (and at boot), and the Intrusion
  *                      Detection restarted when it runs in IPS mode and the rings changed (xgs_ids_rings)
@@ -460,6 +462,22 @@ $steps[] = is_array($cp) && isset($cp['message']) ? $cp['message'] : 'Captive Po
 if ($get('cp_hardware', '1') === '1') {
     /* watched from now, not from cron's next minute: a login and a logout can both fall before it */
     exec('/usr/sbin/daemon -f /usr/local/opnsense/scripts/xgs/cp_users.py --for 58');
+}
+
+/*
+ * Router advertisements only from allowed senders: the firewall hook's rules, so a firewall reload -
+ * which also empties the coprocessor's hardware, as every reload does - when the two settings differ
+ * from what the last save left, and not otherwise.
+ */
+$ra_now = trim($get('ra_guard', '')) . '|' . preg_replace('/\s+/', ' ', trim($get('ra_allowed', '')));
+$ra_mark = '/var/db/os-xgs-npu/ra-guard';
+$ra_was = @file_get_contents($ra_mark);
+if (($ra_was === false ? '|' : $ra_was) !== $ra_now) {
+    @mkdir(dirname($ra_mark), 0755, true);
+    @file_put_contents($ra_mark, $ra_now);
+    (new \OPNsense\Core\Backend())->configdRun('filter reload');
+    $steps[] = 'router advertisements: ' . ($get('ra_guard', '') === '' ? 'from anyone, as OPNsense has it' :
+        'only from the allowed senders on ' . str_replace(',', ', ', $get('ra_guard', ''))) . ' - the firewall reloaded';
 }
 
 /* What is never offloaded, on the running driver - flow_exclude.php reads and writes it. */
