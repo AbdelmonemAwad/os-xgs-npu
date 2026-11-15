@@ -76,6 +76,18 @@
                 <Mask>/^[0-9A-Za-z:.\/,;\s]{0,1500}$/</Mask>
                 <ValidationMessage>Addresses, networks and "port N" entries, separated by commas or new lines.</ValidationMessage>
             </flow_exclude>
+            <!-- Never offloaded by a rule's tag (plan 01, package 3.2, 2026-11-15): a tag a firewall rule
+                 sets (Firewall: Rules, advanced, "Set local tag"); a connection any of whose pf states
+                 carries it is never made in hardware. Written to dp.flow_tag or flow.tag by
+                 scripts/xgs/flow_exclude.php when the page is saved and at every boot; the drivers
+                 compare pf's id for the name with the tags of the connection's states, both sides of a
+                 translated one. When it changes the hardware is emptied, so the connections already
+                 in it are made again under it. pf's own characters for a name it is given. -->
+            <flow_tag type="TextField">
+                <Required>N</Required>
+                <Mask>/^[A-Za-z0-9_.-]{0,63}$/</Mask>
+                <ValidationMessage>A tag name: letters, digits, "_", "-" and ".", up to 63.</ValidationMessage>
+            </flow_tag>
             <!-- Captive Portal clients in hardware (discovery 5, 2026-10-24): scripts/xgs/cp_users.py,
                  every two seconds from cron.d/xgs-cp, lists each portal session's addresses as a live
                  user (dp.live_users, flow.live_users), so a logout takes its connections out of
@@ -218,6 +230,29 @@
                 <Required>Y</Required>
                 <Default>1</Default>
             </anomaly_watch>
+            <!-- IPv6 router advertisements only from allowed senders (plan 01, package 3.3, 2026-11-15):
+                 on the interfaces ra_guard names, xgs_firewall() in plugins.inc.d/xgs.inc passes ICMPv6
+                 type 134 from the link-local addresses ra_allowed lists and blocks it from any other,
+                 both ahead of OPNsense's own RFC 4890 rules, which let any link-local sender's through.
+                 By address: pf has no rule on a sender's MAC. Applied by a firewall reload, which
+                 scripts/xgs/apply.php asks for when either changed. -->
+            <ra_guard type="InterfaceField">
+                <Required>N</Required>
+                <Multiple>Y</Multiple>
+            </ra_guard>
+            <ra_allowed type="TextField">
+                <Required>N</Required>
+                <Mask>/^[\s,;]*([Ff][Ee][89ABab][0-9A-Fa-f]:[0-9A-Fa-f:]{0,40}([\s,;]+[Ff][Ee][89ABab][0-9A-Fa-f]:[0-9A-Fa-f:]{0,40}){0,31})?[\s,;]*$/</Mask>
+                <ValidationMessage>Link-local IPv6 addresses (fe80::...), separated by commas or new lines.</ValidationMessage>
+            </ra_allowed>
+            <!-- Ready-made service aliases (plan 01, package 3.6, 2026-11-15): port aliases for the
+                 services a rule names most, added to Firewall: Aliases by scripts/xgs/service_aliases.php
+                 when a save finds this on - those missing, by name; never changed nor taken away, since
+                 a rule may use them. Off by default. -->
+            <service_aliases type="BooleanField">
+                <Required>Y</Required>
+                <Default>0</Default>
+            </service_aliases>
             <!-- IPsec associations to the coprocessor's engine: the loader tunable hw.octep.ipsec_on
                  or hw.npuep.ipsec_on, read when the driver attaches - a reboot takes it. On in a new
                  install since 2026-11-14 (hw-02); the tunable is written by the first apply of the
@@ -240,6 +275,30 @@
                 <Required>Y</Required>
                 <Default>1</Default>
             </ipsec_soft_crypto>
+            <!-- IPsec additions to OPNsense's swanctl.conf (plan 01, package 3.4, 2026-11-15), written to
+                 swanctl/conf.d/xgs.conf by the template OPNsense/XGS/xgs-swanctl.conf, which swanctl.conf
+                 includes: the random margin taken off every connection's and child's rekey times, in
+                 seconds (empty: strongSwan's own, the gap between life and rekey times), and the
+                 children that compress what they carry (ipcomp) - not while IPsec is in the
+                 coprocessor's engine, where compression has not been measured. Rendered again by the
+                 plugin's ipsec configure hook each time OPNsense writes swanctl.conf. -->
+            <ipsec_rand_time type="IntegerField">
+                <Required>N</Required>
+                <MinimumValue>0</MinimumValue>
+                <MaximumValue>86400</MaximumValue>
+                <ValidationMessage>Seconds, from 0 to 86400, or empty for strongSwan's own.</ValidationMessage>
+            </ipsec_rand_time>
+            <ipsec_ipcomp type="ModelRelationField">
+                <Model>
+                    <child>
+                        <source>OPNsense.IPsec.Swanctl</source>
+                        <items>children.child</items>
+                        <display>description</display>
+                    </child>
+                </Model>
+                <Multiple>Y</Multiple>
+                <Required>N</Required>
+            </ipsec_ipcomp>
             <!-- ARMADA only: the receive poll, measured in docs/findings/a-hundred-polls-a-second-on-the-armada.md. -->
             <rx_poll_ms type="IntegerField">
                 <Required>Y</Required>
@@ -341,6 +400,29 @@
                 not corrected always raises one. 0, no alert for corrected errors. Only the XGS 3300
                 registers these counters; the ARMADA family has none.
             -->
+            <!-- A scheduled PPPoE reconnect (plan 01, package 3.7, 2026-11-15): every day at this time
+                 (HH:MM), each enabled PPPoE interface configured again by scripts/xgs/pppoe_reconnect.php,
+                 from the plugin's cron job. Empty: none, as OPNsense has it. -->
+            <pppoe_reconnect type="TextField">
+                <Required>N</Required>
+                <Mask>/^(([01][0-9]|2[0-3]):[0-5][0-9])?$/</Mask>
+                <ValidationMessage>A time of day as HH:MM, from 00:00 to 23:59, or empty for none.</ValidationMessage>
+            </pppoe_reconnect>
+            <!-- Gateway quality alerts (plan 01, package 3.8, 2026-11-15), scripts/xgs/gw_probe.py from the
+                 plugin's cron job each minute: a monitored gateway's jitter over gw_jitter_alert ms (0:
+                 none), and a TCP probe to gw_tcp_probe, host:port (empty: none). Alerts only, through
+                 os-netreport's alert files: OPNsense's own monitoring keeps deciding a gateway's state. -->
+            <gw_jitter_alert type="IntegerField">
+                <Required>Y</Required>
+                <Default>0</Default>
+                <MinimumValue>0</MinimumValue>
+                <MaximumValue>10000</MaximumValue>
+            </gw_jitter_alert>
+            <gw_tcp_probe type="TextField">
+                <Required>N</Required>
+                <Mask>/^((\[[0-9A-Fa-f:.]+\]|[A-Za-z0-9.-]{1,253}):[0-9]{1,5})?$/</Mask>
+                <ValidationMessage>A host and a port, as host:port or [IPv6 address]:port, or empty for none.</ValidationMessage>
+            </gw_tcp_probe>
             <ecc_alert type="IntegerField">
                 <Required>Y</Required>
                 <Default>10</Default>

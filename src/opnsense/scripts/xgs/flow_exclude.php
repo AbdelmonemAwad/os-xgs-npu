@@ -282,6 +282,41 @@ if ($oid === null) {
     }
 }
 
+/*
+ * A rule's tag the owner keeps with the host (XGS: Settings, flow_tag): the driver's dp.flow_tag or
+ * flow.tag, which it starts empty at every boot. Written only when it differs from what the driver
+ * holds, and then the hardware is emptied (fw_rev_bump, as a ruleset load does): the connections
+ * made under the old tag are made again under the new one, or not. Only from the configuration - a
+ * list given on the command line says nothing of a tag.
+ */
+$tag = null;
+$tag_message = '';
+if (isset($config)) {
+    $tag = trim((string)($config['OPNsense']['XGS']['general']['flow_tag'] ?? ''));
+    foreach ([['dev.octep.0.dp.flow_tag', 'dev.octep.0.rpc.fw_rev_bump'],
+              ['dev.npuep.0.flow.tag', 'dev.npuep.0.flow.fw_rev_bump']] as [$toid, $flush]) {
+        $now = [];
+        exec('/sbin/sysctl -n ' . escapeshellarg($toid) . ' 2>/dev/null', $now, $trc);
+        if ($trc !== 0) {
+            continue;
+        }
+        if (trim(implode('', $now)) !== $tag) {
+            $out = [];
+            exec('/sbin/sysctl ' . escapeshellarg($toid . '=' . $tag) . ' 2>&1', $out, $trc2);
+            if ($trc2 === 0) {
+                exec('/sbin/sysctl -q ' . escapeshellarg($flush . '=1') . ' > /dev/null 2>&1');
+                $tag_message = $tag === '' ? 'the hardware emptied; the connections the old tag kept with the host go to it as they carry traffic'
+                    : 'the hardware emptied for the new tag';
+                syslog(LOG_NOTICE, 'xgs: never offloaded by a rule\'s tag: ' . ($tag === '' ? 'none' : $tag) .
+                    '; the hardware emptied, its connections made again under it');
+            } else {
+                $tag_message = 'the driver refused the tag: ' . implode(' ', $out);
+            }
+        }
+        break;
+    }
+}
+
 echo json_encode([
     'applied' => $applied,
     'entries' => $entries,
@@ -290,5 +325,7 @@ echo json_encode([
     'canonical' => $text,
     'ipfw' => $why,
     'message' => $message,
+    'tag' => $tag,
+    'tag_message' => $tag_message,
 ]) . "\n";
 exit(0);

@@ -502,6 +502,40 @@ jobs:
           command -v php > /dev/null || sudo apt-get install -y --no-install-recommends php-cli > /dev/null
           python3 tools/test-apply.py
 
+      # XGS: Certificate Import's reading of a certificate file into PEM (scripts/xgs/certimport.inc):
+      # DER, PKCS#7 in DER and PEM, PKCS#12 in today's encryption and the old one, PEM with a key, and a
+      # wrong password, an empty file and one that is no certificate. tools/test-certimport.py.
+      - name: "A certificate file read into PEM for System: Trust"
+        run: |
+          command -v php > /dev/null || sudo apt-get install -y --no-install-recommends php-cli > /dev/null
+          python3 tools/test-certimport.py
+
+      # The ready-made service aliases (scripts/xgs/service_aliases.php): their names and ports, and that
+      # an alias of the same name in any case is kept, never added again. tools/test-service-aliases.py.
+      - name: The ready-made service aliases
+        run: |
+          command -v php > /dev/null || sudo apt-get install -y --no-install-recommends php-cli > /dev/null
+          python3 tools/test-service-aliases.py
+
+      # The scheduled PPPoE reconnect (scripts/xgs/pppoe_reconnect.php): which interfaces it configures
+      # again, and the time of day as the cron job's minute and hour. tools/test-pppoe-reconnect.py.
+      - name: The scheduled PPPoE reconnect
+        run: |
+          command -v php > /dev/null || sudo apt-get install -y --no-install-recommends php-cli > /dev/null
+          python3 tools/test-pppoe-reconnect.py
+
+      # The gateway quality alerts (scripts/xgs/gw_probe.py): dpinger's figures read, an alert raised once
+      # when jitter crosses and once when it is back, the TCP probe's third failure in a row and the first
+      # success after, and its target. tools/test-gw-probe.py.
+      - name: The gateway quality alerts
+        run: python3 tools/test-gw-probe.py
+
+      # The read-only privileges (models/OPNsense/XGS/ACL/ACL.xml): with OPNsense's own pattern matching,
+      # each reaches the requests its page reads with on OPNsense 26.7 and none it saves with.
+      # tools/test-readonly-acl.py.
+      - name: The read-only privileges
+        run: python3 tools/test-readonly-acl.py
+
   # contrib/mvsw/mvsw is the repository's one binary: the coprocessor's switch tool, built for aarch64,
   # which no appliance can build (contrib/mvsw/README.md). It is built again here from mvsw.c with its
   # own Makefile - freestanding, no build id, stripped, so the build is reproducible - in the Ubuntu

@@ -198,6 +198,18 @@ carry the rest; it needs one reboot
 Since 2026-11-15 **Inspection threads per port** on the same tab, empty by default, gives each port the
 Intrusion Detection reads in IPS mode that many netmap rings and Suricata a thread for each, a connection kept
 with one ([measured](../measurements/ips-threads-2026-11-15.md)).
+Since 2026-11-15 the tabs have eight more ([measured](../measurements/settings-batch-2026-11-15.md)). On
+**Acceleration**, **Never offloaded: a rule's tag**: a tag a firewall rule sets, and a connection any of whose
+states carries it stays with the firewall. On **Security**, **Router advertisements only from allowed senders**,
+on the interfaces chosen and from the link-local addresses listed under it, and **Ready-made service aliases**,
+off by default: thirteen port aliases for rules, XGS_WEB to XGS_VPN. On **IPsec**, a **random margin off rekey
+times**, so tunnels made together do not rekey together, and **IPComp** for the children chosen, never while
+IPsec is in the coprocessor's engine. On **Hardware**, **PPPoE: reconnect every day at** a time of your choosing,
+and two alerts through os-netreport - a monitored gateway's **jitter** over a limit, and a **TCP probe** that fails
+three times in a row - which decide nothing: whether a gateway is up stays with OPNsense's own monitoring. System:
+Access has five privileges named "Read only: " and a page - Firewall: Aliases, Firewall: Rules [new], System:
+Trust: Certificates, VPN: IPsec: Connections and XGS: Settings - each reaching its page and what it reads with,
+not what it saves with.
 Since 2026-10-19 that tab has **Cut open connections when listed**: block lists whose additions cut
 the connections already open ([measured](../measurements/lists-cut-2026-10-19.md)), and **Cut
 connections by TLS fingerprint**: JA4 fingerprints whose connections are cut, read from the
@@ -460,6 +472,16 @@ issue. See [docs/problem-reports.md](../problem-reports.md).
 ![XGS: Problem Reports on the second XGS 3300, in Arabic](../images/screens/ar/08-xgs-problem-reports.png)
 
 </details>
+
+## XGS: Certificate Import
+
+Since 2026-11-15: a certificate file in DER, PKCS#7 or PKCS#12 - with its password, which opens it and is not
+kept - read into PEM on the firewall, as System: Trust imports PEM text alone. Its certificates are listed with
+their issuers and dates, and **Import into System: Trust** hands each to Trust's own import, which checks and
+stores it as any import: a certificate with its key, an authority as an authority. A PEM file is read too
+([measured](../measurements/settings-batch-2026-11-15.md#35-certificate-import)).
+
+![XGS: Certificate Import on the second XGS 3300: a PKCS#12 file read, a certificate with its key and its authority listed](../images/measurements/settings-batch-2026-11-15/08-certificate-import-read.png)
 
 ## XGS: Log File
 

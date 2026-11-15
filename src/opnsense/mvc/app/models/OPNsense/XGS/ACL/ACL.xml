@@ -29,6 +29,86 @@
             <pattern>api/xgs/ping/*</pattern>
         </patterns>
     </page-interfaces-diagnostics-xgs>
+    <!--
+        Read only (plan 01, package 3.9, 2026-11-15): OPNsense's privileges are address patterns, so each of
+        these grants a page and the requests it reads with - search, get, list - and none it saves, adds,
+        deletes or applies with, which answer such a user "forbidden". A request's name decides: "get*"
+        reaches get_item and not set_item. Only pages whose reading and saving go to different addresses
+        can be offered so; the older ones, which read and save at one, are not listed.
+        tools/test-readonly-acl.py checks each against the requests its page makes on OPNsense 26.7.
+    -->
+    <page-xgs-ro-firewall-alias>
+        <name>Read only: Firewall: Aliases</name>
+        <description>Allow seeing the firewall's aliases and their contents, without changing them (from os-xgs-npu)</description>
+        <patterns>
+            <pattern>ui/firewall/alias</pattern>
+            <pattern>api/firewall/alias/search*</pattern>
+            <pattern>api/firewall/alias/get*</pattern>
+            <pattern>api/firewall/alias/list*</pattern>
+            <pattern>api/firewall/alias/export*</pattern>
+        </patterns>
+    </page-xgs-ro-firewall-alias>
+    <page-xgs-ro-firewall-filter>
+        <name>Read only: Firewall: Rules [new]</name>
+        <description>Allow seeing the firewall's rules and their counters, without changing or applying them (from os-xgs-npu)</description>
+        <patterns>
+            <pattern>ui/firewall/filter</pattern>
+            <pattern>api/firewall/filter/search*</pattern>
+            <pattern>api/firewall/filter/get*</pattern>
+            <pattern>api/firewall/filter/list*</pattern>
+            <pattern>api/firewall/filter/download_rules*</pattern>
+            <pattern>api/firewall/filter_util/rule_stats*</pattern>
+        </patterns>
+    </page-xgs-ro-firewall-filter>
+    <page-xgs-ro-trust-cert>
+        <name>Read only: System: Trust: Certificates</name>
+        <description>Allow seeing the certificates and their details, without changing them or downloading a private key (from os-xgs-npu)</description>
+        <patterns>
+            <pattern>ui/trust/cert</pattern>
+            <pattern>api/trust/cert/search*</pattern>
+            <pattern>api/trust/cert/get*</pattern>
+            <pattern>api/trust/cert/ca_info*</pattern>
+            <pattern>api/trust/cert/ca_list*</pattern>
+            <pattern>api/trust/cert/user_list*</pattern>
+            <pattern>api/trust/cert/raw_dump*</pattern>
+        </patterns>
+    </page-xgs-ro-trust-cert>
+    <page-xgs-ro-ipsec-connections>
+        <name>Read only: VPN: IPsec: Connections</name>
+        <description>Allow seeing the IPsec connections and pools, without changing them or applying the service (from os-xgs-npu)</description>
+        <patterns>
+            <pattern>ui/ipsec/connections</pattern>
+            <pattern>api/ipsec/connections/search*</pattern>
+            <pattern>api/ipsec/connections/get*</pattern>
+            <pattern>api/ipsec/connections/is_enabled*</pattern>
+            <pattern>api/ipsec/connections/connection_exists*</pattern>
+            <pattern>api/ipsec/pools/search*</pattern>
+            <pattern>api/ipsec/pools/get*</pattern>
+        </patterns>
+    </page-xgs-ro-ipsec-connections>
+    <page-xgs-ro-xgs-settings>
+        <name>Read only: XGS: Settings</name>
+        <description>Allow seeing the XGS coprocessor's settings and status, without changing or applying them</description>
+        <patterns>
+            <pattern>ui/xgs/settings</pattern>
+            <pattern>api/xgs/settings/get*</pattern>
+            <pattern>api/xgs/settings/recommended</pattern>
+            <pattern>api/xgs/status/*</pattern>
+            <pattern>api/xgs/ipsec/*</pattern>
+        </patterns>
+    </page-xgs-ro-xgs-settings>
+    <page-system-trust-xgs-certimport>
+        <name>XGS: Certificate Import</name>
+        <!--
+            Reads a certificate file into PEM and nothing else: what it reads is stored by System:
+            Trust's own API, which the user needs the Trust privileges for as well.
+        -->
+        <description>Allow reading a certificate file in DER, PKCS#7 or PKCS#12 into PEM, for System: Trust to import</description>
+        <patterns>
+            <pattern>ui/xgs/certimport</pattern>
+            <pattern>api/xgs/certimport/*</pattern>
+        </patterns>
+    </page-system-trust-xgs-certimport>
     <page-system-settings-xgs>
         <name>XGS: Settings</name>
         <!--

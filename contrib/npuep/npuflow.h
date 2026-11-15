@@ -47,6 +47,13 @@ struct npuep_pf_state {
 	uint8_t	src_state;
 	uint8_t	dst_state;
 	uint16_t state_flags;
+	/*
+	 * The tag a rule put on this state, and every tag on the connection's states, at most two:
+	 * a forwarded connection has a state on each side, made by a rule of each side, and the one
+	 * npuep_pf_state_read returns need not be the tagged one. Compared with flow.tag; 0 is none.
+	 */
+	uint16_t tag;
+	uint16_t tags[2];
 	char	ifname[16];
 	uint32_t wire_addr[2];
 	uint32_t stack_addr[2];
@@ -191,6 +198,7 @@ bool	npuep_pf_present(void);
 void	npuep_pf_retry(void);
 int	npuep_pf_state_exists(const struct npuep_pf_tuple *t, int dir, int *order);
 int	npuep_pf_state_read(const struct npuep_pf_tuple *t, struct npuep_pf_state *out);
+int	npuep_pf_tag_id(const char *name, uint16_t *id);
 int	npuep_pf_settled(const struct npuep_pf_tuple *t);
 int	npuep_pf_touch(const struct npuep_pf_tuple *t);
 int	npuep_pf_mark_sloppy(const struct npuep_pf_tuple *t);

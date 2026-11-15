@@ -39,6 +39,26 @@
  * would read like a feature.
  */
 
+/*
+ * The allowed router advertisement senders (XGS: Settings, ra_allowed): the link-local addresses in
+ * $list - separated by spaces, commas or semicolons - each in its short form, once, and what is not a
+ * link-local IPv6 address (fe80::/10) apart, to be named and left out.
+ */
+function xgs_ra_allowed(string $list): array
+{
+    $ok = [];
+    $refused = [];
+    foreach (preg_split('/[\s,;]+/', trim($list), -1, PREG_SPLIT_NO_EMPTY) as $item) {
+        $bin = @inet_pton($item);
+        if ($bin !== false && strlen($bin) === 16 && ord($bin[0]) === 0xfe && (ord($bin[1]) & 0xc0) === 0x80) {
+            $ok[inet_ntop($bin)] = true;
+        } else {
+            $refused[] = $item;
+        }
+    }
+    return [array_keys($ok), $refused];
+}
+
 function xgs_firewall($fw)
 {
     /*
@@ -90,6 +110,40 @@ function xgs_firewall($fw)
      * rc.bootup's, which leaves the machine at a single-user prompt (issue 969). The link's rules
      * are left out instead, and why is logged.
      */
+    /*
+     * IPv6 router advertisements only from allowed senders (plan 01, package 3.3; XGS: Settings): on
+     * each interface ra_guard names, ICMPv6 type 134 passes from the link-local addresses ra_allowed
+     * lists and is blocked, and logged, from any other - so a host on the network cannot make itself
+     * its router. Priority 0, ahead of OPNsense's own RFC 4890 rules (filter.lib.inc, priority 1),
+     * which pass any link-local sender's. By address: pf has no rule on a sender's MAC. A rule that
+     * cannot be registered is left out and logged, as the management link's are below, so the
+     * reload goes on.
+     */
+    $xg = config_read_array('OPNsense')['XGS']['general'] ?? [];
+    $guard = array_values(array_filter(explode(',', (string)($xg['ra_guard'] ?? ''))));
+    if (!empty($guard)) {
+        [$allowed, $refused] = xgs_ra_allowed((string)($xg['ra_allowed'] ?? ''));
+        if (!empty($refused)) {
+            syslog(LOG_WARNING, 'xgs: allowed router advertisement senders, not link-local and left out: ' .
+                implode(', ', $refused));
+        }
+        foreach ($guard as $key) {
+            try {
+                $ra = ['interface' => $key, 'direction' => 'in', 'ipprotocol' => 'inet6',
+                    'protocol' => 'ipv6-icmp', 'icmp6-type' => '134', 'quick' => true];
+                if (!empty($allowed)) {
+                    $fw->registerFilterRule(0, ['from' => implode(',', $allowed), 'statetype' => 'keep',
+                        'descr' => 'XGS: router advertisements from the allowed senders'], $ra);
+                }
+                $fw->registerFilterRule(0, ['type' => 'block', 'log' => true,
+                    'descr' => 'XGS: router advertisements from any other sender'], $ra);
+            } catch (\Throwable $e) {
+                syslog(LOG_ERR, 'xgs: the router advertisement rules for ' . $key . ' were left out: ' .
+                    $e->getMessage());
+            }
+        }
+    }
+
     foreach (config_read_array('interfaces') as $key => $intf) {
         if (empty($intf['if']) || !in_array($intf['if'], ['mvmgmt0', 'oxmgmt0'], true) ||
             empty($intf['enable'])) {
@@ -159,7 +213,31 @@ function xgs_configure()
      */
     return [
         'bootup' => ['xgs_mgmt_link_bootup'],
+        'ipsec' => ['xgs_ipsec_configure'],
     ];
+}
+
+function xgs_ipsec_configure($verbose = false)
+{
+    /*
+     * XGS: Settings' additions to OPNsense's swanctl.conf (plan 01, package 3.4): swanctl/conf.d/xgs.conf,
+     * which swanctl.conf includes, naming connections and children by their uuids - written again here,
+     * each time OPNsense configures IPsec, so a child added or taken away is never left out of it nor
+     * named by it. OPNsense has written swanctl.conf and reloaded strongSwan by then
+     * (ipsec_configure_do; the plugins are configured in their files' order), so strongSwan is
+     * reloaded once more when, and only when, this file changed. Never fails the configure.
+     */
+    $f = '/usr/local/etc/swanctl/conf.d/xgs.conf';
+    $before = @file_get_contents($f);
+    try {
+        (new \OPNsense\Core\Backend())->configdRun('template reload OPNsense/XGS');
+    } catch (\Throwable $e) {
+        syslog(LOG_ERR, 'xgs: swanctl/conf.d/xgs.conf not written: ' . $e->getMessage());
+        return;
+    }
+    if (@file_get_contents($f) !== $before && isvalidpid('/var/run/charon.pid')) {
+        mwexecfb('/usr/local/etc/rc.d/strongswan onereload');
+    }
 }
 
 function xgs_mgmt_link_bootup()
@@ -279,6 +357,23 @@ function xgs_cron()
      * when it changed (scripts/xgs/flow_exclude.php --if-changed).
      */
     $jobs[]['autocron'] = ['/usr/local/bin/php /usr/local/opnsense/scripts/xgs/flow_exclude.php --if-changed > /dev/null', '*'];
+
+    /*
+     * A scheduled PPPoE reconnect (plan 01, package 3.7): each day at the time XGS: Settings names,
+     * every enabled PPPoE interface configured again (scripts/xgs/pppoe_reconnect.php). No job without
+     * a time; apply.php restarts cron when it changes, so this list is read again.
+     */
+    /*
+     * Gateway quality alerts (plan 01, package 3.8): scripts/xgs/gw_probe.py each minute, which stops
+     * at once while neither alert is set.
+     */
+    $jobs[]['autocron'] = ['/usr/local/opnsense/scripts/xgs/gw_probe.py > /dev/null', '*'];
+
+    $at = (string)(config_read_array('OPNsense')['XGS']['general']['pppoe_reconnect'] ?? '');
+    if (preg_match('/^([01][0-9]|2[0-3]):([0-5][0-9])$/', trim($at), $m)) {
+        $jobs[]['autocron'] = ['/usr/local/bin/php /usr/local/opnsense/scripts/xgs/pppoe_reconnect.php > /dev/null',
+            (string)(int)$m[2], (string)(int)$m[1]];
+    }
 
     return $jobs;
 }

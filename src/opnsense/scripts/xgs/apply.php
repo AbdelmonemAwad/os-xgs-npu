@@ -20,6 +20,11 @@
  *                      while on, the running driver's dp.ips_depth or flow.ips_depth a quarter over
  *                      Suricata's stream depth (xgs_ips_depth)
  *   failclose          the running driver's dp.ips_loop or ips.loop, through failclose.py (and from cron)
+ *   service_aliases    scripts/xgs/service_aliases.php while on: the missing ready-made port aliases added
+ *   pppoe_reconnect    the plugin's cron job (xgs_cron): cron restarted when it changed
+ *                      (/var/db/os-xgs-npu/pppoe-reconnect), so its list of jobs is read again
+ *   ra_guard, ra_allowed  rules of the firewall hook (plugins.inc.d/xgs.inc): a firewall reload when
+ *                      either changed since the last save (/var/db/os-xgs-npu/ra-guard)
  *   ids_threads        dev.netmap.generic_rings now and as a row of System: Settings: Tunables, the
  *                      running driver's dp.rx_flowid or giu.rx_flowid (and at boot), and the Intrusion
  *                      Detection restarted when it runs in IPS mode and the rings changed (xgs_ids_rings)
@@ -39,6 +44,8 @@
  *   rx_doorbells       the loader tunable hw.npuep.giu.rx_msix, read when the receive queues are
  *                      added, so a reboot takes it; XGS 136 only
  *   ipsec_soft_crypto  net.inet.ipsec.crypto_support now, and 07-npuep at every boot, XGS 136 only
+ *   ipsec_rand_time, ipsec_ipcomp  swanctl/conf.d/xgs.conf through the template OPNsense/XGS, and
+ *                      strongSwan reloaded when it changed and charon runs
  *   switch_jumbo       read by switch-jumbo.sh at the end of every boot; nothing to apply now
  *   watchdog           watchdog.sh start or stop now, and the start hook 08-xgs-watchdog at every boot
  *   flow_max           the loader tunable hw.octep.flow_max or hw.npuep.flow_max; 0 removes it
@@ -462,6 +469,69 @@ if ($get('cp_hardware', '1') === '1') {
     exec('/usr/sbin/daemon -f /usr/local/opnsense/scripts/xgs/cp_users.py --for 58');
 }
 
+/*
+ * Router advertisements only from allowed senders: the firewall hook's rules, so a firewall reload -
+ * which also empties the coprocessor's hardware, as every reload does - when the two settings differ
+ * from what the last save left, and not otherwise.
+ */
+$ra_now = trim($get('ra_guard', '')) . '|' . preg_replace('/\s+/', ' ', trim($get('ra_allowed', '')));
+$ra_mark = '/var/db/os-xgs-npu/ra-guard';
+$ra_was = @file_get_contents($ra_mark);
+if (($ra_was === false ? '|' : $ra_was) !== $ra_now) {
+    @mkdir(dirname($ra_mark), 0755, true);
+    @file_put_contents($ra_mark, $ra_now);
+    (new \OPNsense\Core\Backend())->configdRun('filter reload');
+    $steps[] = 'router advertisements: ' . ($get('ra_guard', '') === '' ? 'from anyone, as OPNsense has it' :
+        'only from the allowed senders on ' . str_replace(',', ', ', $get('ra_guard', ''))) . ' - the firewall reloaded';
+}
+
+/*
+ * IPsec's additions to swanctl.conf (OPNsense/XGS/xgs-swanctl.conf): written now, and strongSwan reloaded
+ * when they changed and it runs. Compression is not written while IPsec is in the coprocessor's engine.
+ */
+$swan = '/usr/local/etc/swanctl/conf.d/xgs.conf';
+$swan_before = @file_get_contents($swan);
+(new \OPNsense\Core\Backend())->configdRun('template reload OPNsense/XGS');
+$swan_after = @file_get_contents($swan);
+if ($swan_after !== $swan_before) {
+    $running = trim((string)shell_exec('/bin/pgrep -x charon 2>/dev/null')) !== '';
+    if ($running) {
+        shell_exec('/usr/local/etc/rc.d/strongswan onereload > /dev/null 2>&1');
+    }
+    $steps[] = 'IPsec: ' . ($get('ipsec_rand_time', '') === '' ? 'rekey times as strongSwan has them' :
+        'up to ' . $get('ipsec_rand_time', '') . ' s taken off rekey times at random') .
+        ($get('ipsec_ipcomp', '') === '' ? '' : ($get('ipsec_offload', '1') === '1' ?
+        '; compression not written while IPsec is in the coprocessor\'s engine' : '; compression on the tunnels chosen')) .
+        ($running ? ' - strongSwan reloaded' : '');
+}
+
+/* A scheduled PPPoE reconnect: the cron job xgs_cron() gives for it, read again when the time changed. */
+$pr_now = trim($get('pppoe_reconnect', ''));
+$pr_mark = '/var/db/os-xgs-npu/pppoe-reconnect';
+$pr_was = @file_get_contents($pr_mark);
+if (($pr_was === false ? '' : $pr_was) !== $pr_now) {
+    @mkdir(dirname($pr_mark), 0755, true);
+    @file_put_contents($pr_mark, $pr_now);
+    (new \OPNsense\Core\Backend())->configdRun('cron restart');
+    $steps[] = 'PPPoE: ' . ($pr_now === '' ? 'no scheduled reconnect' : 'every enabled PPPoE interface connected again each day at ' . $pr_now) .
+        ' - cron restarted';
+}
+
+/* Ready-made service aliases, while on: those missing added to Firewall: Aliases, none changed. */
+if ($get('service_aliases', '0') === '1') {
+    $sa = json_decode((string)shell_exec('/usr/local/bin/php /usr/local/opnsense/scripts/xgs/service_aliases.php 2>/dev/null'), true);
+    if (!is_array($sa)) {
+        $ok = false;
+        $steps[] = 'ready-made service aliases: no answer from service_aliases.php';
+    } elseif (!empty($sa['refused'])) {
+        $ok = false;
+        $steps[] = 'ready-made service aliases: refused - ' . implode('; ', $sa['refused']);
+    } else {
+        $steps[] = 'ready-made service aliases: ' . (empty($sa['added']) ? 'all there' :
+            'added ' . implode(', ', $sa['added'])) . (empty($sa['kept']) ? '' : '; kept as they were: ' . implode(', ', $sa['kept']));
+    }
+}
+
 /* What is never offloaded, on the running driver - flow_exclude.php reads and writes it. */
 $excl = json_decode((string)shell_exec('/usr/local/bin/php /usr/local/opnsense/scripts/xgs/flow_exclude.php 2>/dev/null'), true);
 if (!is_array($excl)) {
@@ -474,6 +544,13 @@ if (!is_array($excl)) {
 } else {
     $steps[] = 'never offloaded: ' . (count($excl['entries']) ? implode(', ', $excl['entries']) : 'nothing') .
         (count($excl['refused']) ? ' - not read, so not applied: ' . implode(', ', $excl['refused']) : '');
+    if (($excl['tag'] ?? null) !== null) {
+        $steps[] = 'never offloaded by a rule\'s tag: ' . ($excl['tag'] === '' ? 'none' : $excl['tag']) .
+            (($excl['tag_message'] ?? '') !== '' ? ' - ' . $excl['tag_message'] : '');
+        if (strpos((string)($excl['tag_message'] ?? ''), 'refused') !== false) {
+            $ok = false;
+        }
+    }
     if (count($excl['refused'])) {
         $ok = false;
     }

@@ -92,6 +92,14 @@ rmdir "${PREFIX}/opnsense/scripts/octep" 2>/dev/null || true
 
 # The board reader both appliances' hooks ask, the status reader, and the gate writer.
 rm -f "${PREFIX}/opnsense/scripts/xgs/board.sh"
+# XGS: Certificate Import's reading of a certificate file; its controllers go with the directory below.
+rm -f "${PREFIX}/opnsense/scripts/xgs/certimport.inc"
+# The ready-made service aliases script; the aliases it added stay in Firewall: Aliases, which rules may use.
+rm -f "${PREFIX}/opnsense/scripts/xgs/service_aliases.php"
+# The scheduled PPPoE reconnect; its cron job goes with the plugin hook that gives it.
+rm -f "${PREFIX}/opnsense/scripts/xgs/pppoe_reconnect.php"
+# The gateway quality alerts and what they remember between looks.
+rm -f "${PREFIX}/opnsense/scripts/xgs/gw_probe.py" /var/db/os-xgs-npu/gw-probe.json
 rm -f "${PREFIX}/opnsense/scripts/xgs/status.py"
 rm -f "${PREFIX}/opnsense/scripts/xgs/offload.sh"
 rm -f "${PREFIX}/opnsense/scripts/xgs/update.py"
@@ -193,6 +201,12 @@ rm -f "${PREFIX}/opnsense/scripts/xgs/npu-log.sh" "${PREFIX}/etc/rc.syshook.d/st
     "${PREFIX}/etc/syslog-ng.conf.d/xgs-coprocessor.conf"
 # and its way to the remote servers: the overlay, and what it wrote, which names that source and
 # would stop syslog-ng without it
+# IPsec's additions to swanctl.conf: the template and what it wrote; strongSwan forgets them at its next
+# reload, which OPNsense's own IPsec apply does.
+rm -f "${PREFIX}/opnsense/service/templates/OPNsense/XGS/+TARGETS" \
+    "${PREFIX}/opnsense/service/templates/OPNsense/XGS/xgs-swanctl.conf" \
+    "${PREFIX}/etc/swanctl/conf.d/xgs.conf"
+rmdir "${PREFIX}/opnsense/service/templates/OPNsense/XGS" 2>/dev/null || true
 rm -f "${PREFIX}/opnsense/service/templates/OPNsense/Syslog/+TARGETS.D/xgs.TARGET" \
     "${PREFIX}/opnsense/service/templates/OPNsense/Syslog/xgs-coprocessor-remote.conf" \
     "${PREFIX}/etc/syslog-ng.conf.d/xgs-coprocessor-remote.conf"

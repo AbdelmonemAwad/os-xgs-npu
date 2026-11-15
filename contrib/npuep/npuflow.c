@@ -416,6 +416,13 @@ struct npuflow_softc {
 	int			 nexcl;
 	char			 excl_text[NPUFLOW_EXCL_TEXT];
 	uint64_t		 excluded, released;
+	/*
+	 * A rule's tag the owner keeps with the host (flow.tag, XGS: Settings): a connection any of whose
+	 * pf states carries it is not made nor revived. pf's id for the name, the name, and the refusals.
+	 */
+	uint16_t		 flow_tag;
+	char			 flow_tag_name[64];
+	uint64_t		 tagged;
 	char			 release_result[160];
 	char			 verdict_result[160];
 	char			 luid_result[240];	/* the live-user instruments' last result */
@@ -2302,6 +2309,14 @@ npuflow_make(struct npuflow_softc *sc, uint32_t id, int slot, struct sbuf *sb)
 		if (sb != NULL) sbuf_cat(sb, "pf has no settled state for that flow\n");
 		return (EAGAIN);
 	}
+	/* A rule's tag the owner keeps with the host (flow.tag), on any of the connection's states. */
+	if (sc->flow_tag != 0 && (st.tags[0] == sc->flow_tag || st.tags[1] == sc->flow_tag)) {
+		sc->tagged++;
+		if (sb != NULL)
+			sbuf_printf(sb, "not accelerated: a rule tagged it %s, which the owner keeps with the "
+			    "host\n", sc->flow_tag_name);
+		return (EPERM);
+	}
 	/*
 	 * An IPv6 connection that pf translates is left with the host: the connection block carries
 	 * IPv4 addresses for the translation, and NPTv6 or NAT66 has not been measured on this
@@ -3660,6 +3675,11 @@ npuflow_revive(struct npuflow_softc *sc, int ci)
 	FLOW_UNLOCK(sc);
 	if (!npuep_pf_state_read(&t0, &st))
 		return (ENOENT);
+	/* Nor revived with a rule's tag the owner keeps with the host (flow.tag). */
+	if (sc->flow_tag != 0 && (st.tags[0] == sc->flow_tag || st.tags[1] == sc->flow_tag)) {
+		sc->tagged++;
+		return (EPERM);
+	}
 	if (tcp_able && sc->tcp_revive == 2) {
 		char why[96];
 		int waited;
@@ -4240,6 +4260,43 @@ npuflow_excl_parse(const char *in, struct npuflow_excl *x, int *np)
 		n++;
 	}
 	*np = n;
+	return (0);
+}
+
+/*
+ * flow.tag: a rule's tag the owner keeps with the host (XGS: Settings, written by
+ * scripts/xgs/flow_exclude.php). The name as a rule's "tag" gives it - letters, digits, "_", "-" and
+ * ".", up to 63 - and pf's id for it, which npuflow_make and npuflow_revive compare with the tags of a
+ * connection's states. Empty is none. The connections already in hardware are not looked at here:
+ * the script empties the hardware when the tag changes, as a ruleset load does, and the flow maker
+ * makes them again, or not.
+ */
+static int
+npuflow_sysctl_tag(SYSCTL_HANDLER_ARGS)
+{
+	struct npuflow_softc *sc = arg1;
+	char name[sizeof(sc->flow_tag_name)];
+	uint16_t id;
+	int error, i;
+
+	strlcpy(name, sc->flow_tag_name, sizeof(name));
+	error = sysctl_handle_string(oidp, name, sizeof(name), req);
+	if (error != 0 || req->newptr == NULL)
+		return (error);
+	for (i = 0; name[i] != '\0'; i++) {
+		char ch = name[i];
+
+		if (!((ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') || (ch >= '0' && ch <= '9') ||
+		    ch == '_' || ch == '-' || ch == '.'))
+			return (EINVAL);
+	}
+	error = npuep_pf_tag_id(name, &id);
+	if (error != 0)
+		return (error);
+	FLOW_LOCK(sc);
+	sc->flow_tag = id;
+	strlcpy(sc->flow_tag_name, name, sizeof(sc->flow_tag_name));
+	FLOW_UNLOCK(sc);
 	return (0);
 }
 
@@ -5509,6 +5566,14 @@ npuflow_attach(device_t dev, struct sysctl_ctx_list *ctx, struct sysctl_oid *par
 		    "writes the owner's list: a4:<8 hex digits>/<length>, a6:<32 hex digits>/<length> "
 		    "and p:<port>, separated by spaces. A list that does not parse is refused whole; one "
 		    "that does takes out at once what it names. Empty is none");
+		SYSCTL_ADD_PROC(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "tag",
+		    CTLTYPE_STRING | CTLFLAG_RW | CTLFLAG_MPSAFE, sc, 0, npuflow_sysctl_tag, "A",
+		    "a rule's tag the owner keeps with the host: a connection any of whose pf states "
+		    "carries it is not made. Letters, digits, _, - and ., up to 63; empty is none. As "
+		    "scripts/xgs/flow_exclude.php writes XGS: Settings' one");
+		SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "tagged",
+		    CTLFLAG_RD, &sc->tagged, 0,
+		    "times a connection was not made or revived because a rule tagged it with flow.tag");
 		SYSCTL_ADD_PROC(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "release",
 		    CTLTYPE_STRING | CTLFLAG_RW | CTLFLAG_MPSAFE, sc, 0, npuflow_sysctl_release,
 		    "A", "write a connection's index (flow.flows's first column) to hand it back to the "

@@ -72,6 +72,12 @@
             <help>Addresses, networks and ports whose connections the coprocessor never forwards by itself: they always pass through the firewall, as they would without offloading. An address (192.168.1.10, 2001:db8::5), a network (10.0.0.0/8, 2001:db8::/32) or a port (port 22), one per line or separated by commas; either end of a connection can match. Applied when you save - the connections in hardware that it names go back to the firewall at once - and at every boot. A connection can also be handed back by itself, from Offloaded Flows. At most 64 entries.</help>
         </field>
         <field>
+            <id>xgs.general.flow_tag</id>
+            <label>Never offloaded: a rule's tag</label>
+            <type>text</type>
+            <help>A tag that a firewall rule sets (Firewall: Rules, a rule's advanced options, "Set local tag"): a connection any of whose states carries it is never put in hardware, and passes through the firewall as it would without offloading - on either side of a translated connection. Letters, digits, "_", "-" and "."; empty for none. Applied when you save and at every boot: when it changes, the connections in hardware go back to the firewall and are put in hardware again only if no state of theirs carries it.</help>
+        </field>
+        <field>
             <type>header</type>
             <label>Captive Portal</label>
         </field>
@@ -149,6 +155,24 @@
             <type>checkbox</type>
             <help>Report, in the XGS log, what no normal day looks like - never block it. Every minute the firewall's connections are read every ten seconds, and for each host that opened any: a port scan (one host trying 100 ports or more on one address within a minute) and a sweep (one host reaching 256 new addresses or more) are reported at once; and a host that sends, receives or opens far more than it usually does - six spreads above its own moving mean, and above a floor of 200 MB sent, 1 GB received or 500 connections a minute - is reported once it has an hour of history. The same host is reported for the same thing at most once in ten minutes. On the XGS 3300 the volumes include what the coprocessor forwarded when "Count hardware traffic in pf" is on; on the XGS 136 a connection in hardware stops adding to them, so there the patterns are what is complete. Each check reads the whole state table six times a minute: on a firewall with hundreds of thousands of connections, that is work to weigh. Each report is also kept for os-netreport to send. On in a new install.</help>
         </field>
+        <field>
+            <id>xgs.general.ra_guard</id>
+            <label>Router advertisements only from allowed senders, on</label>
+            <type>select_multiple</type>
+            <help>The interfaces on which an IPv6 router advertisement is let in only from the senders listed below, and blocked - and logged - from any other, so a host on the network cannot make itself the router of the others. None by default. Applied by a firewall reload, which saving here does when this or the list changed.</help>
+        </field>
+        <field>
+            <id>xgs.general.ra_allowed</id>
+            <label>Allowed router advertisement senders</label>
+            <type>textbox</type>
+            <help>The link-local addresses (fe80::...) of the routers whose advertisements the interfaces above let in, one per line or separated by commas. By address, since the firewall has no rule on a sender's MAC address. Empty: no advertisement is let in on those interfaces. An address that is not link-local is refused when the page is saved.</help>
+        </field>
+        <field>
+            <id>xgs.general.service_aliases</id>
+            <label>Ready-made service aliases</label>
+            <type>checkbox</type>
+            <help>Adds to Firewall: Aliases a port alias for each of the services a rule names most - XGS_WEB (80, 443), XGS_WEB_ALT, XGS_DNS, XGS_MAIL, XGS_SSH, XGS_RDP, XGS_NTP, XGS_FTP, XGS_SMB, XGS_LDAP, XGS_SNMP, XGS_SYSLOG and XGS_VPN - for use in rules as the destination port, the rule saying TCP, UDP or both. Those missing are added when you save; an alias of the same name is kept as it is, and none is changed or taken away when this is turned off, since a rule may use it. Off by default.</help>
+        </field>
     </tab>
     <tab id="xgs-ipsec" description="IPsec">
         <field>
@@ -168,6 +192,18 @@
             <label>Keep IPsec's software sessions off ccp</label>
             <type>checkbox</type>
             <help>XGS 136 only. The host's AMD crypto engine (ccp) fails every AES-GCM operation it is given, so a tunnel the coprocessor does not take would drop every packet. On, IPsec's sessions go to the CPU's AES instructions and ccp stays loaded for its random-number source. Applied at every boot; leave it on.</help>
+        </field>
+        <field>
+            <id>xgs.general.ipsec_rand_time</id>
+            <label>Random margin off rekey times (s)</label>
+            <type>text</type>
+            <help>For the tunnels of VPN: IPsec: Connections: up to this many seconds, chosen at random each time, are taken off when a connection and its children rekey, so tunnels made together do not all rekey at the same moment. Empty: strongSwan's own, the gap between a tunnel's lifetime and its rekey time. Written beside OPNsense's own configuration, which includes it, and applied when you save and each time the IPsec configuration is applied.</help>
+        </field>
+        <field>
+            <id>xgs.general.ipsec_ipcomp</id>
+            <label>Compress what these tunnels carry (IPComp)</label>
+            <type>select_multiple</type>
+            <help>The children of VPN: IPsec: Connections whose traffic is compressed (IPComp) before it is encrypted, when the far end agrees. Not while IPsec runs in the coprocessor's engine, above: compression has not been measured there, and nothing is written while that is on. Applied as the margin above is.</help>
         </field>
     </tab>
     <tab id="xgs-hardware" description="Hardware">
@@ -241,6 +277,24 @@
             <label>Memory error alert</label>
             <type>text</type>
             <help>The coprocessor's memory corrects single-bit errors by itself (ECC) and counts them. When this many corrected errors have been counted since the last alert, or since the coprocessor started, an alert is written in the system log and handed to os-netreport to send. An error the memory could not correct always raises one. 0: no alert for corrected errors. Read every five minutes; XGS: Overview shows the counts. Only the XGS 3300 has these counters: on the XGS 136 nothing is read.</help>
+        </field>
+        <field>
+            <id>xgs.general.pppoe_reconnect</id>
+            <label>PPPoE: reconnect every day at</label>
+            <type>text</type>
+            <help>A time of day, HH:MM: each enabled PPPoE interface is connected again then, as Interfaces does when it is applied - for a provider that ends a session after a day, at a quiet hour of your choosing instead of its own. Empty: never, as OPNsense has it. OPNsense's own check of a PPPoE link stays as it is: an LCP echo every 10 seconds, and the link taken down after 60 seconds without an answer.</help>
+        </field>
+        <field>
+            <id>xgs.general.gw_jitter_alert</id>
+            <label>Gateway jitter alert (ms)</label>
+            <type>text</type>
+            <help>An alert, sent through os-netreport and written in the system log, when a monitored gateway's round-trip time varies by more than this many milliseconds - the standard deviation System: Gateways shows as RTTd - and another when it is back under. Checked every minute. 0: no alert. It decides nothing: whether a gateway is up and which one carries the traffic stays with OPNsense's own monitoring, so two monitors never pull one gateway two ways.</help>
+        </field>
+        <field>
+            <id>xgs.general.gw_tcp_probe</id>
+            <label>TCP probe</label>
+            <type>text</type>
+            <help>host:port, or [IPv6 address]:port: each minute the firewall opens a TCP connection to it, through its routing table, and three failures in a row raise an alert through os-netreport, the first success after them another - for a path that answers the gateway monitor's ICMP and drops TCP, or the reverse. Empty: no probe. An alert only, as above.</help>
         </field>
         <field>
             <type>header</type>

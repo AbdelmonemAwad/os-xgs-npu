@@ -135,7 +135,7 @@ install -m 0755 "${SRC}/src/opnsense/scripts/xgs/countdown.py" "${PREFIX}/opnsen
 # OPNsense's own pages, the runner other plugins use to reach the coprocessor (npu-run.sh) and the
 # coprocessor's console it finds by its address (console-dev.sh), and the driver's settings put where
 # it reads them before the early hooks load it (tunables-kenv.sh).
-for f in apply.php portmap.py ipsec.py reassign.sh defaults.php npu-run.sh console-dev.sh tunables-kenv.sh temperatures.sh watchdog.sh transceivers.py bundle.py flows.py flow_exclude.php lists_cut.py ja4_cut.py hwdrop.py anomaly.py poe.py plugins.py health.py portstats.py models.py portcheck.py fastpath.py recover.sh fastpath-monit.sh ids-ports.sh cp_users.py cp_overlay.py coprocessor.py fpcounters.py console_log.py feeder.py npu-sysrq.sh subnets.py npu-clock.sh npu-log.sh ftw-status.sh ftw-normal.sh ids_mtu.py failclose.py; do
+for f in apply.php portmap.py ipsec.py reassign.sh defaults.php npu-run.sh console-dev.sh tunables-kenv.sh temperatures.sh watchdog.sh transceivers.py bundle.py flows.py flow_exclude.php lists_cut.py ja4_cut.py hwdrop.py anomaly.py poe.py plugins.py health.py portstats.py models.py portcheck.py fastpath.py recover.sh fastpath-monit.sh ids-ports.sh cp_users.py cp_overlay.py coprocessor.py fpcounters.py console_log.py feeder.py npu-sysrq.sh subnets.py npu-clock.sh npu-log.sh ftw-status.sh ftw-normal.sh ids_mtu.py failclose.py service_aliases.php pppoe_reconnect.php gw_probe.py; do
     install -S -m 0755 "${SRC}/src/opnsense/scripts/xgs/${f}" "${PREFIX}/opnsense/scripts/xgs/${f}"
 done
 # Jumbo frames through the coprocessor's switch chip at every boot, on both families: the script,
@@ -288,6 +288,12 @@ install -m 0644 "${SRC}/src/opnsense/mvc/app/controllers/OPNsense/XGS/PingContro
     "${PREFIX}/opnsense/mvc/app/controllers/OPNsense/XGS/PingController.php"
 install -m 0644 "${SRC}/src/opnsense/mvc/app/controllers/OPNsense/XGS/Api/PingController.php" \
     "${PREFIX}/opnsense/mvc/app/controllers/OPNsense/XGS/Api/PingController.php"
+# XGS: Certificate Import, a certificate file read into PEM for System: Trust (plan 01, package 3.5).
+install -m 0644 "${SRC}/src/opnsense/mvc/app/controllers/OPNsense/XGS/CertimportController.php" \
+    "${PREFIX}/opnsense/mvc/app/controllers/OPNsense/XGS/CertimportController.php"
+install -m 0644 "${SRC}/src/opnsense/mvc/app/controllers/OPNsense/XGS/Api/CertimportController.php" \
+    "${PREFIX}/opnsense/mvc/app/controllers/OPNsense/XGS/Api/CertimportController.php"
+install -m 0644 "${SRC}/src/opnsense/scripts/xgs/certimport.inc" "${PREFIX}/opnsense/scripts/xgs/certimport.inc"
 install -m 0644 "${SRC}/src/opnsense/mvc/app/controllers/OPNsense/XGS/forms/general.xml" \
     "${PREFIX}/opnsense/mvc/app/controllers/OPNsense/XGS/forms/general.xml"
 install -m 0644 "${SRC}/src/opnsense/mvc/app/controllers/OPNsense/XGS/Api/StatusController.php" \
@@ -372,6 +378,13 @@ install -m 0644 "${SRC}/src/opnsense/service/templates/OPNsense/Syslog/+TARGETS.
     "${PREFIX}/opnsense/service/templates/OPNsense/Syslog/+TARGETS.D/xgs.TARGET"
 install -m 0644 "${SRC}/src/opnsense/service/templates/OPNsense/Syslog/xgs-coprocessor-remote.conf" \
     "${PREFIX}/opnsense/service/templates/OPNsense/Syslog/xgs-coprocessor-remote.conf"
+# IPsec's additions to OPNsense's swanctl.conf (XGS: Settings, plan 01 package 3.4): a template of its own,
+# rendered by apply.php and by the ipsec configure hook in plugins.inc.d/xgs.inc into swanctl/conf.d.
+install -d -m 0755 "${PREFIX}/opnsense/service/templates/OPNsense/XGS"
+install -m 0644 "${SRC}/src/opnsense/service/templates/OPNsense/XGS/+TARGETS" \
+    "${PREFIX}/opnsense/service/templates/OPNsense/XGS/+TARGETS"
+install -m 0644 "${SRC}/src/opnsense/service/templates/OPNsense/XGS/xgs-swanctl.conf" \
+    "${PREFIX}/opnsense/service/templates/OPNsense/XGS/xgs-swanctl.conf"
 
 # A bridge's link acted on as an Ethernet port's (issue 911): devd reads its directory at start.
 install -d -m 0755 "${PREFIX}/etc/devd"

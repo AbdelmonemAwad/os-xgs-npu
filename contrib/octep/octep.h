@@ -1479,6 +1479,14 @@ struct octep_pf_state {
 	uint8_t	src_state;
 	uint8_t	dst_state;
 	uint16_t state_flags;
+	/*
+	 * The tag a rule put on this state (its "tag"), and every tag on the connection's states, at
+	 * most two: a forwarded connection has a state on each side, made by a rule of each side, and
+	 * the one octep_pf_state_read returns - the translated one, when there is one - need not be the
+	 * one that was tagged. Compared with dp.flow_tag; 0 is no tag.
+	 */
+	uint16_t tag;
+	uint16_t tags[2];
 	char	ifname[16];		/* IFNAMSIZ, named here so pfvar.h is not needed */
 	/*
 	 * Both of pf's keys, which together ARE the translation.
@@ -2482,6 +2490,7 @@ bool	octep_pf_present(void);
 void	octep_pf_retry(void);
 int	octep_pf_state_exists(const struct octep_pf_tuple *, int, int *);
 int	octep_pf_state_read(const struct octep_pf_tuple *, struct octep_pf_state *);
+int	octep_pf_tag_id(const char *, uint16_t *);
 int	octep_pf_mark_sloppy(const struct octep_pf_tuple *);
 int	octep_pf_settled(const struct octep_pf_tuple *);
 int	octep_pf_touch(const struct octep_pf_tuple *);
@@ -3880,6 +3889,14 @@ struct octep_softc {
 	uint64_t		 dp_flow_ppp_refused;	/* not made: the route leaves by a PPP link (PPPoE) */
 	uint64_t		 dp_flow_port_down;	/* taken out: a port a direction leaves by lost its link */
 	uint64_t		 dp_flow_excluded;	/* times not made or taken out: the owner keeps it */
+	/*
+	 * A rule's tag the owner keeps with the host (dp.flow_tag, XGS: Settings): a connection any of
+	 * whose pf states carries it is not made. The id pf gives the name, the name, and the makes
+	 * refused for it.
+	 */
+	uint16_t		 dp_flow_tag;
+	char			 dp_flow_tag_name[64];
+	uint64_t		 dp_flow_tagged;
 	uint64_t		 dp_flow_released;	/* connections handed back from the Flows page */
 	uint32_t		 dp_netmap_gate;	/* 1: none made automatically through netmap mode */
 	uint64_t		 dp_netmap_refused;	/* connections it kept with the host, each once */
