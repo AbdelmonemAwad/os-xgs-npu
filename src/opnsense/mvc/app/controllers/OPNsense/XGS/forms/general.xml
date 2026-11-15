@@ -167,6 +167,12 @@
             <type>textbox</type>
             <help>The link-local addresses (fe80::...) of the routers whose advertisements the interfaces above let in, one per line or separated by commas. By address, since the firewall has no rule on a sender's MAC address. Empty: no advertisement is let in on those interfaces. An address that is not link-local is left out, and the log says so.</help>
         </field>
+        <field>
+            <id>xgs.general.service_aliases</id>
+            <label>Ready-made service aliases</label>
+            <type>checkbox</type>
+            <help>Adds to Firewall: Aliases a port alias for each of the services a rule names most - XGS_WEB (80, 443), XGS_WEB_ALT, XGS_DNS, XGS_MAIL, XGS_SSH, XGS_RDP, XGS_NTP, XGS_FTP, XGS_SMB, XGS_LDAP, XGS_SNMP, XGS_SYSLOG and XGS_VPN - for use in rules as the destination port, the rule saying TCP, UDP or both. Those missing are added when you save; an alias of the same name is kept as it is, and none is changed or taken away when this is turned off, since a rule may use it. Off by default.</help>
+        </field>
     </tab>
     <tab id="xgs-ipsec" description="IPsec">
         <field>

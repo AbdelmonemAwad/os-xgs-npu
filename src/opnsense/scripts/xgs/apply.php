@@ -20,6 +20,7 @@
  *                      while on, the running driver's dp.ips_depth or flow.ips_depth a quarter over
  *                      Suricata's stream depth (xgs_ips_depth)
  *   failclose          the running driver's dp.ips_loop or ips.loop, through failclose.py (and from cron)
+ *   service_aliases    scripts/xgs/service_aliases.php while on: the missing ready-made port aliases added
  *   ra_guard, ra_allowed  rules of the firewall hook (plugins.inc.d/xgs.inc): a firewall reload when
  *                      either changed since the last save (/var/db/os-xgs-npu/ra-guard)
  *   ids_threads        dev.netmap.generic_rings now and as a row of System: Settings: Tunables, the
@@ -500,6 +501,21 @@ if ($swan_after !== $swan_before) {
         ($get('ipsec_ipcomp', '') === '' ? '' : ($get('ipsec_offload', '1') === '1' ?
         '; compression not written while IPsec is in the coprocessor\'s engine' : '; compression on the tunnels chosen')) .
         ($running ? ' - strongSwan reloaded' : '');
+}
+
+/* Ready-made service aliases, while on: those missing added to Firewall: Aliases, none changed. */
+if ($get('service_aliases', '0') === '1') {
+    $sa = json_decode((string)shell_exec('/usr/local/bin/php /usr/local/opnsense/scripts/xgs/service_aliases.php 2>/dev/null'), true);
+    if (!is_array($sa)) {
+        $ok = false;
+        $steps[] = 'ready-made service aliases: no answer from service_aliases.php';
+    } elseif (!empty($sa['refused'])) {
+        $ok = false;
+        $steps[] = 'ready-made service aliases: refused - ' . implode('; ', $sa['refused']);
+    } else {
+        $steps[] = 'ready-made service aliases: ' . (empty($sa['added']) ? 'all there' :
+            'added ' . implode(', ', $sa['added'])) . (empty($sa['kept']) ? '' : '; kept as they were: ' . implode(', ', $sa['kept']));
+    }
 }
 
 /* What is never offloaded, on the running driver - flow_exclude.php reads and writes it. */
