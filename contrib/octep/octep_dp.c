@@ -12963,6 +12963,25 @@ octep_dp_filter_one(struct octep_dp_if *dif, int err, int want, int *have, const
 }
 
 /*
+ * Name an address to a front port's switch entry: the SET bring-up sends (bringup.sh), six bytes in
+ * transmission order across two payload words. EOPNOTSUPP when the far side refuses it. The caller
+ * must not hold sc->mtx: the request sleeps.
+ */
+static int
+octep_dp_tell_mac(struct octep_softc *sc, struct octep_dp_if *dif, const uint8_t *m)
+{
+	struct octep_nwa_reply r;
+	int err;
+
+	err = octep_nwa_request(sc, OCTEP_NWA_OP_SET, OCTEP_NWA_SUB_MAC, dif->nwaport,
+	    (uint32_t)m[0] | (uint32_t)m[1] << 8 | (uint32_t)m[2] << 16 | (uint32_t)m[3] << 24,
+	    (uint32_t)m[4] | (uint32_t)m[5] << 8, &r);
+	if (err == 0 && r.status != 0)
+		err = EOPNOTSUPP;
+	return (err);
+}
+
+/*
  * Reconcile both receive filters for one front port. Called from the link poll, for the port that
  * tick is already on, and only when that port's link read came back - so at most one extra mailbox
  * request per tick, and none at all once the far side agrees.
@@ -13046,6 +13065,42 @@ octep_dp_if_filters(struct octep_softc *sc, struct octep_dp_if *dif)
 			 * same reason: the rotation is the retry bound.
 			 */
 		}
+	}
+
+	/*
+	 * And the address itself, at both layers, when it is not the one the port was last told.
+	 *
+	 * Bring-up names each port's own address to the switch, which arms the port's "this is my
+	 * address" entry, and installs the LIF with it (bringup.sh); nothing told either again. A
+	 * lagg gives its members its own address - the first port's - and an address set on an
+	 * interface's page does the same, after which the switch drops unicast to the new address at
+	 * the port, and once that is named the LIF drops it on FROM_WIRE_DROP_LIF_NOT_MY_MAC. Measured
+	 * 2026-11-15 with a lagg (LACP) over the second XGS 3300's Port3 and Port4: LACP formed on both
+	 * members and no unicast crossed either way; naming the lagg's address to both ports took the
+	 * frames past the switch and that counter took all 50; the LIF told too, 4 pings of 4 and 6 of
+	 * 6. The same SET bring-up sends, then a LIF update of the address alone; both or the port is
+	 * asked again at its next turn.
+	 */
+	if (if_getaddrlen(dif->ifp) == ETHER_ADDR_LEN &&
+	    memcmp(if_getlladdr(dif->ifp), dif->mac_told, ETHER_ADDR_LEN) != 0) {
+		uint8_t now[ETHER_ADDR_LEN];
+		uint16_t rc = 0;
+		int err;
+
+		memcpy(now, if_getlladdr(dif->ifp), ETHER_ADDR_LEN);
+		err = octep_dp_tell_mac(sc, dif, now);
+		if (err == 0 && dif->lif_iface != OCTEP_DP_IF_PORT_AUTO)
+			err = octep_rpc_lif_set(sc, dif->lif_iface, 0, now, if_getmtu(dif->ifp),
+			    (uint32_t)dif->fwd_have, 0, OCTEP_LIF_M_MAC, &rc);
+		if (err == 0 && rc != 0)
+			err = EIO;
+		if (err == 0) {
+			memcpy(dif->mac_told, now, ETHER_ADDR_LEN);
+			if_printf(dif->ifp, "address %6D told to the port and its logical interface\n",
+			    now, ":");
+		} else
+			if_printf(dif->ifp, "address %6D not told yet (%d, rc %u); asked again at "
+			    "its next turn\n", now, ":", err, rc);
 	}
 }
 
@@ -13255,12 +13310,47 @@ octep_sysctl_dp_vlan_lif_table(SYSCTL_HANDLER_ARGS)
 	return (error);
 }
 
+/*
+ * A link change, told to the stack with the speed already in place.
+ *
+ * The speed used to be asked for on the visit after the link came up, so the stack heard "up" with a
+ * baudrate of 0 - and a lagg in LACP keys a port by its speed, so a member that came back logged
+ * "LACP: support 0 baudrate!" and did not rejoin: measured 2026-11-15 with a lagg over the second
+ * XGS 3300's Port3 and Port4, Port3 taken down at the switch and brought back, oxp4 still without
+ * ACTIVE a minute later. So on the way up the speed is asked first and the baudrate set before the
+ * change is announced, as npuep does. The caller must not hold sc->mtx: the request sleeps.
+ */
+static void
+octep_dp_link_change(struct octep_softc *sc, struct octep_dp_if *dif, int up)
+{
+	uint32_t mbit = 0;
+
+	if (up && octep_nwa_port_speed(sc, dif->nwaport, &mbit) == 0 && mbit != 0 &&
+	    mbit <= 100000 && mbit != dif->speed) {
+		if_printf(dif->ifp, "%u Mbit/s\n", mbit);
+		dif->speed = mbit;
+		if_setbaudrate(dif->ifp, (uint64_t)mbit * 1000000);
+	}
+	/*
+	 * And the port's address, named again on the way up. A port taken down and up at the switch
+	 * comes back with its "this is my address" entry closed, passing broadcast and multicast and
+	 * no unicast: measured 2026-11-15, Port3 down and up by its administrative state under a
+	 * lagg, then 7.12 Mbit/s through it, and 939 once the address was named again. Bring-up
+	 * names it once; this names it at every link that comes up, which costs one request when
+	 * the entry was still open.
+	 */
+	if (up)
+		(void)octep_dp_tell_mac(sc, dif, dif->mac_told);
+	dif->link = up;
+	if_link_state_change(dif->ifp, up ? LINK_STATE_UP : LINK_STATE_DOWN);
+}
+
 static void
 octep_dp_link_poll(void *arg, int pending __unused)
 {
 	struct octep_softc *sc = arg;
 	struct octep_dp_if *dif;
-	uint32_t i;
+	uint32_t i, j;
 	int up, err;
 
 	if (sc->dp_link_running == 0)
@@ -13283,11 +13373,8 @@ octep_dp_link_poll(void *arg, int pending __unused)
 			 * learning the same thing. Nothing is lost - that work is driven by
 			 * state rather than by events, so the next sweep asks again.
 			 */
-			if (err == 0 && up != dif->link) {
-				dif->link = up;
-				if_link_state_change(dif->ifp,
-				    up ? LINK_STATE_UP : LINK_STATE_DOWN);
-			}
+			if (err == 0 && up != dif->link)
+				octep_dp_link_change(sc, dif, up);
 			/*
 			 * And the speed, which only means anything while the link is up:
 			 * attribute 0x04 is nominal and a dark port answers 1000 exactly as
@@ -13350,6 +13437,25 @@ octep_dp_link_poll(void *arg, int pending __unused)
 			 */
 			if (err == 0)
 				octep_dp_if_filters(sc, dif);
+		}
+
+		/*
+		 * And every lagg member, every tick, for its link alone.
+		 *
+		 * A lagg moves a member's traffic to the others when the member's link goes, and it
+		 * can only once it is told - and the rotation above reaches a port once a sweep,
+		 * sixteen seconds on this appliance: measured 2026-11-15, Port3 taken down at the
+		 * switch was seen 9 s later and its return 15 s later. One link read a tick for each
+		 * port in a lagg, and for no other port; the speed and the filters stay on the
+		 * rotation. ifp->if_lagg is read the way if_bridge is in octep_dp_if_filters.
+		 */
+		for (j = 0; j < sc->dp_nif; j++) {
+			struct octep_dp_if *m = &sc->dp_if[j];
+
+			if (j == i || m->ifp == NULL || ((struct ifnet *)m->ifp)->if_lagg == NULL)
+				continue;
+			if (octep_nwa_port_link(sc, m->nwaport, &up) == 0 && up != m->link)
+				octep_dp_link_change(sc, m, up);
 		}
 	}
 
@@ -13655,6 +13761,7 @@ octep_dp_if_attach(struct octep_softc *sc, uint16_t tag)
 	ifmedia_set(&dif->media, IFM_ETHER | IFM_AUTO);
 
 	ether_ifattach(ifp, dif->mac);
+	memcpy(dif->mac_told, dif->mac, ETHER_ADDR_LEN);	/* what bring-up names to the port */
 
 	/*
 	 * No line rate until the port has one, which means saying nothing rather than saying ten.

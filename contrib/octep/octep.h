@@ -2537,6 +2537,7 @@ struct octep_dp_if {
 	uint8_t			 media_half;	/* a socket forced to half duplex (media_change) */
 	u_int			 mod_media[2];
 	uint8_t			 mac[6];
+	uint8_t			 mac_told[6];	/* the address the port and its LIF were last told */
 	uint64_t		 rx_packets;
 	uint64_t		 rx_bytes;
 	uint64_t		 rx_nobuf;	/* arrived, and there was no mbuf for it */
