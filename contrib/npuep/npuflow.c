@@ -343,6 +343,12 @@ struct npuflow_softc {
 	uint64_t		 make_nonhop;	/* makes refused: a direction's next hop did not resolve */
 	uint64_t		 port_down_out;	/* taken out: a port a direction leaves by lost its link */
 	uint64_t		 ka_touched;	/* keepalive restamps: the coprocessor counted traffic */
+	uint32_t		 pfsync_numbers;	/* flow.pfsync_numbers: TCP numbers to pf for pfsync */
+	uint64_t		 ka_numbers;	/* restamps whose TCP numbers pf's states took */
+	uint64_t		 ka_numbers_none;	/* numbers read, and no state took them */
+	uint64_t		 ka_numbers_failed;	/* the fast path did not answer with them */
+	uint64_t		 ka_numbers_unchecked;	/* moving, and its window not checked there */
+	uint64_t		 peer_room;	/* states given a pfsync peer's room at the make */
 	volatile u_int		 ports_down;	/* front ports whose link went, for the sweep: npuflow_port_down */
 	uint64_t		 ipsec_refused;	/* makes refused: an IPsec policy covers the connection */
 	uint64_t		 ipsec_taken;	/* in hardware, then a policy came to cover it: taken out */
@@ -1615,6 +1621,32 @@ npuflow_conn_reclaim_seq(uint32_t ci, uint32_t conn_rev, uint8_t *seq)
 }
 
 /*
+ * A connection's numbers read from the fast path where it stands, the connection left in hardware
+ * (CONN_GET_FP_TCP_STATE, as the closing check reads them): for a pfsync peer's copy, written at the
+ * keep-alive's restamp (npuep_pf_numbers). Returns 0 with the NPUFLOW_TCP_SEQ_LEN bytes in seq, or an
+ * errno. No lock held.
+ */
+static int
+npuflow_conn_tcp_seq(uint32_t ci, uint32_t conn_rev, uint8_t *seq)
+{
+	uint8_t pl[8], resp[64];
+	int n, rc = 0;
+
+	memset(pl, 0, sizeof(pl));
+	le32enc(pl + 0, ci);
+	le16enc(pl + 4, (uint16_t)conn_rev);
+	n = npurpc_send(RPC_CMD_CONN_GET_FP_TCP_STATE, pl, sizeof(pl), resp, sizeof(resp), &rc);
+	if (n < 0)
+		return (-n);
+	if (rc != 0)
+		return (EIO);
+	if (n < NPUFLOW_TCP_SEQ_LEN)
+		return (EMSGSIZE);
+	memcpy(seq, resp, NPUFLOW_TCP_SEQ_LEN);
+	return (0);
+}
+
+/*
  * A FIN OR A RST OF A CONNECTION IN HARDWARE (issue #679). The fast path hands every one to the host
  * (TO_KN_TCP_FIN_SYN_RST), and pf, sloppy for a connection it no longer sees, took it at its word: a
  * reset with its sequence number 64 MiB outside the window - what a blind reset looks like - turned
@@ -2659,6 +2691,10 @@ npuflow_make(struct npuflow_softc *sc, uint32_t id, int slot, struct sbuf *sb)
 	 */
 	marked = sc->pf_sloppy ? npuep_pf_mark_sloppy(&tup[0]) + npuep_pf_mark_sloppy(&tup[1]) : 0;
 	sc->sloppy_marked += (uint64_t)marked;
+	/* and with a pfsync peer, the room its copy needs from here (npuep_pf_peer_room) */
+	if (marked > 0 && tup[0].proto == IPPROTO_TCP && sc->pfsync_numbers != 0 &&
+	    npuep_pf_pfsync_up())
+		sc->peer_room += (uint64_t)(npuep_pf_peer_room(&tup[0]) + npuep_pf_peer_room(&tup[1]));
 	if (sb != NULL)
 		sbuf_printf(sb, "accelerated connection %d (IPv%d): original mflow %u out next hop %u "
 		    "(iface %u %02x:%02x:%02x:%02x:%02x:%02x), reply mflow %u out next hop %u; %s%s%s; "
@@ -3353,12 +3389,15 @@ static void
 npuflow_keepalive(struct npuflow_softc *sc)
 {
 	struct npuep_pf_tuple t, tt[2];
-	int i, pf_dir, gone, budget, kept = 0, held, touch;
+	int i, pf_dir, gone, budget, kept = 0, held, touch, peer, nums;
 	time_t last;
-	uint32_t k;
+	uint32_t k, f, crev = 0;
+	uint8_t seq[NPUFLOW_TCP_SEQ_LEN], scale[2];
 
 	if (!npuep_pf_present() || sc->conn == NULL)
 		return;
+	/* a pfsync peer to keep up to date (gap B of HA): once a sweep, not once a connection */
+	peer = sc->pfsync_numbers != 0 && npuep_pf_pfsync_up();
 	for (budget = NPUFLOW_KA_PER_SWEEP; budget > 0; budget--) {
 		FLOW_LOCK(sc);
 		if (sc->conn_nlive == 0 || (uint32_t)kept >= sc->conn_nlive) {
@@ -3397,12 +3436,35 @@ npuflow_keepalive(struct npuflow_softc *sc)
 			touch = sc->conn[i].used && sc->conn[i].hw_moved != 0 &&
 			    sc->conn[i].hw_moved > sc->conn[i].ka_touch &&
 			    time_uptime - sc->conn[i].ka_touch >= NPUFLOW_TOUCH_PERIOD;
+			nums = 0;
 			if (touch) {
 				tt[0] = sc->conn[i].tuple[0];
 				tt[1] = sc->conn[i].tuple[1];
 				sc->conn[i].ka_touch = time_uptime;
+				/*
+				 * With a pfsync peer, a TCP connection's numbers from the fast path go to its
+				 * states before the restamp hands them to pfsync: pf's own stopped at the make,
+				 * and a peer taking over with those dropped the live connection.
+				 */
+				if (peer && !sc->conn[i].tcp_on && sc->conn[i].tuple[0].proto == IPPROTO_TCP)
+					sc->ka_numbers_unchecked++;
+				if (peer && sc->conn[i].tcp_on) {
+					nums = 1;
+					crev = sc->conn[i].conn_rev;
+					f = le32dec(sc->conn[i].tcp + NPUFLOW_TCP_OFF_FLAGS);
+					scale[0] = (uint8_t)(f >> NPUFLOW_TCP_SCALE_ORIG_SHIFT);
+					scale[1] = (uint8_t)(f >> NPUFLOW_TCP_SCALE_REPLY_SHIFT);
+				}
 			}
 			FLOW_UNLOCK(sc);
+			if (nums) {
+				if (npuflow_conn_tcp_seq((uint32_t)i, crev, seq) != 0)
+					sc->ka_numbers_failed++;
+				else if (npuep_pf_numbers(tt, seq, scale) > 0)
+					sc->ka_numbers++;
+				else
+					sc->ka_numbers_none++;
+			}
 			if (touch && npuep_pf_touch(&tt[0]) + npuep_pf_touch(&tt[1]) != 0)
 				sc->ka_touched++;
 			kept++;
@@ -5756,6 +5818,24 @@ npuflow_attach(device_t dev, struct sysctl_ctx_list *ctx, struct sysctl_oid *par
 		SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "ka_touched", CTLFLAG_RD,
 		    &sc->ka_touched, 0, "keepalive visits that restamped a connection's pf states, the "
 		    "coprocessor having counted traffic for it - each restamp told to pfsync");
+		sc->pfsync_numbers = 1;
+		SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "pfsync_numbers", CTLFLAG_RW,
+		    &sc->pfsync_numbers, 0, "1 (default): while pfsync0 is up, each keepalive restamp of a TCP "
+		    "connection writes the fast path's numbers into its pf states - they stay sloppy here - so "
+		    "that a pfsync peer's copy follows the connection and a peer taking over passes it; 0 off");
+		SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "ka_numbers", CTLFLAG_RD,
+		    &sc->ka_numbers, 0, "keepalive restamps that wrote a TCP connection's numbers into its pf "
+		    "states for pfsync");
+		SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "ka_numbers_none", CTLFLAG_RD,
+		    &sc->ka_numbers_none, 0, "restamps whose TCP numbers no state took");
+		SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "peer_room", CTLFLAG_RD,
+		    &sc->peer_room, 0, "pf states of TCP connections given a gigabyte past their right edges "
+		    "at the make, for a pfsync peer's copy, while pfsync0 is up");
+		SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "ka_numbers_failed", CTLFLAG_RD,
+		    &sc->ka_numbers_failed, 0, "restamps whose TCP numbers the fast path did not answer with");
+		SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "ka_numbers_unchecked", CTLFLAG_RD,
+		    &sc->ka_numbers_unchecked, 0, "restamps of a TCP connection with no numbers to give pfsync: "
+		    "its window unchecked in hardware, its peer's copy left as pf had it");
 		SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "ipsec_refused", CTLFLAG_RD,
 		    &sc->ipsec_refused, 0, "connections left with the host because an IPsec policy covers "
 		    "them (the host applies it; made as plain flows they would leave in the clear)");

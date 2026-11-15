@@ -885,6 +885,14 @@ octep_pf_end(const struct pf_state_key *k, int i, const struct octep_pf_tuple *t
 #define	OCTEP_PF_HANDBACK_ROOM	(4u << 20)
 #define	OCTEP_PF_HANDBACK_ROOM_MAX (1u << 28)
 #define	OCTEP_PF_HANDBACK_SPAN	(1u << 30)
+/*
+ * The room a pfsync peer's copy is given past the right edge the fast path last saw, when the numbers
+ * are written for it (octep_pf_numbers): what a sender may move between two keep-alive passes, five
+ * seconds, and still be passed by a peer that has taken over - a gigabyte, about 1.7 Gbit/s for five
+ * seconds. pf's own window arithmetic holds to 2^31; pfsync takes an update that moved more than that
+ * for a stale one. Here, where the state stays sloppy, the room checks nothing.
+ */
+#define	OCTEP_PF_PEER_ROOM	(1u << 30)
 
 /*
  * Give pf the fast path's window numbers for a connection taken back from it, on every state pf
@@ -915,10 +923,12 @@ octep_pf_end(const struct pf_state_key *k, int i, const struct octep_pf_tuple *t
  * the first version compared them and refused a download of four gigabytes as implausible.
  * Nor is anything written to a state that rewrites what the fast path cannot, or one whose ends
  * are not the tuples'. A rule's own keep state (sloppy) is left as the rule made it. Returns how
- * many states took the numbers.
+ * many states took the numbers. With for_peer (octep_pf_numbers) the same numbers are written for a pfsync
+ * peer's copy of a connection still in hardware: the sloppy mark stays, and the room is OCTEP_PF_PEER_ROOM.
  */
-int
-octep_pf_handback(const struct octep_pf_tuple *tup, const uint8_t *seq, const uint8_t *scale)
+static int
+octep_pf_write_numbers(const struct octep_pf_tuple *tup, const uint8_t *seq, const uint8_t *scale,
+    int for_peer)
 {
 	struct pf_state_key_cmp key;
 	struct pf_kstate *s;
@@ -976,6 +986,8 @@ octep_pf_handback(const struct octep_pf_tuple *tup, const uint8_t *seq, const ui
 					    2 * maxwin[k ^ 1] : OCTEP_PF_HANDBACK_ROOM_MAX;
 					if (room < OCTEP_PF_HANDBACK_ROOM)
 						room = OCTEP_PF_HANDBACK_ROOM;
+					if (for_peer)
+						room = OCTEP_PF_PEER_ROOM;
 					p[k]->seqlo = end[k];
 					p[k]->seqhi = maxend[k] + room;
 					w = (scale[k] < 15) ?
@@ -986,7 +998,7 @@ octep_pf_handback(const struct octep_pf_tuple *tup, const uint8_t *seq, const ui
 					if (w > p[k]->max_win)
 						p[k]->max_win = (uint16_t)w;
 				}
-				if ((s->state_flags & PFSTATE_SLOPPY) != 0 && (s->rule == NULL ||
+				if (!for_peer && (s->state_flags & PFSTATE_SLOPPY) != 0 && (s->rule == NULL ||
 				    (s->rule->rule_flag & PFRULE_STATESLOPPY) == 0))
 					s->state_flags &= ~PFSTATE_SLOPPY;
 				n++;
@@ -995,4 +1007,92 @@ octep_pf_handback(const struct octep_pf_tuple *tup, const uint8_t *seq, const ui
 		}
 	}
 	return (n);
+}
+
+int
+octep_pf_handback(const struct octep_pf_tuple *tup, const uint8_t *seq, const uint8_t *scale)
+{
+
+	return (octep_pf_write_numbers(tup, seq, scale, 0));
+}
+
+/*
+ * The same numbers for a connection the coprocessor still forwards, written for a pfsync peer (gap B
+ * of HA, measured 2026-11-15): pf's numbers stop at the make, and pfsync copies what pf has, so a
+ * peer's copy held a window hundreds of megabytes behind the live connection - and was strict
+ * whenever it was sent before the make, as for a connection that began with the host. A peer that
+ * took over dropped every segment of it as a state mismatch. Written every keep-alive pass for a
+ * connection still moving, the copy follows at the next pfsync update, with OCTEP_PF_PEER_ROOM past
+ * its right edge. The state here stays sloppy: the fast path checks the window, and pf sees none of
+ * the connection's frames. Returns how many states took the numbers.
+ */
+int
+octep_pf_numbers(const struct octep_pf_tuple *tup, const uint8_t *seq, const uint8_t *scale)
+{
+
+	return (octep_pf_write_numbers(tup, seq, scale, 1));
+}
+
+/*
+ * At the make, with pfsync to a peer: each TCP state of the connection given OCTEP_PF_PEER_ROOM past
+ * its right edges, and pfsync told. The numbers are pf's own, live until this moment; from here pf
+ * sees none of the connection's frames, and the fast path keeps numbers to give it only while its
+ * window is checked there - not for a connection made or revived unchecked. So a peer's copy that
+ * gets nothing later still passes, on a takeover, what the connection sends within a gigabyte of
+ * the make. The state here is sloppy and the room checks nothing. A peer whose seqlo is still 0 -
+ * the reply's first segment not seen yet - is left alone, as is a state that modulates sequence
+ * numbers or timestamps. Returns how many states took the room.
+ */
+int
+octep_pf_peer_room(const struct octep_pf_tuple *t)
+{
+	struct pf_state_key_cmp key;
+	struct pf_kstate *s;
+	struct pf_state_peer *p[2];
+	const u_int dirs[2] = { PF_IN, PF_OUT };
+	int d, order, k, n = 0;
+
+	if (!octep_pf_present() || t->proto != IPPROTO_TCP)
+		return (0);
+	for (d = 0; d < 2; d++) {
+		for (order = 0; order < octep_pf_combs(t); order++) {
+			octep_pf_key(&key, t, order);
+			s = octep_pf_find(&key, dirs[d], NULL);
+			if (s == NULL)
+				continue;
+			if (octep_pf_rewrites(s)) {
+				PF_STATE_UNLOCK(s);
+				continue;
+			}
+			p[0] = &s->src;
+			p[1] = &s->dst;
+			for (k = 0; k < 2; k++)
+				if (p[k]->seqlo != 0 && p[k]->seqhi - p[k]->seqlo < OCTEP_PF_PEER_ROOM)
+					p[k]->seqhi = p[k]->seqlo + OCTEP_PF_PEER_ROOM;
+			octep_pf_sync(s);
+			n++;
+			PF_STATE_UNLOCK(s);
+		}
+	}
+	return (n);
+}
+
+/*
+ * Is pfsync sending states: pfsync0 up, which OPNsense's High Availability settings bring it to when
+ * they name a synchronisation interface, and down otherwise. Called with the vnet set.
+ */
+bool
+octep_pf_pfsync_up(void)
+{
+	if_t ifp;
+	bool up;
+
+	if (octep_pfsync_sym == NULL)
+		return (false);
+	ifp = ifunit_ref("pfsync0");
+	if (ifp == NULL)
+		return (false);
+	up = (if_getflags(ifp) & IFF_UP) != 0;
+	if_rele(ifp);
+	return (up);
 }

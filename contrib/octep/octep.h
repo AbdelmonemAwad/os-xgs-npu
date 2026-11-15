@@ -2488,6 +2488,9 @@ int	octep_pf_count(const struct octep_pf_tuple *, const uint64_t *, const uint64
 int	octep_pf_tcp_scan(const struct octep_pf_tuple *, struct octep_pf_tcp *);
 int	octep_pf_tos_scan(const struct octep_pf_tuple *, uint16_t *);
 int	octep_pf_handback(const struct octep_pf_tuple *, const uint8_t *, const uint8_t *);
+int	octep_pf_numbers(const struct octep_pf_tuple *, const uint8_t *, const uint8_t *);
+bool	octep_pf_pfsync_up(void);
+int	octep_pf_peer_room(const struct octep_pf_tuple *);
 
 struct octep_dp_if {
 	if_t			 ifp;
@@ -3783,6 +3786,12 @@ struct octep_softc {
 	uint64_t		 dp_ka_reads;		/* microflows read back for it */
 	uint64_t		 dp_ka_touched;		/* connections found in use: states restamped */
 	uint64_t		 dp_ka_idle;		/* connections found quiet, or let go of */
+	uint32_t		 dp_ka_pfsync_numbers;	/* dp.pfsync_numbers: TCP numbers to pf for pfsync */
+	uint64_t		 dp_ka_numbers;		/* connections whose numbers pf's states took */
+	uint64_t		 dp_ka_numbers_none;	/* numbers read, and no state took them */
+	uint64_t		 dp_ka_numbers_failed;	/* the fast path did not answer with them */
+	uint64_t		 dp_ka_numbers_unchecked;	/* moving, and its window not checked there */
+	uint64_t		 dp_pf_peer_room;	/* states given a pfsync peer's room at the make */
 	uint64_t		 dp_flow_unsettled;	/* not made yet: pf's states not on their long timer */
 	uint64_t		 dp_auto_full;		/* times the table had no room */
 	uint64_t		 dp_flow_forgot;	/* entries dropped because a reload discarded them */
