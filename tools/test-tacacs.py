@@ -124,16 +124,18 @@ def run(user, password, server=None, tool_path=None):
 
 r = run('lab-admin', 'right')
 check('the type and its description', [r['type'], r['description']], ['tacplus', 'TACACS+'])
+# this check and the one of the secret's field compare here and print only their verdict: a value read
+# under the secret's name is printed by no check, whatever it holds
 check('its fields as the servers page draws them',
-      r['fields'], {'host': {'type': 'text', 'default': ''}, 'tacplus_port': {'type': 'text', 'default': '49'},
-                    'tacplus_secret': {'type': 'text', 'default': ''}, 'tacplus_timeout': {'type': 'text', 'default': '5'},
-                    'tacplus_method': {'type': 'dropdown', 'default': 'pap'}})
+      r['fields'] == {'host': {'type': 'text', 'default': ''}, 'tacplus_port': {'type': 'text', 'default': '49'},
+                      'tacplus_secret': {'type': 'text', 'default': ''}, 'tacplus_timeout': {'type': 'text', 'default': '5'},
+                      'tacplus_method': {'type': 'dropdown', 'default': 'pap'}}, True)
 check('the server: an IPv4 address or a host name; IPv6, spaces and nothing refused',
       r['checks']['host'], {'192.0.2.1': True, 'tacacs.example.net': True, 'fe80::1': False, 'two words': False, '': False})
 check('the port: 1 to 65535', r['checks']['tacplus_port'], {'49': True, '65535': True, '0': False, '70000': False, 'x': False})
 check('the timeout: 1 to 60 seconds', r['checks']['tacplus_timeout'], {'1': True, '60': True, '0': False, '61': False})
 check('the method: PAP, ASCII or CHAP', r['checks']['tacplus_method'], {'pap': True, 'ascii': True, 'chap': True, 'mschap': False})
-check('the secret: one line', r['checks']['tacplus_secret'], {'one line': True, 'two\nlines': False})
+check('the secret: one line', r['checks']['tacplus_secret'] == {'one line': True, 'two\nlines': False}, True)
 # compared here and only the verdict printed: what the tool was given holds the shared secret
 check('the eight lines on the tool\'s standard input, in their order, and nothing on its command line',
       r['seen'] == {'lines': ['tacacs.example.net', '4949', 'a "quoted" secret', '3', 'chap', '192.0.2.10', 'lab-admin',
