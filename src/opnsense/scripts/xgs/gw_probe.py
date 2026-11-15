@@ -134,7 +134,8 @@ def main():
     found = []
     if limit and limit != '0':
         try:
-            status = json.loads(subprocess.run([STATUS], capture_output=True, text=True, timeout=20).stdout or '{}')
+            status = json.loads(subprocess.run([STATUS], capture_output=True, text=True, errors='replace',
+                                           timeout=20).stdout or '{}')
         except (OSError, ValueError, subprocess.SubprocessError):
             status = {}
         readings = {name: ms(g.get('stddev')) for name, g in status.items() if isinstance(g, dict)}

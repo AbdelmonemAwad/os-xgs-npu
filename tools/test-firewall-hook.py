@@ -148,7 +148,7 @@ with open(os.path.join(ROOT, 'src', 'opnsense', 'mvc', 'app', 'models', 'OPNsens
           encoding='utf-8') as f:
     mask = re.search(r'<ra_allowed type="TextField">.*?<Mask>/(.*?)/</Mask>', f.read(), re.S).group(1)
 saved = {v: re.match(mask, v) is not None for v in
-         ['', 'fe80::1', 'FE80:0:0:0:0:0:0:0001', 'fe80::1, fe80::1234:56ff:fe78:9abc', 'fe80::1\nfebf::2;fe90::3 ',
+         ['', 'fe80::1', 'FE80:0:0:0:0:0:0:0001', 'fe80::1, fe80::abcd:1234', 'fe80::1\nfebf::2;fe90::3 ',
           '2001:db8::1', 'fe80::1, 2001:db8::1', 'junk', 'fe80::1%oxp5', 'fec0::1']}
 check('the field: link-local addresses saved, separated by commas, semicolons or new lines',
       [v for v in list(saved)[:5] if not saved[v]], [])
