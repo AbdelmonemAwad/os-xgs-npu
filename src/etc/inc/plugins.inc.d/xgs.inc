@@ -358,5 +358,16 @@ function xgs_cron()
      */
     $jobs[]['autocron'] = ['/usr/local/bin/php /usr/local/opnsense/scripts/xgs/flow_exclude.php --if-changed > /dev/null', '*'];
 
+    /*
+     * A scheduled PPPoE reconnect (plan 01, package 3.7): each day at the time XGS: Settings names,
+     * every enabled PPPoE interface configured again (scripts/xgs/pppoe_reconnect.php). No job without
+     * a time; apply.php restarts cron when it changes, so this list is read again.
+     */
+    $at = (string)(config_read_array('OPNsense')['XGS']['general']['pppoe_reconnect'] ?? '');
+    if (preg_match('/^([01][0-9]|2[0-3]):([0-5][0-9])$/', trim($at), $m)) {
+        $jobs[]['autocron'] = ['/usr/local/bin/php /usr/local/opnsense/scripts/xgs/pppoe_reconnect.php > /dev/null',
+            (string)(int)$m[2], (string)(int)$m[1]];
+    }
+
     return $jobs;
 }

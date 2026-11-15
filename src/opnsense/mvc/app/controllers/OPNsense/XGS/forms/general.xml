@@ -279,6 +279,12 @@
             <help>The coprocessor's memory corrects single-bit errors by itself (ECC) and counts them. When this many corrected errors have been counted since the last alert, or since the coprocessor started, an alert is written in the system log and handed to os-netreport to send. An error the memory could not correct always raises one. 0: no alert for corrected errors. Read every five minutes; XGS: Overview shows the counts. Only the XGS 3300 has these counters: on the XGS 136 nothing is read.</help>
         </field>
         <field>
+            <id>xgs.general.pppoe_reconnect</id>
+            <label>PPPoE: reconnect every day at</label>
+            <type>text</type>
+            <help>A time of day, HH:MM: each enabled PPPoE interface is connected again then, as Interfaces does when it is applied - for a provider that ends a session after a day, at a quiet hour of your choosing instead of its own. Empty: never, as OPNsense has it. OPNsense's own check of a PPPoE link stays as it is: an LCP echo every 10 seconds, and the link taken down after 60 seconds without an answer.</help>
+        </field>
+        <field>
             <type>header</type>
             <label>Port assignment</label>
         </field>

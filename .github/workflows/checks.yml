@@ -517,6 +517,13 @@ jobs:
           command -v php > /dev/null || sudo apt-get install -y --no-install-recommends php-cli > /dev/null
           python3 tools/test-service-aliases.py
 
+      # The scheduled PPPoE reconnect (scripts/xgs/pppoe_reconnect.php): which interfaces it configures
+      # again, and the time of day as the cron job's minute and hour. tools/test-pppoe-reconnect.py.
+      - name: The scheduled PPPoE reconnect
+        run: |
+          command -v php > /dev/null || sudo apt-get install -y --no-install-recommends php-cli > /dev/null
+          python3 tools/test-pppoe-reconnect.py
+
   # contrib/mvsw/mvsw is the repository's one binary: the coprocessor's switch tool, built for aarch64,
   # which no appliance can build (contrib/mvsw/README.md). It is built again here from mvsw.c with its
   # own Makefile - freestanding, no build id, stripped, so the build is reproducible - in the Ubuntu

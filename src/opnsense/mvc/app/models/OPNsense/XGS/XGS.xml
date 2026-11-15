@@ -400,6 +400,14 @@
                 not corrected always raises one. 0, no alert for corrected errors. Only the XGS 3300
                 registers these counters; the ARMADA family has none.
             -->
+            <!-- A scheduled PPPoE reconnect (plan 01, package 3.7, 2026-11-15): every day at this time
+                 (HH:MM), each enabled PPPoE interface configured again by scripts/xgs/pppoe_reconnect.php,
+                 from the plugin's cron job. Empty: none, as OPNsense has it. -->
+            <pppoe_reconnect type="TextField">
+                <Required>N</Required>
+                <Mask>/^(([01][0-9]|2[0-3]):[0-5][0-9])?$/</Mask>
+                <ValidationMessage>A time of day as HH:MM, from 00:00 to 23:59, or empty for none.</ValidationMessage>
+            </pppoe_reconnect>
             <ecc_alert type="IntegerField">
                 <Required>Y</Required>
                 <Default>10</Default>

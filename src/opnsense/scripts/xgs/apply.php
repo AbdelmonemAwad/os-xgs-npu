@@ -21,6 +21,8 @@
  *                      Suricata's stream depth (xgs_ips_depth)
  *   failclose          the running driver's dp.ips_loop or ips.loop, through failclose.py (and from cron)
  *   service_aliases    scripts/xgs/service_aliases.php while on: the missing ready-made port aliases added
+ *   pppoe_reconnect    the plugin's cron job (xgs_cron): cron restarted when it changed
+ *                      (/var/db/os-xgs-npu/pppoe-reconnect), so its list of jobs is read again
  *   ra_guard, ra_allowed  rules of the firewall hook (plugins.inc.d/xgs.inc): a firewall reload when
  *                      either changed since the last save (/var/db/os-xgs-npu/ra-guard)
  *   ids_threads        dev.netmap.generic_rings now and as a row of System: Settings: Tunables, the
@@ -501,6 +503,18 @@ if ($swan_after !== $swan_before) {
         ($get('ipsec_ipcomp', '') === '' ? '' : ($get('ipsec_offload', '1') === '1' ?
         '; compression not written while IPsec is in the coprocessor\'s engine' : '; compression on the tunnels chosen')) .
         ($running ? ' - strongSwan reloaded' : '');
+}
+
+/* A scheduled PPPoE reconnect: the cron job xgs_cron() gives for it, read again when the time changed. */
+$pr_now = trim($get('pppoe_reconnect', ''));
+$pr_mark = '/var/db/os-xgs-npu/pppoe-reconnect';
+$pr_was = @file_get_contents($pr_mark);
+if (($pr_was === false ? '' : $pr_was) !== $pr_now) {
+    @mkdir(dirname($pr_mark), 0755, true);
+    @file_put_contents($pr_mark, $pr_now);
+    (new \OPNsense\Core\Backend())->configdRun('cron restart');
+    $steps[] = 'PPPoE: ' . ($pr_now === '' ? 'no scheduled reconnect' : 'every enabled PPPoE interface connected again each day at ' . $pr_now) .
+        ' - cron restarted';
 }
 
 /* Ready-made service aliases, while on: those missing added to Firewall: Aliases, none changed. */

@@ -96,6 +96,8 @@ rm -f "${PREFIX}/opnsense/scripts/xgs/board.sh"
 rm -f "${PREFIX}/opnsense/scripts/xgs/certimport.inc"
 # The ready-made service aliases script; the aliases it added stay in Firewall: Aliases, which rules may use.
 rm -f "${PREFIX}/opnsense/scripts/xgs/service_aliases.php"
+# The scheduled PPPoE reconnect; its cron job goes with the plugin hook that gives it.
+rm -f "${PREFIX}/opnsense/scripts/xgs/pppoe_reconnect.php"
 rm -f "${PREFIX}/opnsense/scripts/xgs/status.py"
 rm -f "${PREFIX}/opnsense/scripts/xgs/offload.sh"
 rm -f "${PREFIX}/opnsense/scripts/xgs/update.py"
