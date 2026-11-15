@@ -474,6 +474,13 @@ struct npugiu_port {
 	int			 link;		/* -1 unknown, 0 down, 1 up */
 	int			 speed;		/* megabits, 0 if not known */
 	/*
+	 * A switch socket's medium as ifconfig asked for it (npugiu_media_change), its ifmedia word,
+	 * 0 for none since attach - set by the agent's link poll (npunwa_media_apply) - and whether
+	 * the running link is half duplex, as the agent reads it (attribute 0x0d).
+	 */
+	volatile int		 media_req;
+	int			 half;
+	/*
 	 * What the module in a cage is: an Ethernet media subtype (net/if_media.h's number) for a
 	 * gigabit and one for ten, 0 where it has not been read. The host cannot reach a module's
 	 * memory - it is on the coprocessor's I2C - so the plugin reads it there and writes these in
@@ -2735,14 +2742,37 @@ npugiu_ifinit(void *xsc)
  * whole life of this driver all fourteen ports showed no status: and no speed, and OPNsense's
  * interface list had nothing to colour a plug icon from.
  *
- * Nothing here can CHANGE the media. The coprocessor negotiates, and the host is not in that
- * conversation - so the only medium offered is IFM_AUTO and npugiu_media_change does nothing but
- * succeed. Offering a list of forced speeds the device would ignore would be a lie with a menu.
+ * A switch socket - Port1 to Port8, copper behind the switch - can be given its speed and duplex:
+ * the network agent sets them by its KSETTINGS attribute (0x55), with what autonegotiation
+ * advertises in attribute 0x43, as the OCTEON TX driver's octep_dp_media_change does on the XGS
+ * 3300. Read first on this appliance (2026-11-15): a GET of 0x55 answered each port by its own
+ * link - autonegotiation on, 1000, full on the cabled ones and duplex unknown on the dark ones - so
+ * a request reaches the port it names. The cages and Port9 to Port12 keep autoselect alone. The
+ * request is kept here and applied by the agent's link poll, which owns the mailbox
+ * (npunwa_media_apply), as an MTU is.
  */
 static int
-npugiu_media_change(if_t ifp __unused)
+npugiu_port_socket(const struct npugiu_port *pt)
 {
+	uint16_t tag = pt->fp->tag;
 
+	return (tag >= 0x8100 && tag <= 0x8800 && (tag & 0xff) == 0);
+}
+
+static int
+npugiu_media_change(if_t ifp)
+{
+	struct npugiu_port *pt = if_getsoftc(ifp);
+	int m;
+
+	if (pt == NULL)
+		return (ENXIO);
+	m = pt->media.ifm_media;
+	if (IFM_TYPE(m) != IFM_ETHER)
+		return (EINVAL);
+	if (!npugiu_port_socket(pt))
+		return (IFM_SUBTYPE(m) == IFM_AUTO ? 0 : ENODEV);
+	atomic_store_int((volatile u_int *)&pt->media_req, (u_int)m);
 	return (0);
 }
 
@@ -2799,7 +2829,12 @@ npugiu_media_status(if_t ifp, struct ifmediareq *ifmr)
 		return;
 	}
 	ifmr->ifm_status |= IFM_ACTIVE;
-	ifmr->ifm_active |= npugiu_media_word(pt) | IFM_FDX;
+	/*
+	 * Half duplex said as such, IFM_HDX, as octep_dp_media_status says it: ifconfig then prints
+	 * "<half-duplex>" in the running part, which XGS: Ports reads (PortsController). Only the
+	 * list registers half duplex by leaving IFM_FDX out - ifconfig takes the FDX bit away for it.
+	 */
+	ifmr->ifm_active |= npugiu_media_word(pt) | (pt->half ? IFM_HDX : IFM_FDX);
 }
 
 static int
@@ -2963,8 +2998,18 @@ npugiu_attach_ifnet(struct npugiu_softc *sc)
 
 		pt->link = -1;
 		pt->speed = 0;
+		pt->media_req = 0;
+		pt->half = 0;
 		ifmedia_init(&pt->media, 0, npugiu_media_change, npugiu_media_status);
 		ifmedia_add(&pt->media, IFM_ETHER | IFM_AUTO, 0, NULL);
+		if (npugiu_port_socket(pt)) {
+			/* half duplex is registered without IFM_FDX: ifconfig takes the FDX bit away for it */
+			ifmedia_add(&pt->media, IFM_ETHER | IFM_1000_T | IFM_FDX, 0, NULL);
+			ifmedia_add(&pt->media, IFM_ETHER | IFM_100_TX | IFM_FDX, 0, NULL);
+			ifmedia_add(&pt->media, IFM_ETHER | IFM_100_TX, 0, NULL);
+			ifmedia_add(&pt->media, IFM_ETHER | IFM_10_T | IFM_FDX, 0, NULL);
+			ifmedia_add(&pt->media, IFM_ETHER | IFM_10_T, 0, NULL);
+		}
 		ifmedia_set(&pt->media, IFM_ETHER | IFM_AUTO);
 		ether_ifattach(ifp, pt->mac);
 		/* After ether_ifattach, which sets the stack's default transmit: keep it, and sit in front of it. */
@@ -3049,6 +3094,27 @@ npugiu_allmulti_wanted(int idx)
 		return (-1);
 	ifp = sc->port[idx].ifp;
 	return ((if_getflags(ifp) & IFF_ALLMULTI) != 0 || if_llmaddr_count(ifp) > 0);
+}
+
+/* One switch socket's medium, as ifconfig asked for it: 0 if never asked since attach. */
+int
+npugiu_media_wanted(int idx)
+{
+	struct npugiu_softc *sc = npugiu_sc;
+
+	if (sc == NULL || idx < 0 || idx >= npuep_nfront || sc->port[idx].ifp == NULL)
+		return (0);
+	return ((int)atomic_load_int((volatile u_int *)&sc->port[idx].media_req));
+}
+
+/* Whether a front port's running link is half duplex, as the agent read it with its speed. */
+void
+npugiu_set_half(int idx, int half)
+{
+	struct npugiu_softc *sc = npugiu_sc;
+
+	if (sc != NULL && idx >= 0 && idx < npuep_nfront)
+		sc->port[idx].half = half;
 }
 
 /* One front port's MTU, as its interface has it: what the agent is told the port carries. */

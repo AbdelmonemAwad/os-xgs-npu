@@ -19,10 +19,10 @@ to a new image, and the checks fail on one without them.
 |---|---|---|
 | [screens/](screens/) | The web interface, page by page, in English and in Arabic | 108 |
 | [hardware/](hardware/) | Photographs and drawings of the appliances, one folder each | 41 |
-| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 873 |
+| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 875 |
 | [readme/](readme/) | The README's banner and status board, drawn by tools/readme-art.py | 6 |
 
-1067 images in all.
+1069 images in all.
 
 ## The web interface
 
@@ -806,6 +806,15 @@ The page: [many-tunnels-3300-2026-10-20.md](../measurements/many-tunnels-3300-20
 | image | what it shows | used on |
 |---|---|---|
 | [01-sixteen-tunnels.png](measurements/many-tunnels-3300-2026-10-20/01-sixteen-tunnels.png) | Sixteen IPsec tunnels at once between the two XGS 3300s: 16 of 16 established, 34 and 32 associations in the engines, 9,019 Mbit/s together | [many-tunnels-3300-2026-10-20.md](../measurements/many-tunnels-3300-2026-10-20.md) |
+
+### measurements/media-136-2026-11-15/ (2)
+
+The page: [media-136-2026-11-15.md](../measurements/media-136-2026-11-15.md).
+
+| image | what it shows | used on |
+|---|---|---|
+| [01-port8-set-from-the-136.png](measurements/media-136-2026-11-15/01-port8-set-from-the-136.png) | Port8 set from the XGS 136's side: 100 and 10 half, 1000baseT and autoselect, TCP through each | [media-136-2026-11-15.md](../measurements/media-136-2026-11-15.md) |
+| [02-the-ports-page-says-it.png](measurements/media-136-2026-11-15/02-the-ports-page-says-it.png) | XGS: Ports on the XGS 136 with Port8 set to 100baseTX: "100M, half duplex", fixed | [media-136-2026-11-15.md](../measurements/media-136-2026-11-15.md) |
 
 ### measurements/media-3300-2026-11-15/ (1)
 
