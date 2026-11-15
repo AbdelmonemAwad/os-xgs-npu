@@ -170,7 +170,11 @@ class TacacsPlus extends Base implements IAuthConnector
     {
         $this->lastAuthProperties = [];
         $this->lastAuthErrors = [];
-        if (strpbrk((string)$username . (string)$password, "\r\n") !== false || empty($this->host)) {
+        $lines = [$this->host, (string)$this->port, $this->secret, (string)$this->timeout, $this->method,
+            (string)($_SERVER['REMOTE_ADDR'] ?? ''), (string)$username, (string)$password];
+        /* the tool reads one item a line: a line break in any of them - a secret edited into the
+         * configuration by hand among them - would move every item after it */
+        if (strpbrk(implode('', $lines), "\r\n") !== false || empty($this->host)) {
             return false;
         }
         if (!is_executable(self::$tool)) {
@@ -178,8 +182,6 @@ class TacacsPlus extends Base implements IAuthConnector
             syslog(LOG_ERR, 'TACACS+: ' . self::$tool . ' is not installed; reinstalling os-xgs-npu builds it');
             return false;
         }
-        $lines = [$this->host, (string)$this->port, $this->secret, (string)$this->timeout, $this->method,
-            (string)($_SERVER['REMOTE_ADDR'] ?? ''), (string)$username, (string)$password];
         $proc = proc_open([self::$tool], [0 => ['pipe', 'r'], 1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $pipes);
         if (!is_resource($proc)) {
             $this->lastAuthErrors['error'] = 'TACACS+: ' . self::$tool . ' did not start';

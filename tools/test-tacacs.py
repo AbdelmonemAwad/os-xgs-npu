@@ -153,6 +153,9 @@ check('an ERROR: refused, and said in the system log',
        ['TACACS+ server tacacs.example.net:4949: connect: Connection refused']])
 r = run('lab-admin', 'right\nextra')
 check('a password with a line break: refused, the tool not asked', [r['result'], r['seen']], [False, None])
+r = run('lab-admin', 'right', server=dict(SERVER, tacplus_secret='one\ntwo'))
+check('a secret with a line break, put in the configuration by hand: refused, the tool not asked',
+      r['result'] is False and r['seen'] is None, True)
 r = run('lab-admin', 'right', server=dict(SERVER, host=''))
 check('no server set: refused, the tool not asked', [r['result'], r['seen']], [False, None])
 r = run('lab-admin', 'right', tool_path=os.path.join(tmp, 'missing'))
