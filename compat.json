@@ -41,12 +41,12 @@
     "seen carrying traffic on that board, not what the driver is meant to do. A board whose front",
     "ports have never been driven says so."
   ],
-  "opnsense": "26.7.8",
-  "upstream_release": "26.7.8",
+  "opnsense": "26.7.9",
+  "upstream_release": "26.7.9",
   "freebsd": "15.1-RELEASE-p6",
-  "kern_version": "FreeBSD 15.1-RELEASE-p6 stable/26.7-n284176-c962f76493b6 SMP",
+  "kern_version": "FreeBSD 15.1-RELEASE-p6 stable/26.7-n284285-1633399de9dd SMP",
   "kern_osreldate": 1501000,
-  "kernel_sources": "github.com/opnsense/src at c962f76493b6, fetched on each appliance by its kernel follower when the update to 26.7.8 staged that kernel, 2026-10-30 (into /usr/src-26.7-c962f76493b6); both boards below run that kernel since that day",
+  "kernel_sources": "github.com/opnsense/src at 1633399de9dd, fetched on each appliance by its kernel follower when the update to 26.7.9 staged that kernel, 2026-11-16 (into /usr/src-26.7-1633399de9dd); both boards below run that kernel since that day",
   "boards": [
     {
       "board": "Sophos XGS 136",
@@ -57,9 +57,9 @@
       "driver": "npuep",
       "front_ports": 14,
       "works": "all 14 front ports carry traffic in both directions as ordinary FreeBSD interfaces",
-      "kernel": "FreeBSD 15.1-RELEASE-p6 stable/26.7-n284176-c962f76493b6 SMP",
-      "verified_on": "2026-10-30",
-      "verified_how": "an update from 26.7.7 to 26.7.8 (kernel p4 to p6) was followed by install/kernel-follow.sh from the staged set before the update's own reboot - sources fetched, module built, the p4 one kept as .prev - and the boot hook loaded the new module on p6: the five front ports that had link before had it after, and install/verify.sh then read 10 passed, 0 failed. Before that, 2026-10-13: the update from 26.7 to 26.7.7 (p1 to p4), followed out of the reboot's stop hook; 2026-09-26: install/verify.sh after a cold boot"
+      "kernel": "FreeBSD 15.1-RELEASE-p6 stable/26.7-n284285-1633399de9dd SMP",
+      "verified_on": "2026-11-16",
+      "verified_how": "an update from 26.7.8 to 26.7.9 (a new kernel under the same label: p6, n284176 to n284285) was followed by install/kernel-follow.sh from the staged set before the update's own reboot - sources fetched, module built, the n284176 one kept as .prev - and the boot hook loaded the new module: the five front ports that had link before had it after, and install/verify.sh then read 14 passed, 0 failed. Before that, 2026-10-30: the update from 26.7.7 to 26.7.8 (p4 to p6), followed the same way; 2026-10-13: the update from 26.7 to 26.7.7 (p1 to p4), followed out of the reboot's stop hook; 2026-09-26: install/verify.sh after a cold boot"
     },
     {
       "board": "Sophos XGS 3300",
@@ -69,10 +69,10 @@
       "pci_id": "177d:a300",
       "driver": "octep",
       "front_ports": 12,
-      "kernel": "FreeBSD 15.1-RELEASE-p6 stable/26.7-n284176-c962f76493b6 SMP",
+      "kernel": "FreeBSD 15.1-RELEASE-p6 stable/26.7-n284285-1633399de9dd SMP",
       "works": "the management link pings across PCIe at 0 percent loss; the endpoint handshake completes; a front port is raised over NetAgent and its link read back; a 10G link on a front cage trains; the RPC facility is configured and PPORT_UPDATE and LIF_ADD_UPDATE are accepted; frames posted on an SDP ring reach a machine off the appliance; and frames entering a copper panel port arrive on a FreeBSD interface carrying that panel port's own address, with every drop counter on the far side flat. The 88E6193X behind the panel ports is programmed over MDIO - all eight copper ports at a gigabit with their PHYs powered and the panel LEDs lit - and the two 1G SFP cages' lasers are enabled through the CPLD. What is missing is performance work - every frame is copied, there is no offload and no multiqueue - and persistence: the whole bring-up has to be repeated by hand after a reboot.",
-      "verified_on": "2026-10-30",
-      "verified_how": "an update from 26.7.7 to 26.7.8 on both XGS 3300s, over the coprocessor's vendor versions 22 and 23: install/kernel-follow.sh built octep from the staged set before the update's own reboot - its stamp read p6 afterwards, the p4 one kept as .prev - and each host came up on p6 with the module loaded and the same front ports with link as before (7 and 4); one was rebooted a second time with the same result. install/verify.sh is not the instrument here: on the installed 0.1.0-alpha.9 its npuep checks also run on this family (fixed on main by #892). 'works' above still describes the bring-up of 2026-09-30, which docs/measurements/xgs3300.md has long since passed"
+      "verified_on": "2026-11-16",
+      "verified_how": "an update from 26.7.8 to 26.7.9 on the second XGS 3300, over the coprocessor's vendor version 22: install/kernel-follow.sh built octep from the staged set before the update's own reboot - its stamp read n284285 afterwards, the n284176 one kept as .prev - and the host came up with the module loaded and the same seven front ports with link as before; install/verify.sh read 9 passed, 0 failed. Before that, 2026-10-30: the update from 26.7.7 to 26.7.8 on both XGS 3300s, over the coprocessor's vendor versions 22 and 23, followed the same way. 'works' above still describes the bring-up of 2026-09-30, which docs/measurements/xgs3300.md has long since passed"
     }
   ],
   "version_sensitive": [
