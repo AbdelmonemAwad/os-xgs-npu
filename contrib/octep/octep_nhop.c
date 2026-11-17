@@ -319,6 +319,99 @@ octep_nhop_resolve(struct octep_softc *sc, uint32_t dst, int hint_dif,
 }
 
 /*
+ * The next hop a rule names (#1182): pf's route-to or reply-to, the interface and the gateway pf
+ * keeps in the connection's state and sends by in place of the main routing table - so a connection
+ * in hardware leaves the way the host sent it. From the interface on, everything is as for a route
+ * through a gateway: the front port it is (a VLAN's port, the bridge's hint), its link, the
+ * gateway's MAC from arpresolve or nd6_resolve, and our side's MAC and MTU, the interface's.
+ *
+ * af is the connection's family; gw is the gateway's address, an IPv4 one in gw[0], network order.
+ * The interface is looked up by its index inside the net epoch, as the route's would be read: one
+ * that has gone since pf made the state is EHOSTUNREACH.
+ */
+int
+octep_nhop_resolve_via(struct octep_softc *sc, int af, uint16_t ifindex, const uint32_t *gw,
+    int hint_dif, struct octep_nhop *out)
+{
+	struct sockaddr_in sin;
+	struct sockaddr_in6 sin6;
+	struct epoch_tracker et;
+	struct octep_dp_if *dif;
+	struct ifnet *ifp;
+	uint32_t flags;
+	int i, error;
+
+	bzero(out, sizeof(*out));
+	NET_EPOCH_ENTER(et);
+	ifp = ifnet_byindex(ifindex);
+	if (ifp == NULL) {
+		NET_EPOCH_EXIT(et);
+		return (EHOSTUNREACH);
+	}
+	if (!octep_nhop_ether(ifp)) {
+		error = octep_nhop_not_ether(ifp);
+		NET_EPOCH_EXIT(et);
+		return (error);
+	}
+	dif = NULL;
+	for (i = 0; i < OCTEP_DP_IF_MAX; i++) {
+		if (sc->dp_if[i].ifp == NULL)
+			continue;
+		if ((struct ifnet *)sc->dp_if[i].ifp == ifp) {
+			dif = &sc->dp_if[i];
+			break;
+		}
+	}
+	/* a VLAN subinterface of a front port, a port with no link, the bridge: as octep_nhop_resolve */
+	if (dif == NULL && (i = octep_nhop_vlan_port(sc, ifp, &out->vlan)) >= 0)
+		dif = &sc->dp_if[i];
+	if (dif != NULL && dif->link == 0) {
+		NET_EPOCH_EXIT(et);
+		return (ENETDOWN);
+	}
+	if (dif == NULL && hint_dif >= 0 && hint_dif < OCTEP_DP_IF_MAX &&
+	    sc->dp_if[hint_dif].ifp != NULL &&
+	    sc->dp_if[hint_dif].lif_iface != OCTEP_DP_IF_PORT_AUTO &&
+	    sc->dp_if[hint_dif].link == 1 &&
+	    octep_nhop_hint_fits(ifp, (struct ifnet *)sc->dp_if[hint_dif].ifp)) {
+		dif = &sc->dp_if[hint_dif];
+		i = hint_dif;
+		out->from_flow = 1;
+	}
+	if (dif == NULL || dif->lif_iface == OCTEP_DP_IF_PORT_AUTO) {
+		NET_EPOCH_EXIT(et);
+		return (ENETUNREACH);
+	}
+	flags = 0;
+	if (af == AF_INET6) {
+		bzero(&sin6, sizeof(sin6));
+		sin6.sin6_family = AF_INET6;
+		sin6.sin6_len = sizeof(sin6);
+		memcpy(&sin6.sin6_addr, gw, sizeof(sin6.sin6_addr));
+		/* the family in the second argument's upper half, as octep_nhop_resolve6 says why */
+		error = nd6_resolve(ifp, LLE_SF(AF_INET6, 1), NULL, (struct sockaddr *)&sin6,
+		    out->dmac, &flags, NULL);
+	} else {
+		bzero(&sin, sizeof(sin));
+		sin.sin_family = AF_INET;
+		sin.sin_len = sizeof(sin);
+		sin.sin_addr.s_addr = gw[0];
+		/* before smac and iface are written: arpresolve writes the whole header (issue 483) */
+		error = arpresolve(ifp, 1, NULL, (struct sockaddr *)&sin, out->dmac, &flags, NULL);
+	}
+	if (error != 0) {
+		NET_EPOCH_EXIT(et);
+		return (error);
+	}
+	memcpy(out->smac, if_getlladdr((if_t)ifp), ETHER_ADDR_LEN);
+	out->iface = dif->lif_iface;
+	out->mtu = (uint16_t)if_getmtu((if_t)ifp);
+	out->ifname_unit = i;
+	NET_EPOCH_EXIT(et);
+	return (0);
+}
+
+/*
  * The same for an IPv6 destination - the far end of a tunnel whose outer header is IPv6, which is
  * the only caller: the flow path is IPv4. dst6 is the 16 bytes of the address as on the wire. The
  * route comes from fib6_lookup and the neighbour from nd6_resolve, which sends the solicitation
