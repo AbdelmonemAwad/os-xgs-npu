@@ -32,7 +32,8 @@
 // was refused for good. The App's installation has to take them in before this is deployed
 // (README.md): without it GitHub refuses each of their issues, after the allowances are spent.
 const REPOS = new Set(['os-xgs-npu', 'os-fanctl', 'os-frontpanel', 'os-linkhealth', 'os-netreport',
-    'os-watchdog', 'os-kernelfollow', 'os-blocklists', 'os-portguard', 'os-fallbackcrypto']);
+    'os-watchdog', 'os-kernelfollow', 'os-blocklists', 'os-portguard', 'os-fallbackcrypto',
+    'os-trafficpriority']);
 const MAX_BYTES = 64 * 1024;
 const PER_APPLIANCE = 20;	// reports a day from one appliance
 const PER_ADDRESS = 60;	// from one sending address

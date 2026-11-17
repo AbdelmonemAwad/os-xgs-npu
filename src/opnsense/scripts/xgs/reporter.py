@@ -158,6 +158,16 @@ PARTS = [
         'kernel': None,
         'paths': ('/OPNsense/FallbackCrypto/', '/scripts/fallbackcrypto/'),
     },
+    {
+        'name': 'os-trafficpriority',
+        'present': '/usr/local/opnsense/scripts/trafficpriority',
+        # its rules hook logs under OPNsense's own name, "opnsense" (the filter reload's PHP; seen on the
+        # second XGS 3300 on 2026-11-17), which every other part of OPNsense shares: its lines are not
+        # taken by program, its PHP errors and configd's lines by path
+        'tags': (),
+        'kernel': None,
+        'paths': ('/OPNsense/TrafficPriority/', '/scripts/trafficpriority/', '/plugins.inc.d/trafficpriority.inc'),
+    },
 ]
 
 # A driver line is a problem when it says something failed. device_printf carries no severity, so
