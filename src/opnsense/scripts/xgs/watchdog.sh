@@ -7,7 +7,7 @@
 #
 #   watchdog.sh start     load the timer's driver and start watchdogd, if the setting is on
 #   watchdog.sh stop      stop watchdogd, which disarms the timer on its way out
-#   watchdog.sh status    one line: armed, or why not
+#   watchdog.sh status    one line: armed, held by another watchdogd, or why not
 #
 # WHY. Both appliances' hosts carry the AMD FCH watchdog timer - `amdsbwd0: <AMD FCH Rev 41h+
 # Watchdog Timer> at iomem 0xfed80b00` attaches on the XGS 3300 and on the XGS 136 alike
@@ -23,7 +23,14 @@
 # the kernel follower's rebuild is over, before the services and the network go; until 2026-11-06 it
 # came first, and the rebuild, ten minutes at most, ran with the timer off.
 #
-# Never fails the caller: a board without the timer, or the setting off, is reported and exits 0.
+# ONE WATCHDOG AT A TIME. A watchdogd this script did not start - os-watchdog's, which runs where that
+# plugin was armed before this script was installed, or one started by hand - is left the timer:
+# start says so and starts none beside it, as os-watchdog does while this script is installed. Two
+# watchdogd patting one timer, each disarming it as it stops, would leave nobody sure whether the host
+# is covered.
+#
+# Never fails the caller: a board without the timer, the setting off, or the timer held by another
+# watchdogd is reported and exits 0.
 
 TIMEOUT=128
 PIDFILE=/var/run/xgs-watchdogd.pid
@@ -37,6 +44,12 @@ wanted() {
 
 running() {
 	[ -s "${PIDFILE}" ] && /bin/kill -0 "$(/bin/cat "${PIDFILE}")" 2>/dev/null
+}
+
+# The process id of a watchdogd that runs while this script's own does not - os-watchdog's, or one
+# started by hand - or nothing when there is none. Asked only once running() has said no.
+other_watchdogd() {
+	/bin/pgrep -x watchdogd 2>/dev/null | /usr/bin/head -1
 }
 
 timer() {
@@ -57,6 +70,11 @@ start)
 	fi
 	if running; then
 		echo "armed already, watchdogd $(/bin/cat "${PIDFILE}")"
+		exit 0
+	fi
+	OTHER=$(other_watchdogd)
+	if [ -n "${OTHER}" ]; then
+		say "the timer is held by another watchdogd, ${OTHER}; left to it"
 		exit 0
 	fi
 	DESC=$(timer)
@@ -84,12 +102,19 @@ stop)
 		/bin/rm -f "${PIDFILE}"
 		say "disarmed"
 	else
-		echo "not armed"
+		OTHER=$(other_watchdogd)
+		if [ -n "${OTHER}" ]; then
+			echo "not armed by this script; the timer is held by another watchdogd, ${OTHER}"
+		else
+			echo "not armed"
+		fi
 	fi
 	;;
 status)
 	if running; then
 		echo "armed: $(/sbin/sysctl -n dev.amdsbwd.0.%desc 2>/dev/null), ${TIMEOUT} s, watchdogd $(/bin/cat "${PIDFILE}")"
+	elif OTHER=$(other_watchdogd) && [ -n "${OTHER}" ]; then
+		echo "held by another watchdogd, ${OTHER}"
 	elif wanted; then
 		echo "not armed (on in the settings)"
 	else

@@ -467,6 +467,12 @@ jobs:
       - name: The shutdown's order and five small hooks
         run: python3 tools/test-hooks.py
 
+      # watchdog.sh against stand-ins for the timer's driver and watchdogd: armed where the setting is on,
+      # once - a second start leaves the running watchdogd as it is - and a timer another watchdogd holds
+      # left to it, none started beside it, which status and stop say. tools/test-watchdog.py.
+      - name: Hardware watchdog
+        run: python3 tools/test-watchdog.py
+
       # tunables-kenv.sh: the configuration's tunables put in the kernel's environment before the driver
       # loads, and those it no longer has taken out of it - not the owner's own (issue 669). With PHP, the
       # script's own PHP too. tools/test-tunables-kenv.py.
