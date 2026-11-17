@@ -12,7 +12,10 @@ the module is built for the kernel in /boot. And the mark of a fall-back the fol
 uninstall.sh reads: written once nextboot took it and not for a try that could not arm one, and taken
 away with the fall-back once the module is rebuilt (the review's U12). And since 2026-11-17 what a whole
 run records for XGS: Updates and os-kernelfollow's status: what it found or did, why, and when it last
-built the module, kept through the runs after it. logger, sysctl, lockf, tar, pciconf, make and date are
+built the module, kept through the runs after it. And since the same day a fall-back the follower armed,
+let go by every run that leaves the module built for the kernel the next boot takes - a rebuild for a
+kernel still staged, a run that finds it already built, the fall-back alone at a reboot - and one
+somebody else armed left as it is. logger, sysctl, lockf, tar, pciconf, make and date are
 stand-ins in copies of the scripts, uname answers the kernel that is running, and every other path is a
 variable they have.
 
@@ -32,6 +35,8 @@ KERNEL = 'FreeBSD 15.1-RELEASE-p6 stable/26.7-n284176-c962f76493b6 SMP'
 OLD = 'FreeBSD 15.1-RELEASE-p4 stable/26.7-n284159-abbbe67a45e7 SMP'
 OLDER = 'FreeBSD 15.1-RELEASE-p2 stable/26.7-n284102-0f1e2d3c4b5a SMP'
 OLDEST = 'FreeBSD 15.1-RELEASE-p1 stable/26.7-n283674-12334a596709 SMP'
+# The kernel of an upgrade after KERNEL, staged and not applied yet
+NEWER = 'FreeBSD 15.1-RELEASE-p7 stable/26.7-n284300-2b4c6d8e0f1a SMP'
 # A kernel of the major release before, as kernel.old is after an upgrade from 26.1 to 26.7 (P19)
 MAJOR_BEFORE = 'FreeBSD 14.3-RELEASE-p16 stable/26.1-n274021-5a6b7c8d9e0f SMP'
 
@@ -587,6 +592,168 @@ class Record(StandIns):
         done = self.follow(PINONLY='1')
         self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
         self.assertFalse(os.path.exists(self.path('result')), self.read('result'))
+
+
+class LetGo(StandIns):
+    """A fall-back to kernel.old the follower armed, let go by every run that leaves the module built for
+    the kernel the next boot takes (2026-11-17, the review of that day): a rebuild for a kernel still
+    staged, a run that finds the module already built for the kernel to follow, and PINONLY=1 at a reboot
+    that finds it built for /boot/kernel. Until then only a rebuild for the kernel in /boot/kernel let it
+    go: after a boot on kernel.old, an upgrade's reboot went to kernel.old again - by then the kernel the
+    apply had moved there, which neither the module nor the one kept beside it is built for. One somebody
+    else armed - a nextboot setting without the follower's mark - stays. nextboot keeps its setting here
+    as nextboot(8) keeps it in /boot/nextboot.conf: kernel="kernel.old" from -k, gone with -D."""
+
+    def setUp(self):
+        super().setUp()
+        self.kernel('kernel.old', OLD)
+        os.makedirs(self.path('src'))
+        for name in ('Makefile', 'octep.c', 'octep.h'):
+            open(self.path('src/' + name), 'w').close()
+        os.makedirs(self.path('sys/sys'))
+        open(self.path('sys/sys/param.h'), 'w').close()
+
+    def nextboot(self):
+        conf = self.path('nextboot.conf')
+        return self.stub('nextboot', "printf '%%s\\n' \"$*\" >> '%s'\ncase $1 in\n-k) echo \"kernel=\\\"$2\\\"\" > '%s' ;;\n"
+                                     "-D) rm -f '%s' ;;\nesac" % (self.path('nextboot.args'), conf, conf))
+
+    def armed_earlier(self, mark=True):
+        """the fall-back armed earlier in this boot: nextboot's setting and, where the follower armed it,
+        its marks - of the fall-back, and of the try"""
+        with open(self.path('nextboot.conf'), 'w') as f:
+            f.write('kernel="kernel.old"\n')
+        if mark:
+            for name in ('armed', 'pinned'):
+                open(self.path(name), 'w').close()
+
+    def stage(self, version):
+        """a kernel an upgrade has fetched and not applied yet: its set and the marker beside it"""
+        self.kernel('staged', version)
+        os.makedirs(self.path('pending'), exist_ok=True)
+        open(self.path('pending/kernel-26.7.10-amd64.txz'), 'w').close()
+        open(self.path('kernel.pending'), 'w').close()
+
+    def apply(self):
+        """the upgrade applies the staged kernel: the one in /boot/kernel becomes kernel.old"""
+        os.replace(self.path('kernel'), self.path('kernel.old'))
+        os.replace(self.path('staged'), self.path('kernel'))
+        os.unlink(self.path('kernel.pending'))
+        os.unlink(self.path('pending/kernel-26.7.10-amd64.txz'))
+
+    def follow(self, sources=True, running=OLD, **more):
+        script = self.copy(SCRIPT, 'kernel-follow.sh', (
+            ('/usr/bin/logger', self.recorder('logger', 'log')),
+            ('/sbin/sysctl', self.stub('sysctl', 'exit 1')),
+            # tar -xOf <set> boot/kernel/kernel: the staged kernel, read out of its set
+            ('/usr/bin/tar', self.stub('tar', "cat '%s'" % self.path('staged'))),
+            ('/var/db/os-xgs-npu/build.log', self.path('build.log')),
+            ('/usr/bin/make', self.stub('make', 'for a in "$@"; do case "$a" in SYSDIR=*) s=${a#SYSDIR=} ;; '
+                                                'esac; done\nln -s "$s/x86" machine\nfor c in *.c; do '
+                                                ': > "${c%.c}.o"; done\n: > octep.ko'))))
+        env = self.env(OCTEP_FOLLOW_LOCKED='1', UNAME=self.stub('uname', 'echo "%s"' % running),
+                       NEXTBOOT=self.nextboot(), **more)
+        if sources:
+            env['FETCH'] = self.stub('fetch-here.sh', 'echo "SYSDIR=%s"' % self.path('sys'))
+        return subprocess.run(['/bin/sh', script], env=env, capture_output=True, text=True, timeout=60)
+
+    def standing(self):
+        """(nextboot's setting, the follower's mark of the fall-back, its mark of a try)"""
+        return (self.read('nextboot.conf'), os.path.exists(self.path('armed')), os.path.exists(self.path('pinned')))
+
+    LET_GO = ('', False, False)
+    ARMED_EARLIER = ('kernel="kernel.old"\n', True, True)
+
+    def test_a_rebuild_for_a_staged_kernel_lets_go_of_the_fall_back_it_armed(self):
+        # a boot on kernel.old: the module built for it, /boot/kernel the newer kernel it is not built for
+        self.module(OLD)
+        self.armed_earlier()
+        self.stage(NEWER)
+        done = self.follow()
+        self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+        self.assertEqual(self.read('modules/octep.ko.kernel').strip(), NEWER)
+        self.assertEqual(self.standing(), self.LET_GO)
+        self.assertEqual(self.read('nextboot.args').splitlines(), ['-D'])
+        self.assertIn('the fall-back to kernel.old this follower armed is cleared; the next boot takes the '
+                      'staged kernel, which the update applies before it', self.read('log'))
+
+    def test_a_rebuild_for_a_staged_kernel_leaves_a_fall_back_somebody_else_armed(self):
+        self.module(OLD)
+        self.armed_earlier(mark=False)
+        self.stage(NEWER)
+        done = self.follow()
+        self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+        self.assertEqual(self.read('modules/octep.ko.kernel').strip(), NEWER)
+        self.assertEqual(self.standing(), ('kernel="kernel.old"\n', False, False))
+        self.assertEqual(self.read('nextboot.args'), '')
+
+    def test_a_run_that_finds_the_module_built_for_the_kernel_in_boot_lets_go_of_the_fall_back_it_armed(self):
+        self.module(KERNEL)
+        self.armed_earlier()
+        done = self.follow(sources=False)
+        self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+        self.assertIn('already matches', done.stdout)
+        self.assertEqual(self.standing(), self.LET_GO)
+        self.assertEqual(self.read('nextboot.args').splitlines(), ['-D'])
+        self.assertEqual(self.read('result').splitlines()[1], 'result=ok')
+
+    def test_a_run_that_finds_the_module_built_for_the_staged_kernel_lets_go_of_the_fall_back_it_armed(self):
+        self.module(NEWER)
+        self.armed_earlier()
+        self.stage(NEWER)
+        done = self.follow(sources=False)
+        self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+        self.assertIn('already matches', done.stdout)
+        self.assertEqual(self.standing(), self.LET_GO)
+        self.assertEqual(self.read('nextboot.args').splitlines(), ['-D'])
+
+    def test_a_run_that_finds_the_module_built_leaves_a_fall_back_somebody_else_armed(self):
+        self.module(KERNEL)
+        self.armed_earlier(mark=False)
+        done = self.follow(sources=False)
+        self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+        self.assertEqual(self.standing(), ('kernel="kernel.old"\n', False, False))
+        self.assertEqual(self.read('nextboot.args'), '')
+
+    def test_the_fall_back_alone_lets_go_of_the_one_it_armed_where_the_module_is_built_for_boot_kernel(self):
+        self.module(KERNEL)
+        self.armed_earlier()
+        done = self.follow(sources=False, PINONLY='1')
+        self.assertEqual(done.returncode, 2, done.stdout + done.stderr)
+        self.assertIn('nothing to arm', done.stdout)
+        self.assertEqual(self.standing(), self.LET_GO)
+        self.assertEqual(self.read('nextboot.args').splitlines(), ['-D'])
+
+    def test_the_fall_back_alone_leaves_one_somebody_else_armed(self):
+        self.module(KERNEL)
+        self.armed_earlier(mark=False)
+        done = self.follow(sources=False, PINONLY='1')
+        self.assertEqual(done.returncode, 2, done.stdout + done.stderr)
+        self.assertEqual(self.standing(), ('kernel="kernel.old"\n', False, False))
+        self.assertEqual(self.read('nextboot.args'), '')
+
+    def test_after_a_boot_on_kernel_old_an_upgrade_s_next_boot_takes_its_kernel(self):
+        """The review's case end to end: a boot on kernel.old whose sources for /boot/kernel cannot be had;
+        an upgrade, its hook's run rebuilding the module for the staged kernel; the kernel applied; and the
+        stop hook's two runs at the reboot. The next boot takes /boot/kernel, the kernel the module is now
+        built for - until 2026-11-17 it took kernel.old, which neither it nor the one kept beside it is."""
+        self.module(OLD)
+        # the boot's first run: no sources for /boot/kernel's kernel, so the fall-back
+        done = self.follow(sources=False)
+        self.assertEqual(done.returncode, 1, done.stdout + done.stderr)
+        self.assertEqual(self.standing(), self.ARMED_EARLIER)
+        # the upgrade: its hook's run builds for the staged kernel
+        self.stage(NEWER)
+        done = self.follow()
+        self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+        self.apply()
+        # the reboot: the stop hook's fall-back alone, then its whole run
+        self.assertEqual(self.follow(PINONLY='1').returncode, 2)
+        done = self.follow()
+        self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+        self.assertEqual(self.read('modules/octep.ko.kernel').strip(), NEWER)
+        self.assertEqual(self.standing(), self.LET_GO)
+        self.assertEqual(self.read('nextboot.args').splitlines()[-1], '-D')
 
 
 if __name__ == '__main__':

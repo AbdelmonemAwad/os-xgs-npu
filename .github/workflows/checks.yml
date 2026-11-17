@@ -137,7 +137,9 @@ jobs:
       # fall-back the follower armed itself marked as its own, and let go of with it once the module is
       # rebuilt. And since 2026-11-17 the record a whole run leaves for XGS: Updates: what it found or
       # did, why, and when it last built the module, kept through the runs after it; none from DRY=1 or
-      # PINONLY=1. tools/test-kernel-follow.py.
+      # PINONLY=1. And since the same day that fall-back let go by every run that leaves the module built
+      # for the kernel the next boot takes - a rebuild for a kernel still staged, a run that finds it
+      # built already, PINONLY=1 at a reboot - and one somebody else armed left. tools/test-kernel-follow.py.
       - name: Kernel follower without sources, and its install
         run: python3 tools/test-kernel-follow.py
 
