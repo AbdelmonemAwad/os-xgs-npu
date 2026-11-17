@@ -19,10 +19,10 @@ to a new image, and the checks fail on one without them.
 |---|---|---|
 | [screens/](screens/) | The web interface, page by page, in English and in Arabic | 108 |
 | [hardware/](hardware/) | Photographs and drawings of the appliances, one folder each | 41 |
-| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 910 |
+| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 911 |
 | [readme/](readme/) | The README's banner and status board, drawn by tools/readme-art.py | 6 |
 
-1104 images in all.
+1105 images in all.
 
 ## The web interface
 
@@ -1775,6 +1775,14 @@ The page: [vlan-mtu-2026-11-06.md](../measurements/vlan-mtu-2026-11-06.md).
 | [09-fix-no-vlan-lif.png](measurements/vlan-mtu-2026-11-06/09-fix-no-vlan-lif.png) | First XGS 3300 with the fix: a VLAN id never seen passes 1,514 and 1,518 at a port of 1,500 | [vlan-mtu-2026-11-06.md](../measurements/vlan-mtu-2026-11-06.md) |
 | [10-fix-both-3300s.png](measurements/vlan-mtu-2026-11-06/10-fix-both-3300s.png) | Both XGS 3300s with the fix, ports at 1,500 | [vlan-mtu-2026-11-06.md](../measurements/vlan-mtu-2026-11-06.md) |
 | [11-fix-top-and-bridge.png](measurements/vlan-mtu-2026-11-06/11-fix-top-and-bridge.png) | A vlan over a bridge member takes 1,500 with the fix; raising the member itself is refused on both families | [vlan-mtu-2026-11-06.md](../measurements/vlan-mtu-2026-11-06.md) |
+
+### measurements/watchdog-install-2026-11-17/ (1)
+
+The page: [watchdog-install-2026-11-17.md](../measurements/watchdog-install-2026-11-17.md).
+
+| image | what it shows | used on |
+|---|---|---|
+| [01-xgs136.png](measurements/watchdog-install-2026-11-17/01-xgs136.png) | The steps on the XGS 136, each with what install.sh said and what holds the timer after | [watchdog-install-2026-11-17.md](../measurements/watchdog-install-2026-11-17.md) |
 
 ### measurements/wireguard-2026-11-11/ (6)
 

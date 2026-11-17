@@ -175,7 +175,8 @@ found it armed and left its watchdogd running, os-watchdog's watchdogd was taken
 hand was left the timer, a dry run was not counted, and a watchdogd started by hand beside one on the
 software timer was refused by the kernel (`setting WDIOC_SETSOFT 0: Invalid argument`); after a
 reboot the stop hook had disarmed the timer and the start hook armed it again, and the last restart
-read as a reboot.
+read as a reboot. The steps on the XGS 136 again, photographed:
+[watchdog-install-2026-11-17](../measurements/watchdog-install-2026-11-17.md).
 
 Measured 2026-10-17: armed, disarmed and armed again by hand on both appliances; then through a
 reboot of the XGS 3300 with nothing done by hand - the stop hook ran at 14:24:53, the start hook at
