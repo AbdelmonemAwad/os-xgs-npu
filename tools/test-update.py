@@ -1107,8 +1107,8 @@ check('... and the scripts beside it, plugins.py among them',
       'install -S -m 0755 "${SRC}/src/opnsense/scripts/xgs/${f}"' in INSTALL_SH, True)
 
 # ---------------------------------------------------------------- the driver's line (svc-4-18, 2026-11-17)
-# Whether the module the kernel follower follows is built for the kernel the next boot takes, said before
-# the reboot that takes it, from the follower's own files alone: the module's stamp, the kernel an update
+# Whether the module the kernel follower follows is built for the kernel the next boot takes, said from
+# the follower's own files alone: the module's stamp, the kernel an update
 # has staged or put in /boot, the follower's record of its last run, its lock, and its mark of a fall-back
 # to kernel.old with nextboot's own setting. Until then nothing on XGS: Updates said it; os-kernelfollow's
 # page did, where installed.

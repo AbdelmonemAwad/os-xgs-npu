@@ -129,9 +129,11 @@
         }
 
         /* The driver's line (2026-11-17): whether the module the kernel follower follows is built for the
-           kernel the next boot takes - one an update of OPNsense has staged, or put in /boot - before the
-           reboot that takes it, and what the follower last found or did. update.py reads it from the
-           follower's own files (driver), so it needs no other plugin. */
+           kernel the next boot takes - one an update of OPNsense has staged, or the one in /boot - and
+           what the follower last found or did. Read before a reboot where there is time for it; System:
+           Firmware's own updates reboot by themselves, and for those it says after the boot what came of
+           it (docs/guide/the-pages.md). update.py reads it from the follower's own files (driver), so it
+           needs no other plugin. */
         const DRIVER = {
             ready: ['text-success', "{{ lang._('Built for the kernel the next boot takes.') }}"],
             previous: ['text-success', "{{ lang._('The build kept beside it is built for the kernel the next boot takes, and the boot loads that one.') }}"],

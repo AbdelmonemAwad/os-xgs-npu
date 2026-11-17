@@ -485,10 +485,10 @@ kernel_staged() {
 
 # ---------------------------------------------------------------- what the last run found, for the pages
 #
-# XGS: Updates says whether the driver is built for the kernel the next boot takes before the owner
-# reboots (scripts/xgs/update.py, driver), and os-kernelfollow's status (its status.py) shows this
-# follower's module beside its own: both read this record of the last whole run - not DRY=1, not
-# PINONLY=1 - written as os-kernelfollow records each of its own modules. One KEY=value a line: the
+# XGS: Updates says whether the driver is built for the kernel the next boot takes, and what this
+# follower last did (scripts/xgs/update.py, driver), and os-kernelfollow's status (its status.py)
+# shows this follower's module beside its own: both read this record of the last whole run - not DRY=1,
+# not PINONLY=1 - written as os-kernelfollow records each of its own modules. One KEY=value a line: the
 # module followed; one word for what was found or done - ok (it matches the kernel to follow), built
 # (rebuilt and installed for it), failed (not, for the reason in message) or skipped (not installed); the
 # line that says why; the kernel followed; when, in seconds since the epoch; and built_at, when this

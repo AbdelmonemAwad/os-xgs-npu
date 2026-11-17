@@ -401,15 +401,31 @@ boot. **Channel** is **Releases** for an appliance in service, or **Test** for e
 This appliance follows releases, and is up to date with the newest.
 
 **Driver**, since 2026-11-17 (not in the photograph): whether the driver module is built for the kernel
-the next boot takes - one an update of OPNsense has staged and not applied yet, or put in `/boot/kernel` -
-so that it can be read before the reboot that takes it. Under it, the kernel the module is built for, the
-kernel the next boot takes, and the kernel follower's last run: what it found or did, when, why where it
-failed, and when it last built the module. It is read from the follower's own files
-(`install/kernel-follow.sh` records each whole run since that day), so it needs no other plugin. Where
-the follower has sent the next boot to `/boot/kernel.old`, the row judges the module against the kernel
-that boot takes there - with an update staged, the one in `/boot/kernel` now, which applying the update
-moves there: built for it, one kernel behind, with the front ports up; not, and that boot refuses it
-unless the build kept beside it is built for it.
+the next boot takes - one an update of OPNsense has staged and not applied yet, or the one in
+`/boot/kernel`. Under it, the kernel the module is built for, the kernel the next boot takes, and the
+kernel follower's last run: what it found or did, when, why where it failed, and when it last built the
+module. It is read from the follower's own files (`install/kernel-follow.sh` records each whole run
+since that day), so it needs no other plugin. Where the follower has sent the next boot to
+`/boot/kernel.old`, the row judges the module against the kernel that boot takes there - with an update
+staged, the one in `/boot/kernel` now, which applying the update moves there: built for it, one kernel
+behind, with the front ports up; not, and that boot refuses it unless the build kept beside it is built
+for it.
+
+The row is read before a reboot only where there is time between a new kernel or driver and that
+reboot: after an update of this project, which leaves the reboot to the owner; after a kernel installed
+from a shell with `opnsense-update`, which asks for a reboot and does not reboot; and in a boot that fell
+back to `/boot/kernel.old`. An update of OPNsense from **System: Firmware** leaves no such time. In
+OPNsense 26.7.9 an update that brings a kernel puts it in `/boot/kernel` and reboots five seconds later
+([update.sh](https://github.com/opnsense/core/blob/26.7.9/src/opnsense/scripts/firmware/update.sh),
+`output_reboot` in
+[config.sh](https://github.com/opnsense/core/blob/26.7.9/src/opnsense/scripts/firmware/config.sh)), and
+an upgrade applies its staged kernel right after the upgrade hooks and reboots
+([upgrade.sh](https://github.com/opnsense/core/blob/26.7.9/src/opnsense/scripts/firmware/upgrade.sh));
+the firmware page says before either that the firewall will reboot. There the kernel follower's hooks do
+the work - the upgrade hook builds the driver for the staged kernel, and the stop hook, first at every
+orderly reboot, sends the next boot to `/boot/kernel.old` where the driver is built for that kernel and
+not for the new one, then builds it for the new one, for ten minutes at most - and the row shows after
+the boot what came of it.
 
 Step by step, each step photographed on the three appliances: [Updating an appliance](updating.md).
 
