@@ -19,10 +19,10 @@ to a new image, and the checks fail on one without them.
 |---|---|---|
 | [screens/](screens/) | The web interface, page by page, in English and in Arabic | 108 |
 | [hardware/](hardware/) | Photographs and drawings of the appliances, one folder each | 41 |
-| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 910 |
+| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 912 |
 | [readme/](readme/) | The README's banner and status board, drawn by tools/readme-art.py | 6 |
 
-1104 images in all.
+1106 images in all.
 
 ## The web interface
 
@@ -565,6 +565,15 @@ The page: [giu-goodbye-2026-10-25.md](../measurements/giu-goodbye-2026-10-25.md)
 | image | what it shows | used on |
 |---|---|---|
 | [02-sfos21-six-reloads-goodbye-first.png](measurements/giu-goodbye-2026-10-25/02-sfos21-six-reloads-goodbye-first.png) | Six reloads of the XGS 136 with npuep.ko a20cdaf6 in /root/giu741: the first unloads the previous build and its PF_DISABLE fails, the command never taken; the other five say "giu: datapath disabled"; each new load has all fourteen ports confirmed and a ping to the second XGS 3300 answered | [giu-goodbye-2026-10-25.md](../measurements/giu-goodbye-2026-10-25.md) |
+
+### measurements/hand-back-2026-11-17/ (2)
+
+The page: [hand-back-2026-11-17.md](../measurements/hand-back-2026-11-17.md).
+
+| image | what it shows | used on |
+|---|---|---|
+| [01-main-stays-dropped.png](measurements/hand-back-2026-11-17/01-main-stays-dropped.png) | hwdrop.py as on main: the stream dropped by the cut stays dropped after its address leaves the list | [hand-back-2026-11-17.md](../measurements/hand-back-2026-11-17.md) |
+| [02-branch-handed-back.png](measurements/hand-back-2026-11-17/02-branch-handed-back.png) | With release_addresses: handed back at the next run of cut.py, and on again at 128 MB each 5 s | [hand-back-2026-11-17.md](../measurements/hand-back-2026-11-17.md) |
 
 ### measurements/heartbeat-2026-10-22/ (12)
 
