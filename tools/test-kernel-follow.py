@@ -10,9 +10,11 @@ hook's line saying so only then. And the upgrade hook, with the new kernel still
 follower cut off at its time limit, and a failed rebuild said to leave the next boot on kernel.old where
 the module is built for the kernel in /boot. And the mark of a fall-back the follower armed itself, which
 uninstall.sh reads: written once nextboot took it and not for a try that could not arm one, and taken
-away with the fall-back once the module is rebuilt (the review's U12). logger, sysctl, lockf, tar,
-pciconf and make are stand-ins in copies of the scripts, uname answers the kernel that is running, and
-every other path is a variable they have.
+away with the fall-back once the module is rebuilt (the review's U12). And since 2026-11-17 what a whole
+run records for XGS: Updates and os-kernelfollow's status: what it found or did, why, and when it last
+built the module, kept through the runs after it. logger, sysctl, lockf, tar, pciconf, make and date are
+stand-ins in copies of the scripts, uname answers the kernel that is running, and every other path is a
+variable they have.
 
     python3 tools/test-kernel-follow.py
 """
@@ -96,7 +98,7 @@ class StandIns(unittest.TestCase):
                    KERNEL_OLD=self.path('kernel.old'), NEXTBOOT=self.path('nextboot'),
                    PENDINGDIR=self.path('pending'), PENDING_KERNEL=self.path('kernel.pending'),
                    PINNED=self.path('pinned'), ARMED=self.path('armed'), SAID=self.path('said'),
-                   LOCK=self.path('lock'),
+                   LOCK=self.path('lock'), RESULT=self.path('result'),
                    BUILDROOT=self.path('build'), SRCTREE=self.path('src'),
                    FETCH=self.stub('fetch-sources.sh', 'echo "no sources for c962f76493b6 here, '
                                    'and NONET=1 forbids fetching them."; exit 1'))
@@ -480,6 +482,111 @@ class Install(StandIns):
         for fails in ('.kernel.new', 'octep.ko.new'):
             done = self.follow(fails=fails, force=True)
             self.assertEqual(self.loads(KERNEL), KERNEL, fails + ': ' + done.stdout + done.stderr)
+
+
+class Record(StandIns):
+    """What a whole run records for XGS: Updates and os-kernelfollow's status (2026-11-17), one KEY=value a line:
+    the module, what the run found or did, why, the kernel it followed, when, and when the follower last
+    built the module - carried from run to run while that module is installed. A cron tick after a kernel
+    update, as in Rebuilt; date answers +%s with the time a test gives it."""
+
+    T = 1763370000
+
+    def setUp(self):
+        super().setUp()
+        self.kernel('kernel.old', OLD)
+        os.makedirs(self.path('src'))
+        for name in ('Makefile', 'octep.c', 'octep.h'):
+            open(self.path('src/' + name), 'w').close()
+        os.makedirs(self.path('sys/sys'))
+        open(self.path('sys/sys/param.h'), 'w').close()
+
+    def at(self, seconds):
+        with open(self.path('now'), 'w') as f:
+            f.write('%d\n' % seconds)
+
+    def previous(self, **fields):
+        """a record an earlier run left"""
+        with open(self.path('result'), 'w') as f:
+            f.write(''.join('%s=%s\n' % kv for kv in fields.items()))
+
+    def recorded(self):
+        return dict(line.split('=', 1) for line in self.read('result').splitlines())
+
+    def follow(self, sources=True, **more):
+        now = self.path('now')
+        script = self.copy(SCRIPT, 'kernel-follow.sh', (
+            ('/usr/bin/logger', self.stub('logger', 'exit 0')),
+            ('/sbin/sysctl', self.stub('sysctl', 'exit 1')),
+            ('/var/db/os-xgs-npu/build.log', self.path('build.log')),
+            ('/bin/date', self.stub('date', 'if [ "$1" = +%%s ] && [ -f \'%s\' ]; then cat \'%s\'\n'
+                                            'else exec /bin/date "$@"; fi' % (now, now))),
+            ('/usr/bin/make', self.stub('make', 'for a in "$@"; do case "$a" in SYSDIR=*) s=${a#SYSDIR=} ;; '
+                                                'esac; done\nln -s "$s/x86" machine\nfor c in *.c; do '
+                                                ': > "${c%.c}.o"; done\n: > octep.ko'))))
+        env = self.env(OCTEP_FOLLOW_LOCKED='1', UNAME=self.stub('uname', 'echo "%s"' % OLD),
+                       NEXTBOOT=self.recorder('nextboot', 'nextboot.args'), **more)
+        if sources:
+            env['FETCH'] = self.stub('fetch-here.sh', 'echo "SYSDIR=%s"' % self.path('sys'))
+        return subprocess.run(['/bin/sh', script], env=env, capture_output=True, text=True, timeout=60)
+
+    def test_a_rebuild_is_recorded_with_its_time_and_keeps_it_through_the_runs_after_it(self):
+        self.module(OLD)
+        self.at(self.T)
+        done = self.follow()
+        self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+        self.assertEqual(self.recorded(), {'module': self.path('modules/octep.ko'), 'result': 'built',
+                                           'message': 'rebuilt for the kernel to follow', 'target': KERNEL,
+                                           'at': str(self.T), 'built_at': str(self.T)})
+        self.at(self.T + 300)
+        done = self.follow()
+        self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+        self.assertEqual(self.recorded(), {'module': self.path('modules/octep.ko'), 'result': 'ok',
+                                           'message': 'matches the kernel to follow', 'target': KERNEL,
+                                           'at': str(self.T + 300), 'built_at': str(self.T)})
+
+    def test_a_rebuild_that_fails_says_why_and_keeps_the_time_of_the_last_build(self):
+        self.module(OLD)
+        self.previous(module=self.path('modules/octep.ko'), result='ok', message='matches the kernel to follow',
+                      target=OLD, at=self.T - 600, built_at=self.T - 86400)
+        self.at(self.T)
+        done = self.follow(sources=False)
+        self.assertEqual(done.returncode, 1, done.stdout + done.stderr)
+        self.assertEqual(self.recorded(), {'module': self.path('modules/octep.ko'), 'result': 'failed',
+                                           'message': 'could not get kernel sources for ' + KERNEL,
+                                           'target': KERNEL, 'at': str(self.T), 'built_at': str(self.T - 86400)})
+        # and the rest of the run as it was: the fall-back armed ahead of the fetch, and again once it failed
+        self.assertEqual(self.read('nextboot.args').splitlines(), ['-k kernel.old', '-k kernel.old'])
+
+    def test_a_record_of_another_module_lends_it_no_build_time(self):
+        self.module(KERNEL)
+        self.previous(module=self.path('modules/npuep.ko'), result='built', message='rebuilt for the kernel to follow',
+                      target=KERNEL, at=self.T - 600, built_at=self.T - 600)
+        self.at(self.T)
+        done = self.follow()
+        self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+        rec = self.recorded()
+        self.assertEqual((rec['module'], rec['result'], rec['at'], rec['built_at']),
+                         (self.path('modules/octep.ko'), 'ok', str(self.T), ''))
+
+    def test_no_module_installed_is_recorded_as_skipped_with_no_build_time(self):
+        self.previous(module=self.path('modules/octep.ko'), result='built', message='rebuilt for the kernel to follow',
+                      target=OLD, at=self.T - 600, built_at=self.T - 600)
+        self.at(self.T)
+        done = self.follow()
+        self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+        rec = self.recorded()
+        self.assertEqual((rec['result'], rec['message'], rec['built_at']), ('skipped', 'not installed', ''))
+
+    def test_a_dry_run_and_the_fall_back_alone_record_nothing(self):
+        self.module(KERNEL)
+        done = self.follow(DRY='1')
+        self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+        self.assertIn('already matches', done.stdout)
+        self.module(OLD)
+        done = self.follow(PINONLY='1')
+        self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+        self.assertFalse(os.path.exists(self.path('result')), self.read('result'))
 
 
 if __name__ == '__main__':

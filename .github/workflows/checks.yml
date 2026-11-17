@@ -135,14 +135,17 @@ jobs:
       # sources, a step of its install failing: what bringup.sh would load on either kernel is a module
       # built for it or nothing, never one built for the other (the review of 2026-11-06, P15). And a
       # fall-back the follower armed itself marked as its own, and let go of with it once the module is
-      # rebuilt. tools/test-kernel-follow.py.
+      # rebuilt. And since 2026-11-17 the record a whole run leaves for XGS: Updates: what it found or
+      # did, why, and when it last built the module, kept through the runs after it; none from DRY=1 or
+      # PINONLY=1. tools/test-kernel-follow.py.
       - name: Kernel follower without sources, and its install
         run: python3 tools/test-kernel-follow.py
 
       # uninstall.sh run whole in a made-up root, rm and rmdir refusing anything outside it: no module of
       # either driver left, the previous ones and their stamps included, and the fall-back to kernel.old
       # taken back only where the follower marked it as its own - not while os-kernelfollow holds a mark
-      # of its own, nor once nextboot names another kernel. tools/test-uninstall.py.
+      # of its own, nor once nextboot names another kernel. And the follower's record of its last run
+      # gone with it (2026-11-17). tools/test-uninstall.py.
       - name: The uninstall and the follower's fall-back
         run: python3 tools/test-uninstall.py
 

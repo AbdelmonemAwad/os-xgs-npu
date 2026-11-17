@@ -455,6 +455,39 @@ kernel_staged() {
 	return 1
 }
 
+# ---------------------------------------------------------------- what the last run found, for the pages
+#
+# XGS: Updates says whether the driver is built for the kernel the next boot takes before the owner
+# reboots (scripts/xgs/update.py, driver), and os-kernelfollow's status (its status.py) shows this
+# follower's module beside its own: both read this record of the last whole run - not DRY=1, not
+# PINONLY=1 - written as os-kernelfollow records each of its own modules. One KEY=value a line: the
+# module followed; one word for what was found or done - ok (it matches the kernel to follow), built
+# (rebuilt and installed for it), failed (not, for the reason in message) or skipped (not installed); the
+# line that says why; the kernel followed; when, in seconds since the epoch; and built_at, when this
+# follower last built and installed the module, carried from one record to the next while that module is
+# installed. Until 2026-11-17 a run left its lines in the log and the build's own log alone, and nothing
+# said when the module was built. Written beside and moved into place, and never a reason for a run to
+# stop.
+: ${RESULT:=/var/db/os-xgs-npu/kernel-follow.result}
+recorded() {
+	/usr/bin/sed -n "s/^$1=//p" "${RESULT}" 2>/dev/null | /usr/bin/tail -1
+}
+record() {
+	[ "${DRY}" = "1" ] && return 0
+	rec_at=$(/bin/date +%s)
+	rec_built=
+	if [ "$1" = built ]; then
+		rec_built=${rec_at}
+	elif [ -f "${MODULE}" ] && [ "$(recorded module)" = "${MODULE}" ]; then
+		rec_built=$(recorded built_at)
+	fi
+	{ /bin/mkdir -p "${RESULT%/*}" &&
+	    printf 'module=%s\nresult=%s\nmessage=%s\ntarget=%s\nat=%s\nbuilt_at=%s\n' "${MODULE}" "$1" "$2" \
+	        "${TARGET}" "${rec_at}" "${rec_built}" > "${RESULT}.new" &&
+	    /bin/mv "${RESULT}.new" "${RESULT}"; } 2>/dev/null
+	return 0
+}
+
 WHERE=
 TARGET=$(kernel_staged || true)
 if [ -n "${TARGET}" ]; then
@@ -469,6 +502,7 @@ if [ -z "${TARGET}" ]; then
 	# Not a failure worth shouting about on a machine that is not this appliance, but this script
 	# cannot do its job without it.
 	warn "cannot read a kernel version from a staged set or from ${KERNEL}; nothing to follow"
+	record failed "cannot read a kernel version from a staged set or from ${KERNEL}"
 	exit 0
 fi
 
@@ -503,12 +537,14 @@ note "module stamp   : ${STAMP:-<none>}"
 # entry runs wherever the plugin is - so without FORCE that is the end of it.
 if [ ! -f "${MODULE}" ] && [ "${FORCE}" != "1" ]; then
 	note "no ${MODULE} - the driver is not installed on this machine, nothing to follow"
+	record skipped "not installed"
 	said
 	exit 0
 fi
 
 if [ "${STAMP}" = "${TARGET}" ] && [ "${FORCE}" != "1" ]; then
 	note "the module already matches the kernel to follow - nothing to do"
+	record ok "matches the kernel to follow"
 	said
 	prune_old_sources
 	exit 0
@@ -547,6 +583,7 @@ fi
 if [ ! -x "${FETCH}" ]; then
 	warn "no ${FETCH} - cannot fetch kernel sources, so the module cannot follow"
 	no_fallback "the next boot will refuse it and the front ports will not come up"
+	record failed "no ${FETCH}, so no kernel sources"
 	exit 1
 fi
 
@@ -582,6 +619,7 @@ if [ -z "${SYSDIR}" ] || [ ! -f "${SYSDIR}/sys/param.h" ]; then
 	echo "${FETCHLOG}" | /usr/bin/tail -8 | while read -r l; do warn "  ${l}"; done
 	warn "the module cannot be built for ${TARGET} here"
 	no_fallback "the next boot will refuse the module and the front ports will not come up"
+	record failed "could not get kernel sources for ${TARGET}"
 	exit 1
 fi
 log "building against ${SYSDIR}"
@@ -609,12 +647,14 @@ log "building against ${SYSDIR}"
 # source file, because "make exited 0" is what the old version trusted.
 if [ ! -f "${SRCTREE}/Makefile" ]; then
 	warn "no driver sources at ${SRCTREE} - run install.sh from os-xgs-npu to lay them down"
+	record failed "no driver sources at ${SRCTREE}"
 	exit 1
 fi
 
 /bin/rm -rf "${BUILDROOT}"
 if ! /bin/mkdir -p "${BUILDROOT}"; then
 	warn "cannot create ${BUILDROOT}; ${MODULE} is untouched"
+	record failed "cannot create ${BUILDROOT}"
 	exit 1
 fi
 /bin/cp "${SRCTREE}"/Makefile "${SRCTREE}"/*.c "${SRCTREE}"/*.h "${BUILDROOT}/"
@@ -633,10 +673,12 @@ if ! ( cd "${BUILDROOT}" && /usr/bin/make SYSDIR="${SYSDIR}" ) > "${BUILDLOG}" 2
 	    while read -r l; do warn "  ${l}"; done
 	warn "the whole log is ${BUILDLOG}"
 	pin_old_kernel || true
+	record failed "the build failed; the whole log is ${BUILDLOG}"
 	exit 1
 fi
 if [ ! -f "${BUILDROOT}/${DRIVER}.ko" ]; then
 	warn "the build reported success but produced no ${DRIVER}.ko; ${MODULE} is untouched"
+	record failed "the build reported success but produced no ${DRIVER}.ko"
 	exit 1
 fi
 NSRC=$(/bin/ls "${BUILDROOT}"/*.c | /usr/bin/wc -l | /usr/bin/tr -d ' ')
@@ -644,6 +686,7 @@ NOBJ=$(/bin/ls "${BUILDROOT}"/*.o 2>/dev/null | /usr/bin/wc -l | /usr/bin/tr -d 
 if [ "${NOBJ}" -lt "${NSRC}" ]; then
 	warn "only ${NOBJ} of ${NSRC} sources were compiled; refusing to install a partial build"
 	pin_old_kernel || true
+	record failed "only ${NOBJ} of ${NSRC} sources were compiled"
 	exit 1
 fi
 MLINK=$(/usr/bin/readlink "${BUILDROOT}/machine" 2>/dev/null || true)
@@ -652,6 +695,7 @@ case "${MLINK}" in
 *)
 	warn "the machine headers came from ${MLINK:-nowhere}, not from ${SYSDIR}; refusing to install"
 	pin_old_kernel || true
+	record failed "the machine headers came from ${MLINK:-nowhere}, not from ${SYSDIR}"
 	exit 1
 	;;
 esac
@@ -685,6 +729,7 @@ fi
 /bin/mkdir -p "${MODDIR}"
 if ! /bin/cp "${BUILDROOT}/${DRIVER}.ko" "${MODULE}.new"; then
 	warn "could not write ${MODULE}.new; ${MODULE} is untouched"
+	record failed "could not write ${MODULE}.new"
 	exit 1
 fi
 # AND NO MODULE IN PLACE UNDER ANOTHER KERNEL'S STAMP. The module and its stamp are two files, and no
@@ -707,6 +752,7 @@ if [ "$(/bin/cat "${MODULE}.kernel.new" 2>/dev/null)" != "${TARGET}" ] ||
     ! { printf '%s\n' "${HOLD}" > "${MODULE}.kernel.hold" && /bin/mv "${MODULE}.kernel.hold" "${MODULE}.kernel"; } 2>/dev/null; then
 	/bin/rm -f "${MODULE}.new" "${MODULE}.kernel.new" "${MODULE}.kernel.hold"
 	warn "could not write the stamp of the new module; ${MODULE} is untouched"
+	record failed "could not write the stamp of the new module"
 	exit 1
 fi
 if ! /bin/mv "${MODULE}.new" "${MODULE}"; then
@@ -715,9 +761,11 @@ if ! /bin/mv "${MODULE}.new" "${MODULE}"; then
 		/bin/rm -f "${MODULE}.kernel"
 	elif ! { printf '%s\n' "${STAMP}" > "${MODULE}.kernel.hold" && /bin/mv "${MODULE}.kernel.hold" "${MODULE}.kernel"; } 2>/dev/null; then
 		warn "could not move ${MODULE}.new into place, nor put back the stamp of the module that is there: it is stamped for no kernel now, so the bring-up refuses it and loads ${MODULE}.prev where that is built for the kernel booted"
+		record failed "could not move ${MODULE}.new into place, nor put back the stamp of the module there"
 		exit 1
 	fi
 	warn "could not move ${MODULE}.new into place; ${MODULE} is untouched and still matches ${STAMP:-<nothing>}"
+	record failed "could not move ${MODULE}.new into place"
 	exit 1
 fi
 if ! /bin/mv "${MODULE}.kernel.new" "${MODULE}.kernel"; then
@@ -725,6 +773,7 @@ if ! /bin/mv "${MODULE}.kernel.new" "${MODULE}.kernel"; then
 		/bin/rm -f "${MODULE}.kernel.new"
 	else
 		warn "${MODULE} is the module built for ${TARGET}, and its stamp could not be put beside it: it is stamped for no kernel, so the bring-up refuses it and loads ${MODULE}.prev where that is built for the kernel booted"
+		record failed "the new module's stamp could not be put beside it"
 		exit 1
 	fi
 fi
@@ -733,6 +782,7 @@ fi
 
 log "installed ${MODULE}, stamped for the kernel the next boot will use"
 log "the front ports will come up on that boot without anything else being done"
+record built "rebuilt for the kernel to follow"
 
 # And if an earlier failure had sent the next boot to kernel.old, it no longer has to.
 STAMP=${TARGET}
