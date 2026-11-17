@@ -17,8 +17,18 @@ nothing for it, and the pf kill cuts it as before.
     hwdrop.drop_addresses(contains)  connections with either end in contains (an `in` test)
     hwdrop.drop_ends(groups)         connections both of whose ends, (address, port), are in one of
                                      groups - each the ends of one pf state being cut
+    hwdrop.release_addresses(contains)
+                                     connections with either end in contains handed back to the host -
+                                     for a cut that is over: an address gone from its list
 
-Each returns how many connections the coprocessor took DROP for. Never raises.
+drop_addresses and drop_ends return how many connections the coprocessor took DROP for,
+release_addresses how many the driver handed back. None of them raises.
+
+A connection dropped on the coprocessor stays there while its sender goes on sending: until
+2026-11-17 nothing took it back when its address left its list, the list was unchosen or the plugin
+that cut it was turned off - flows.py release hands one back by its index alone, from the Flows page
+(REMAINING A15). release_addresses does it by address, for the plugin that knows which addresses
+have gone (os-blocklists' cut.py).
 
 A verdict names its connection by index and revision, both as the table printed them: "<index> 1
 <rev>". Until 2026-11-06 it went by the index alone, and the table is read once, before the writes -
@@ -49,6 +59,11 @@ TABLES = (('dev.octep.0.dp.flow_table', 'dev.octep.0.dp.flow_verdict', flows.oct
            'dev.octep.0.dp.flow_table_from', 'dev.octep.0.dp.flow_table_page'),
           ('dev.npuep.0.flow.flows', 'dev.npuep.0.flow.verdict', flows.npuep,
            'dev.npuep.0.flow.flows_from', 'dev.npuep.0.flow.flows_page'))
+# Each driver's hand-back, by the verdict sysctl table() names: what flows.py release writes,
+# "<index> <rev>", and the words it answers with.
+RELEASE = {'dev.octep.0.dp.flow_verdict': 'dev.octep.0.dp.flow_release',
+           'dev.npuep.0.flow.verdict': 'dev.npuep.0.flow.release'}
+HANDED_BACK = 'connection %d handed back'
 # The first page's last line when the table holds more than it prints, on both families.
 MORE = re.compile(r'^and \d+ more connections, not printed$', re.M)
 # A page's first line, which names the place it was printed from, and its last, which names the
@@ -213,6 +228,39 @@ def drop(match, path=CONFIG):
 def drop_addresses(contains, path=CONFIG):
     return drop(lambda f: any(a is not None and a in contains
                               for a in (address(f.get('src', '')), address(f.get('dst', '')))), path)
+
+
+def release(match):
+    """Hand back to the host every connection match names, by its index and the revision the table
+    printed beside it, as flows.py release writes them: a driver refuses an index that has gone to
+    another connection since, and changes nothing. The host keeps it until pf lets its state go, and
+    pf decides its frames again - a connection whose state a cut killed meets the rules as a new one.
+    "Cut in hardware" is not asked: a connection dropped while it was on is handed back once it is off
+    as well. A connection match names that was never dropped goes back too, and is made again in
+    hardware once pf has a settled state for it."""
+    match = once(match)
+    oid, conns = table()
+    if oid is None or oid not in RELEASE:
+        return 0
+    back = 0
+    for f in conns:
+        try:
+            if not match(f):
+                continue
+            subprocess.run([SYSCTL, '%s=%d %d' % (RELEASE[oid], f['id'], f['rev'])], capture_output=True,
+                           timeout=10)
+            said = subprocess.run([SYSCTL, '-n', RELEASE[oid]], capture_output=True, text=True,
+                                  errors='replace', timeout=10).stdout
+        except (KeyError, TypeError, ValueError, OSError, subprocess.SubprocessError):
+            continue
+        if said.startswith(HANDED_BACK % f['id']):
+            back += 1
+    return back
+
+
+def release_addresses(contains):
+    return release(lambda f: any(a is not None and a in contains
+                                 for a in (address(f.get('src', '')), address(f.get('dst', '')))))
 
 
 def drop_ends(groups, path=CONFIG):
