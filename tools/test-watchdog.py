@@ -45,8 +45,8 @@ POSIX = os.path.exists('/bin/sh') and sys.platform != 'win32'
 TIMER = 'AMD FCH Rev 41h+ Watchdog Timer'
 HEADING = 'echo "== hardware watchdog =="'
 STANDS_IN = ('/usr/sbin/watchdogd', '/sbin/kldstat', '/sbin/kldload', '/sbin/sysctl', '/usr/bin/logger',
-             '/bin/pgrep')
-MOVED = {'/var/run/xgs-watchdogd.pid', '/conf/config.xml'}
+             '/bin/pgrep', '/bin/ps')
+MOVED = {'/var/run/xgs-watchdogd.pid', '/var/run/os-watchdog.pid', '/conf/config.xml'}
 # What the copy may still run of the machine's own: the shell, reads, kill on the stand-ins' pids and rm
 # on the moved pidfile.
 LEFT = {'/bin/sh', '/bin/kill', '/bin/cat', '/bin/rm', '/usr/bin/sed', '/usr/bin/head', '/dev/null'}
@@ -71,6 +71,7 @@ class Bench(unittest.TestCase):
         self.calls = self.path('calls')
         self.pidfile = self.path('xgs-watchdogd.pid')
         self.others = []
+        self.orphans = []
         open(self.calls, 'w').close()
         self.config('<opnsense><system/></opnsense>')		# the page never saved
         self.timer(True)
@@ -88,6 +89,11 @@ class Bench(unittest.TestCase):
                                '\tshift\ndone\n/bin/sleep 300 < /dev/null > /dev/null 2>&1 9>&- &\n'
                                'echo $! > "$pidfile"\necho $! >> "%s"'
                   % (self.calls, self.path('fail'), self.path('default.pid'), self.path('daemons')))
+        # ps -o args= -p PID: the arguments a test gave a watchdogd it started (args), else a plain one
+        self.stub('ps', 'pid=$4\nline=$(grep "^${pid} " "%s" 2>/dev/null | head -1)\n'
+                        'if [ -n "$line" ]; then echo "${line#* }"; else echo "/usr/sbin/watchdogd -t 128 -s 1"; fi'
+                  % self.path('args'))
+        self.oswd = self.path('os-watchdog.pid')
         self.copy = self.patched(self.path('watchdog.sh'))
 
     def tearDown(self):
@@ -99,6 +105,11 @@ class Bench(unittest.TestCase):
         for other in self.others:
             other.kill()
             other.wait()
+        for pid in self.orphans:
+            try:
+                os.kill(pid, signal.SIGKILL)
+            except OSError:
+                pass
         self.tmp.cleanup()
 
     def path(self, name):
@@ -119,6 +130,7 @@ class Bench(unittest.TestCase):
         for real in STANDS_IN:
             text = text.replace(real, self.path(os.path.basename(real)))
         text = text.replace('/var/run/xgs-watchdogd.pid', self.pidfile)
+        text = text.replace('/var/run/os-watchdog.pid', self.oswd)
         text = text.replace('/conf/config.xml', self.path('config.xml'))
         with open(where, 'w', encoding='utf-8', newline='\n') as handle:
             handle.write(text)
@@ -176,13 +188,28 @@ class Bench(unittest.TestCase):
             return False
         return True
 
-    def another(self):
-        """A watchdogd this script did not start: a sleep pgrep names as one."""
-        other = subprocess.Popen(['sleep', '300'])
-        self.others.append(other)
+    def another(self, args=None, oswatchdog=False):
+        """A watchdogd this script did not start: a sleep pgrep names as one; args, what ps says it was
+        started with; oswatchdog, os-watchdog's own (its pidfile names it)."""
+        if oswatchdog:
+            # started as watchdogd -I starts itself: in the background, its parent gone, so that once
+            # stopped it is reaped at once and pgrep no longer names it
+            pid = int(subprocess.run(['/bin/sh', '-c', 'sleep 300 < /dev/null > /dev/null 2>&1 & echo $!'],
+                                     capture_output=True, text=True, timeout=10).stdout)
+            self.orphans.append(pid)
+        else:
+            other = subprocess.Popen(['sleep', '300'])
+            self.others.append(other)
+            pid = other.pid
         with open(self.path('others'), 'a', encoding='utf-8') as handle:
-            handle.write('%d\n' % other.pid)
-        return other.pid
+            handle.write('%d\n' % pid)
+        if args:
+            with open(self.path('args'), 'a', encoding='utf-8') as handle:
+                handle.write('%d %s\n' % (pid, args))
+        if oswatchdog:
+            with open(self.oswd, 'w', encoding='utf-8') as handle:
+                handle.write('%d\n' % pid)
+        return pid
 
     def run_script(self, *args):
         done = subprocess.run(['/bin/sh', self.copy] + list(args), capture_output=True, text=True,
@@ -264,6 +291,35 @@ class Script(Bench):
         self.assertEqual(self.run_script('stop'), ['disarmed'])
         self.assertFalse(self.alive(pid))
         self.assertEqual(self.run_script('status'), ['not armed (on in the settings)'])
+
+    def test_os_watchdogs_own_is_taken_over(self):
+        """os-watchdog armed first: its Apply would stop its watchdogd and, standing aside while this
+        script is installed, start none - so start takes the timer over."""
+        ow = self.another(oswatchdog=True)
+        self.assertEqual(self.run_script('status'),
+                         ["held by os-watchdog's watchdogd %d; the next start takes it over" % ow])
+        self.assertEqual(self.run_script('stop'),
+                         ["not armed by this script; os-watchdog's watchdogd %d holds the timer" % ow])
+        said = self.run_script('start')
+        pid = self.ours()
+        self.assertEqual(said, ["os-watchdog's watchdogd %d stopped: while this script is installed it arms the "
+                                'timer' % ow, 'armed: %s, 128 s, watchdogd %d' % (TIMER, pid)])
+        self.assertFalse(self.alive(ow))
+        self.assertFalse(os.path.exists(self.oswd))
+        self.assertEqual(len(self.called('watchdogd')), 1)
+
+    def test_os_watchdogs_pidfile_of_a_dead_daemon_is_not_a_holder(self):
+        open(self.oswd, 'w').write('999999\n')
+        said = self.run_script('start')
+        self.assertEqual(said, ['armed: %s, 128 s, watchdogd %d' % (TIMER, self.ours())])
+
+    def test_a_dry_run_watchdogd_does_not_hold_the_timer(self):
+        self.another(args='/usr/sbin/watchdogd -n -t 128')
+        self.assertEqual(self.run_script('start'), ['armed: %s, 128 s, watchdogd %d' % (TIMER, self.ours())])
+
+    def test_a_software_timer_watchdogd_does_not_hold_it(self):
+        self.another(args='/usr/sbin/watchdogd --softtimeout -t 128')
+        self.assertEqual(self.run_script('start'), ['armed: %s, 128 s, watchdogd %d' % (TIMER, self.ours())])
 
     def test_a_watchdogd_that_did_not_start_is_said(self):
         open(self.path('fail'), 'w').close()
@@ -359,6 +415,16 @@ class Order(unittest.TestCase):
         exits = [i for i, line in enumerate(self.lines) if re.match(r'\s*exit\b', line) and i > hooks]
         self.assertTrue(exits)
         self.assertEqual([i for i in exits if i < arms], [])
+
+    def test_right_after_its_hooks(self):
+        """Armed before anything else this run does after the hooks - the driver's build, the copies - so
+        that no command failing under set -e after them leaves the host unwatched."""
+        arms = self.at('watchdog.sh" start')
+        hooks = self.at('rc.syshook.d/stop/23-xgs-watchdog" "${PREFIX}')
+        between = [line for line in self.lines[hooks + 1:arms] if line.strip()]
+        self.assertEqual(between, ['rm -f "${PREFIX}/etc/rc.syshook.d/stop/05-xgs-watchdog"',
+                                   'echo "== hardware watchdog =="', 'DOGRC=0'])
+        self.assertLess(arms, self.at('copy_driver()'))
 
 
 if __name__ == '__main__':

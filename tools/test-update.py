@@ -248,7 +248,7 @@ if up.fcntl is not None:
 # U17: install.sh inherited the lock under whatever number it had, and devd and cron, which it
 # restarts, held it after the update - the next one was refused as already running. The lock is held
 # on descriptor 9, and install.sh starts every daemon with 9 closed - since 2026-11-17 the host's
-# watchdogd too, which watchdog.sh start runs at the end of the install.
+# watchdogd too, which watchdog.sh start runs as soon as its hooks are in place.
 if up.fcntl is not None:
     nine_free = not up.fd_open(up.LOCK_FD)
     held = up.take_apply_lock()

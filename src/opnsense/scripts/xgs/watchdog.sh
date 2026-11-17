@@ -25,17 +25,20 @@
 # it as well, at the end of every install and update, so an appliance is watched before its first
 # reboot (since 2026-11-17), and the settings' Apply starts or stops it.
 #
-# ONE WATCHDOG AT A TIME. A watchdogd this script did not start - os-watchdog's, which runs where that
-# plugin was armed before this script was installed, or one started by hand - is left the timer:
-# start says so and starts none beside it, as os-watchdog does while this script is installed. Two
-# watchdogd patting one timer, each disarming it as it stops, would leave nobody sure whether the host
-# is covered.
+# ONE WATCHDOG AT A TIME. os-watchdog stands aside while this script is installed, so a watchdogd it
+# started before this script came - where that plugin was armed first - is taken over: start stops it
+# and arms its own, since an Apply on os-watchdog's page would stop it and, standing aside, start none,
+# and the host would go unwatched. Any other watchdogd - one started by hand - is left the timer: start
+# says so and starts none beside it; two watchdogd patting one timer, each disarming it as it stops,
+# would leave nobody sure whether the host is covered. One that cannot hold the timer is not counted:
+# -n (a dry run never opens it) or --softtimeout (the kernel's software timer only).
 #
 # Never fails the caller: a board without the timer, the setting off, or the timer held by another
 # watchdogd is reported and exits 0.
 
 TIMEOUT=128
 PIDFILE=/var/run/xgs-watchdogd.pid
+OSWD_PIDFILE=/var/run/os-watchdog.pid
 CONF=/conf/config.xml
 
 wanted() {
@@ -48,10 +51,27 @@ running() {
 	[ -s "${PIDFILE}" ] && /bin/kill -0 "$(/bin/cat "${PIDFILE}")" 2>/dev/null
 }
 
-# The process id of a watchdogd that runs while this script's own does not - os-watchdog's, or one
-# started by hand - or nothing when there is none. Asked only once running() has said no.
+# os-watchdog's watchdogd, while it runs, or nothing.
+oswatchdog() {
+	[ -s "${OSWD_PIDFILE}" ] || return 0
+	p=$(/bin/cat "${OSWD_PIDFILE}")
+	/bin/kill -0 "${p}" 2>/dev/null && echo "${p}"
+	return 0
+}
+
+# The process id of a watchdogd that holds the timer while this script's own does not - one started by
+# hand - or nothing when there is none: not os-watchdog's (taken over), nor one that cannot hold it (-n,
+# --softtimeout). Asked only once running() has said no.
 other_watchdogd() {
-	/bin/pgrep -x watchdogd 2>/dev/null | /usr/bin/head -1
+	ow=$(oswatchdog)
+	for p in $(/bin/pgrep -x watchdogd 2>/dev/null); do
+		[ "${p}" = "${ow}" ] && continue
+		case " $(/bin/ps -o args= -p "${p}" 2>/dev/null) " in
+		*" -n "*|*" --softtimeout"*) continue ;;
+		esac
+		echo "${p}"
+		return 0
+	done
 }
 
 timer() {
@@ -73,6 +93,17 @@ start)
 	if running; then
 		echo "armed already, watchdogd $(/bin/cat "${PIDFILE}")"
 		exit 0
+	fi
+	OW=$(oswatchdog)
+	if [ -n "${OW}" ]; then
+		/bin/kill -TERM "${OW}" 2>/dev/null
+		n=0
+		while /bin/kill -0 "${OW}" 2>/dev/null && [ ${n} -lt 50 ]; do
+			sleep 0.1
+			n=$((n + 1))
+		done
+		/bin/rm -f "${OSWD_PIDFILE}"
+		say "os-watchdog's watchdogd ${OW} stopped: while this script is installed it arms the timer"
 	fi
 	OTHER=$(other_watchdogd)
 	if [ -n "${OTHER}" ]; then
@@ -104,8 +135,11 @@ stop)
 		/bin/rm -f "${PIDFILE}"
 		say "disarmed"
 	else
+		OW=$(oswatchdog)
 		OTHER=$(other_watchdogd)
-		if [ -n "${OTHER}" ]; then
+		if [ -n "${OW}" ]; then
+			echo "not armed by this script; os-watchdog's watchdogd ${OW} holds the timer"
+		elif [ -n "${OTHER}" ]; then
 			echo "not armed by this script; the timer is held by another watchdogd, ${OTHER}"
 		else
 			echo "not armed"
@@ -115,6 +149,8 @@ stop)
 status)
 	if running; then
 		echo "armed: $(/sbin/sysctl -n dev.amdsbwd.0.%desc 2>/dev/null), ${TIMEOUT} s, watchdogd $(/bin/cat "${PIDFILE}")"
+	elif OW=$(oswatchdog) && [ -n "${OW}" ]; then
+		echo "held by os-watchdog's watchdogd ${OW}; the next start takes it over"
 	elif OTHER=$(other_watchdogd) && [ -n "${OTHER}" ]; then
 		echo "held by another watchdogd, ${OTHER}"
 	elif wanted; then
