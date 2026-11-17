@@ -166,8 +166,10 @@ host. os-watchdog stands aside while this plugin is installed, so its watchdogd 
 plugin armed the timer first - is stopped and this plugin's started in its place: left running, it
 would be stopped by the next Apply on its page, and none started after it. A watchdogd started by hand
 keeps the timer: `watchdog.sh` says it is held by another watchdogd and starts none beside it, at boot,
-at Apply and at install alike. One that cannot hold the timer - `-n`, a dry run, or `--softtimeout`,
-the kernel's software timer only - is not counted. Tested away from the appliances
+at Apply and at install alike. One started with `-n`, a dry run that never opens the timer, is not
+counted. One on the kernel's software timer only (`--softtimeout`) is left to as well, and said to leave
+the hardware timer unarmed: the kernel refuses to switch between the two timers while either is armed,
+so a watchdogd started beside it would only fail. Tested away from the appliances
 (`tools/test-watchdog.py`); not yet run on one.
 
 Measured 2026-10-17: armed, disarmed and armed again by hand on both appliances; then through a

@@ -22,16 +22,20 @@
 # couple of minutes after somebody asked it to power off. The stop hook (23-xgs-watchdog) comes once
 # the kernel follower's rebuild is over, before the services and the network go; until 2026-11-06 it
 # came first, and the rebuild, ten minutes at most, ran with the timer off. install/install.sh starts
-# it as well, at the end of every install and update, so an appliance is watched before its first
-# reboot (since 2026-11-17), and the settings' Apply starts or stops it.
+# it as well, on every install and update as soon as this script and its hooks are in place, so an
+# appliance is watched before its first reboot (since 2026-11-17), and the settings' Apply starts or
+# stops it.
 #
 # ONE WATCHDOG AT A TIME. os-watchdog stands aside while this script is installed, so a watchdogd it
 # started before this script came - where that plugin was armed first - is taken over: start stops it
 # and arms its own, since an Apply on os-watchdog's page would stop it and, standing aside, start none,
 # and the host would go unwatched. Any other watchdogd - one started by hand - is left the timer: start
 # says so and starts none beside it; two watchdogd patting one timer, each disarming it as it stops,
-# would leave nobody sure whether the host is covered. One that cannot hold the timer is not counted:
-# -n (a dry run never opens it) or --softtimeout (the kernel's software timer only).
+# would leave nobody sure whether the host is covered. One started with -n is not counted: a dry run
+# never opens the timer. One on the kernel's software timer only (--softtimeout) leaves the hardware
+# timer unarmed, and is said to; it is left to all the same, since the kernel refuses to switch between
+# the software and the hardware timer while either is armed, and a watchdogd started beside it would
+# only fail.
 #
 # Never fails the caller: a board without the timer, the setting off, or the timer held by another
 # watchdogd is reported and exits 0.
@@ -59,19 +63,37 @@ oswatchdog() {
 	return 0
 }
 
+# A watchdogd started with -n, alone or among -d, -S and -w: a dry run, which never opens the timer.
+dry_run() (
+	set -f
+	for a in $(/bin/ps -o args= -p "$1" 2>/dev/null); do
+		case "${a}" in
+		-*[!dnSw]*) ;;
+		-*n*) exit 0 ;;
+		esac
+	done
+	exit 1
+)
+
 # The process id of a watchdogd that holds the timer while this script's own does not - one started by
-# hand - or nothing when there is none: not os-watchdog's (taken over), nor one that cannot hold it (-n,
-# --softtimeout). Asked only once running() has said no.
+# hand - or nothing when there is none: not os-watchdog's (taken over), nor a dry run. Asked only once
+# running() has said no.
 other_watchdogd() {
 	ow=$(oswatchdog)
 	for p in $(/bin/pgrep -x watchdogd 2>/dev/null); do
 		[ "${p}" = "${ow}" ] && continue
-		case " $(/bin/ps -o args= -p "${p}" 2>/dev/null) " in
-		*" -n "*|*" --softtimeout"*) continue ;;
-		esac
+		dry_run "${p}" && continue
 		echo "${p}"
 		return 0
 	done
+}
+
+# How that watchdogd is named: one on the kernel's software timer only leaves the hardware timer unarmed.
+named() {
+	case " $(/bin/ps -o args= -p "$1" 2>/dev/null) " in
+	*" --softtimeout "*) echo "another watchdogd, $1, on the kernel's software timer only - the hardware timer is not armed" ;;
+	*) echo "another watchdogd, $1" ;;
+	esac
 }
 
 timer() {
@@ -107,7 +129,7 @@ start)
 	fi
 	OTHER=$(other_watchdogd)
 	if [ -n "${OTHER}" ]; then
-		say "the timer is held by another watchdogd, ${OTHER}; left to it"
+		say "the timer is held by $(named "${OTHER}"); left to it"
 		exit 0
 	fi
 	DESC=$(timer)
@@ -140,7 +162,7 @@ stop)
 		if [ -n "${OW}" ]; then
 			echo "not armed by this script; os-watchdog's watchdogd ${OW} holds the timer"
 		elif [ -n "${OTHER}" ]; then
-			echo "not armed by this script; the timer is held by another watchdogd, ${OTHER}"
+			echo "not armed by this script; the timer is held by $(named "${OTHER}")"
 		else
 			echo "not armed"
 		fi
@@ -152,7 +174,7 @@ status)
 	elif OW=$(oswatchdog) && [ -n "${OW}" ]; then
 		echo "held by os-watchdog's watchdogd ${OW}; the next start takes it over"
 	elif OTHER=$(other_watchdogd) && [ -n "${OTHER}" ]; then
-		echo "held by another watchdogd, ${OTHER}"
+		echo "held by $(named "${OTHER}")"
 	elif wanted; then
 		echo "not armed (on in the settings)"
 	else

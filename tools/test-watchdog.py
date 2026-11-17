@@ -317,9 +317,23 @@ class Script(Bench):
         self.another(args='/usr/sbin/watchdogd -n -t 128')
         self.assertEqual(self.run_script('start'), ['armed: %s, 128 s, watchdogd %d' % (TIMER, self.ours())])
 
-    def test_a_software_timer_watchdogd_does_not_hold_it(self):
-        self.another(args='/usr/sbin/watchdogd --softtimeout -t 128')
+    def test_a_dry_run_among_other_flags(self):
+        self.another(args='/usr/sbin/watchdogd -dn -t 128 -I /var/run/wd-n.pid')
         self.assertEqual(self.run_script('start'), ['armed: %s, 128 s, watchdogd %d' % (TIMER, self.ours())])
+
+    def test_an_argument_with_an_n_is_not_a_dry_run(self):
+        other = self.another(args='/usr/sbin/watchdogd -t 128 -I /var/run/wd-n.pid --softtimeout-action log')
+        self.assertEqual(self.run_script('start'), ['the timer is held by another watchdogd, %d; left to it' % other])
+
+    def test_a_software_timer_watchdogd_is_left_to_and_said(self):
+        """The kernel refuses a watchdogd of the other kind beside it while it is armed: left to, and said to
+        leave the hardware timer unarmed."""
+        other = self.another(args='/usr/sbin/watchdogd --softtimeout -t 128')
+        held = "another watchdogd, %d, on the kernel's software timer only - the hardware timer is not armed" % other
+        self.assertEqual(self.run_script('start'), ['the timer is held by %s; left to it' % held])
+        self.assertEqual(self.run_script('status'), ['held by %s' % held])
+        self.assertEqual(self.run_script('stop'), ['not armed by this script; the timer is held by %s' % held])
+        self.assertEqual(self.called('watchdogd'), [])
 
     def test_a_watchdogd_that_did_not_start_is_said(self):
         open(self.path('fail'), 'w').close()
