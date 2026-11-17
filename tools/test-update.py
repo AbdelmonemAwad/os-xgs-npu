@@ -1109,8 +1109,9 @@ check('... and the scripts beside it, plugins.py among them',
 # ---------------------------------------------------------------- the driver's line (svc-4-18, 2026-11-17)
 # Whether the module the kernel follower follows is built for the kernel the next boot takes, said before
 # the reboot that takes it, from the follower's own files alone: the module's stamp, the kernel an update
-# has staged or put in /boot, the follower's record of its last run, its lock and its mark of a fall-back
-# to kernel.old. Until then nothing on XGS: Updates said it; os-kernelfollow's page did, where installed.
+# has staged or put in /boot, the follower's record of its last run, its lock, and its mark of a fall-back
+# to kernel.old with nextboot's own setting. Until then nothing on XGS: Updates said it; os-kernelfollow's
+# page did, where installed.
 DRV = tempfile.mkdtemp(prefix='test-update-driver-')
 up.FOLLOWED = tuple(os.path.join(DRV, 'modules', name) for name in ('octep.ko', 'npuep.ko'))
 up.KERNEL = os.path.join(DRV, 'kernel', 'kernel')
@@ -1119,6 +1120,7 @@ up.WORKPREFIX = os.path.join(DRV, 'update')
 up.FOLLOW_RESULT = os.path.join(DRV, 'kernel-follow.result')
 up.FOLLOW_LOCK = os.path.join(DRV, 'octep-follow.lock')
 up.FOLLOW_ARMED = os.path.join(DRV, 'octep-follow.armed')
+up.NEXTBOOT_CONF = os.path.join(DRV, 'nextboot.conf')
 up.BANNERS = os.path.join(DRV, 'banners.json')
 K_OLD = 'FreeBSD 15.1-RELEASE-p4 stable/26.7-n284159-abbbe67a45e7 SMP'     # running; kernel.old after the update
 K_NEW = KERNEL                                                             # the update's, in /boot
@@ -1153,6 +1155,12 @@ def fresh(boot=K_OLD, stamp=K_OLD, module=OCTEP_KO):
 
 def recorded(**fields):
     put(up.FOLLOW_RESULT, ''.join('%s=%s\n' % kv for kv in fields.items()))
+
+
+def armed(setting='kernel="kernel.old"\n'):
+    """the follower's fall-back to kernel.old: its mark, and nextboot's setting as nextboot(8) writes it"""
+    put(up.FOLLOW_ARMED, '')
+    put(up.NEXTBOOT_CONF, setting)
 
 
 def stage(version, name='boot/kernel/kernel'):
@@ -1199,14 +1207,59 @@ if up.fcntl is not None:
         check('... a run of the follower holding its lock: being built', (line()[0], up.driver()['following']),
               ('building', True))
     check('... its lock given back: not', (line()[0], up.driver()['following']), ('stale', False))
-put(up.FOLLOW_ARMED, '')
+armed()
 kernel_file(up.KERNEL_OLD, K_OLD)
 d = up.driver()
 check('... the follower has sent the next boot to kernel.old, which the module is built for',
-      (d['state'], d['kernel_old']), ('behind', K_OLD))
+      (d['state'], d['fallback'], d['kernel_old']), ('behind', True, K_OLD))
 kernel_file(up.KERNEL_OLD, K_OTHER)
 check('... its mark, and kernel.old another kernel than the module\'s: not', line()[0], 'stale')
+os.unlink(up.NEXTBOOT_CONF)
+check('... its mark, nextboot\'s setting taken back since (nextboot -D): not sent there',
+      (line()[0], up.driver()['fallback'], up.driver()['kernel_old']), ('stale', False, None))
 os.unlink(up.FOLLOW_ARMED)
+
+# THE FALL-BACK READ BEFORE 'READY' (the review of 2026-11-17): the module built for the kernel in /boot,
+# and the next boot sent to kernel.old all the same - the follower's mark, and nextboot's setting
+fresh(boot=K_NEW, stamp=K_NEW)
+kernel_file(up.KERNEL_OLD, K_OLD)
+armed()
+d = up.driver()
+check('svc-4-18: the next boot sent to kernel.old, the module built for /boot/kernel and not for it: not ready',
+      (d['state'], d['fallback'], d['next'], d['kernel_old']), ('stale', True, K_NEW, K_OLD))
+put(OCTEP_KO + '.prev', 'ELF')
+put(OCTEP_KO + '.prev.kernel', K_OLD + '\n')
+check('... the module kept beside it built for kernel.old: the boot loads that one', line()[0], 'previous')
+armed('nextboot_enable="NO" \nkernel="kernel.old"\n')
+check('... a setting the loader has spent, its first line rewritten (UFS): ready',
+      (line()[0], up.driver()['fallback']), ('ready', False))
+os.unlink(up.FOLLOW_ARMED)
+put(up.NEXTBOOT_CONF, 'kernel="kernel.old"\n')
+check('... nextboot\'s setting without the follower\'s mark - as one outlives the boot it steered on ZFS: ready',
+      (line()[0], up.driver()['fallback']), ('ready', False))
+
+# WITH A SET STAGED, the kernel the fall-back boots is the one in /boot/kernel now: applying the set moves
+# it to kernel.old (the review of 2026-11-17). A boot on kernel.old, the module built for it, then an update.
+fresh(boot=K_NEW, stamp=K_OLD)
+kernel_file(up.KERNEL_OLD, K_OLD)
+armed()
+check('svc-4-18: a boot on kernel.old, sent there again: behind', (line()[0], up.driver()['kernel_old']),
+      ('behind', K_OLD))
+stage(K_STAGED)
+d = up.driver()
+check('... an update staged and its rebuild failed: kernel.old at the reboot is the kernel in /boot/kernel '
+      'now, which the module is not built for', (d['state'], d['where'], d['kernel_old']), ('stale', 'staged', K_NEW))
+put(OCTEP_KO + '.kernel', K_NEW + '\n')
+check('... the module built for the kernel in /boot/kernel now: behind', (line()[0], up.driver()['kernel_old']),
+      ('behind', K_NEW))
+put(OCTEP_KO + '.kernel', K_STAGED + '\n')
+put(OCTEP_KO + '.prev', 'ELF')
+put(OCTEP_KO + '.prev.kernel', K_OLD + '\n')
+check('... rebuilt for the staged kernel, the fall-back still standing: not ready', line()[0], 'stale')
+os.unlink(up.FOLLOW_ARMED)
+os.unlink(up.NEXTBOOT_CONF)
+check('... the fall-back let go, as the follower lets it go since the same day: ready', line(),
+      ('ready', K_STAGED, K_STAGED, 'staged'))
 
 # the follower has rebuilt it
 fresh(boot=K_NEW, stamp=K_NEW)

@@ -135,7 +135,7 @@
         const DRIVER = {
             ready: ['text-success', "{{ lang._('Built for the kernel the next boot takes.') }}"],
             previous: ['text-success', "{{ lang._('The build kept beside it is built for the kernel the next boot takes, and the boot loads that one.') }}"],
-            behind: ['text-warning', "{{ lang._('Not built yet for the kernel in /boot/kernel: the kernel follower has sent the next boot to /boot/kernel.old, which it is built for - one kernel behind, with the front ports up.') }}"],
+            behind: ['text-warning', "{{ lang._('Not built yet for the newest kernel: the kernel follower has sent the next boot to /boot/kernel.old, which it is built for - one kernel behind, with the front ports up.') }}"],
             building: ['text-info', "{{ lang._('Not built for the kernel the next boot takes yet; the kernel follower is building it now.') }}"],
             stale: ['text-danger', "{{ lang._('Not built for the kernel the next boot takes.') }}"],
             unstamped: ['text-warning', "{{ lang._('No kernel stamp beside it, so nothing tells which kernel it is built for.') }}"],
@@ -169,10 +169,12 @@
             if (!d.module) {
                 return;
             }
-            /* sent to kernel.old by the follower, the next boot takes that one, which the module is built for */
-            const behind = d.state === 'behind';
-            const next = behind ? d.kernel_old : d.next;
-            const where = behind ? '/boot/kernel.old' : (d.where === 'staged' ? "{{ lang._('staged by an update, not applied yet') }}" :
+            /* sent to /boot/kernel.old by the follower, the next boot takes the kernel there - with an update
+               staged, the one in /boot/kernel now, which applying it moves there (update.py, driver) - in
+               every state, not only where the module is built for it */
+            const fallen = !!d.fallback;
+            const next = fallen ? d.kernel_old : d.next;
+            const where = fallen ? '/boot/kernel.old' : (d.where === 'staged' ? "{{ lang._('staged by an update, not applied yet') }}" :
                 (d.next === d.running ? "{{ lang._('the same kernel') }}" : "{{ lang._('installed, not booted yet') }}"));
             const $kernels = $('<div class="text-muted"/>')
                 .append(document.createTextNode("{{ lang._('Built for') }}: ")).append(kernel_token(d.stamp))

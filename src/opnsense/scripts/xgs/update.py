@@ -1060,6 +1060,13 @@ FOLLOW_LOCK = '/var/run/octep-follow.lock'
 # The follower's mark of a fall-back to /boot/kernel.old it armed itself (ARMED in kernel-follow.sh),
 # in /var/run, which a boot empties: a mark there is of a fall-back still to come.
 FOLLOW_ARMED = '/var/run/octep-follow.armed'
+# And nextboot's own setting, which nextboot(8) writes - kernel="kernel.old" while that fall-back
+# stands - and nextboot -D takes away (FreeBSD's sbin/reboot/reboot.c). Read with the mark, as
+# uninstall.sh reads the two: the mark says the follower armed it in this boot, the setting that nothing
+# has taken it back since. Neither alone: on ZFS the loader keeps its one shot in the pool and cannot
+# write this file, which outlives the boot it steered, OPNsense's boot running no nextboot -D; on UFS
+# the loader rewrites its first line to nextboot_enable="NO" (stand/lua/config.lua, checkNextboot).
+NEXTBOOT_CONF = '/boot/nextboot.conf'
 # The banner a kernel carries, as uname -v says it and the follower's strings(1) reads it: FreeBSD's
 # version and its stable/ token, together (os-kernelfollow's status.py reads it the same way).
 BANNER = re.compile(rb'FreeBSD [0-9][^\x00\n]*?stable/[^ \x00\n]+[^\x00\n]*')
@@ -1153,29 +1160,53 @@ def number(text):
     return int(text) if (text or '').isdigit() else None
 
 
+def fallen_back():
+    """Whether the follower has sent the next boot to /boot/kernel.old: its mark, and nextboot's setting
+    still naming kernel.old - not one the loader has spent, its first line rewritten to
+    nextboot_enable="NO"."""
+    if not os.path.exists(FOLLOW_ARMED):
+        return False
+    setting = read_text(NEXTBOOT_CONF)
+    return (not setting.startswith('nextboot_enable="NO"') and
+            re.search(r'^\s*kernel="kernel\.old"', setting, re.M) is not None)
+
+
 def driver():
     """The driver's line: the module the follower follows, the kernel it is built for (stamp), the kernel
-    the next boot takes (next, and where it was read: 'staged' or 'boot'), the kernel running, whether a
-    run of the follower holds its lock now (following), what its last whole run found or did (last:
-    result, message, target, at) and when it last built the module (built_at) - these two only from a
-    record of this module. And state, which the page says in words:
+    the next boot takes as the follower reads it (next, and where it was read: 'staged' or 'boot'), the
+    kernel running, whether a run of the follower holds its lock now (following), whether the follower
+    has sent the next boot to /boot/kernel.old (fallback) and then the kernel that boot takes there
+    (kernel_old), what its last whole run found or did (last: result, message, target, at) and when it
+    last built the module (built_at) - these two only from a record of this module. And state, which the
+    page says in words:
 
         none        no module of this project is installed
         unread      the kernel the next boot takes cannot be read
         unstamped   the module has no stamp, so nothing tells which kernel it is built for
-        ready       it is built for the kernel the next boot takes
+        behind      the follower has sent the next boot to /boot/kernel.old, and the module is built for
+                    the kernel that boot takes there - one kernel behind, with the front ports up
+        ready       it is built for the kernel the next boot takes, and no fall-back sends it elsewhere
         previous    it is not, and the module kept beside it, .prev, is - the boot loads that one then
                     (octep's bringup.sh, npuep's early/07-npuep)
-        behind      it is not, and the follower has sent the next boot to /boot/kernel.old, which it is
-                    built for (its mark; kernel_old says which kernel that is)
         building    it is not, and a run of the follower is under way
         stale       it is not, and none of the above
+
+    THE FALL-BACK FIRST (2026-11-17, the review of that day). Until then the stamp was compared with the
+    staged kernel or /boot/kernel - 'ready', then 'previous' - before the follower's mark was looked at,
+    and 'behind' with /boot/kernel.old as it is now. After a boot on kernel.old and an upgrade whose hook
+    rebuilt the module for the staged kernel, the line said 'ready' of a boot the follower still sent to
+    kernel.old; and with its rebuild failed, 'behind' - which the apply had made untrue: it moves the
+    kernel in /boot/kernel to kernel.old, and the module was built for neither. Where the fall-back stands
+    (fallen_back), the kernel the next boot takes is the one in /boot/kernel.old at the reboot: with a set
+    staged, the one in /boot/kernel now, as the follower's pin_old_kernel() reads it; otherwise the one in
+    /boot/kernel.old now. The module is judged against that kernel, and 'ready' is said only where no
+    fall-back stands.
     """
     module = next((path for path in FOLLOWED if os.path.exists(path)), None)
     nxt, where = next_kernel()
     line = {'module': module, 'stamp': None, 'next': nxt, 'where': where, 'running': running_kernel(),
-            'following': lock_held(FOLLOW_LOCK), 'kernel_old': None, 'last': None, 'built_at': None,
-            'state': 'none'}
+            'following': lock_held(FOLLOW_LOCK), 'fallback': False, 'kernel_old': None, 'last': None,
+            'built_at': None, 'state': 'none'}
     if module is None:
         return line
     stamp = read_text(module + '.kernel').strip() or None
@@ -1184,18 +1215,21 @@ def driver():
         line['last'] = {'result': record.get('result'), 'message': record.get('message'),
                         'target': record.get('target'), 'at': number(record.get('at'))}
         line['built_at'] = number(record.get('built_at'))
-    if os.path.exists(FOLLOW_ARMED):
-        line['kernel_old'] = banner(KERNEL_OLD, kernel_file)
-    if not nxt:
+    boot = nxt
+    if fallen_back():
+        line['fallback'] = True
+        line['kernel_old'] = boot = banner(KERNEL if where == 'staged' else KERNEL_OLD, kernel_file)
+    prev = read_text(module + '.prev.kernel').strip() if os.path.exists(module + '.prev') else None
+    if not boot:
         state = 'unread'
     elif not stamp:
         state = 'unstamped'
-    elif stamp == nxt:
-        state = 'ready'
-    elif read_text(module + '.prev.kernel').strip() == nxt and os.path.exists(module + '.prev'):
-        state = 'previous'
-    elif line['kernel_old'] and stamp == line['kernel_old']:
+    elif stamp == boot and line['fallback']:
         state = 'behind'
+    elif stamp == boot:
+        state = 'ready'
+    elif prev == boot:
+        state = 'previous'
     elif line['following']:
         state = 'building'
     else:

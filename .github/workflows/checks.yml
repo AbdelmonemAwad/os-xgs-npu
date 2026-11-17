@@ -248,7 +248,9 @@ jobs:
       # twenty, a page at a time, to the installed one. And since 2026-11-17 the Status tab's driver
       # line: whether the module is built for the kernel the next boot takes - staged by an update or
       # in /boot - and what the kernel follower last did, from its own files; each state with its
-      # words on the page.
+      # words on the page. The follower's fall-back to kernel.old read first - its mark with
+      # nextboot's setting - and judged, with an update staged, against the kernel the update moves
+      # to kernel.old.
       - name: The updater
         run: python3 tools/test-update.py
 

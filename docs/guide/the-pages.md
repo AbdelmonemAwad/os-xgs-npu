@@ -406,8 +406,10 @@ so that it can be read before the reboot that takes it. Under it, the kernel the
 kernel the next boot takes, and the kernel follower's last run: what it found or did, when, why where it
 failed, and when it last built the module. It is read from the follower's own files
 (`install/kernel-follow.sh` records each whole run since that day), so it needs no other plugin. Where
-the follower has sent the next boot to `/boot/kernel.old`, which the module is built for, the row says
-so: one kernel behind, with the front ports up.
+the follower has sent the next boot to `/boot/kernel.old`, the row judges the module against the kernel
+that boot takes there - with an update staged, the one in `/boot/kernel` now, which applying the update
+moves there: built for it, one kernel behind, with the front ports up; not, and that boot refuses it
+unless the build kept beside it is built for it.
 
 Step by step, each step photographed on the three appliances: [Updating an appliance](updating.md).
 
