@@ -21,7 +21,9 @@
 # only when it is asked to stop: a timer left armed through a halt would reset the appliance a
 # couple of minutes after somebody asked it to power off. The stop hook (23-xgs-watchdog) comes once
 # the kernel follower's rebuild is over, before the services and the network go; until 2026-11-06 it
-# came first, and the rebuild, ten minutes at most, ran with the timer off.
+# came first, and the rebuild, ten minutes at most, ran with the timer off. install/install.sh starts
+# it as well, at the end of every install and update, so an appliance is watched before its first
+# reboot (since 2026-11-17), and the settings' Apply starts or stops it.
 #
 # ONE WATCHDOG AT A TIME. A watchdogd this script did not start - os-watchdog's, which runs where that
 # plugin was armed before this script was installed, or one started by hand - is left the timer:

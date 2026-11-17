@@ -469,8 +469,11 @@ jobs:
 
       # watchdog.sh against stand-ins for the timer's driver and watchdogd: armed where the setting is on,
       # once - a second start leaves the running watchdogd as it is - and a timer another watchdogd holds
-      # left to it, none started beside it, which status and stop say. tools/test-watchdog.py.
-      - name: Hardware watchdog
+      # left to it, none started beside it; and install.sh arming it at the end of every install and
+      # update since 2026-11-17, so an appliance is watched before its first reboot: once its script and
+      # hooks are in place, with descriptor 9 closed, the install going on whatever watchdog.sh answers.
+      # tools/test-watchdog.py.
+      - name: Hardware watchdog, at boot and at install
         run: python3 tools/test-watchdog.py
 
       # tunables-kenv.sh: the configuration's tunables put in the kernel's environment before the driver

@@ -164,9 +164,9 @@ install -m 0755 "${SRC}/src/opnsense/scripts/xgs/switch.sh" "${PREFIX}/opnsense/
 install -d -m 0755 "${PREFIX}/etc/rc.syshook.d/start" "${PREFIX}/share/os-xgs-npu"
 install -m 0755 "${SRC}/src/etc/rc.syshook.d/start/09-xgs-switch-jumbo" "${PREFIX}/etc/rc.syshook.d/start/09-xgs-switch-jumbo"
 # The host's hardware watchdog: armed at the end of every boot when the setting says so, and
-# disarmed at shutdown once the kernel follower's rebuild is over (scripts/xgs/watchdog.sh). The hook
-# was 05-xgs-watchdog until 2026-11-06, first of the stop hooks; that one goes, or it would still
-# disarm the timer before the rebuild.
+# disarmed at shutdown once the kernel follower's rebuild is over (scripts/xgs/watchdog.sh); armed
+# at the end of this install as well, below. The hook was 05-xgs-watchdog until 2026-11-06, first of
+# the stop hooks; that one goes, or it would still disarm the timer before the rebuild.
 install -d -m 0755 "${PREFIX}/etc/rc.syshook.d/stop"
 install -m 0755 "${SRC}/src/etc/rc.syshook.d/start/08-xgs-watchdog" "${PREFIX}/etc/rc.syshook.d/start/08-xgs-watchdog"
 install -m 0755 "${SRC}/src/etc/rc.syshook.d/stop/23-xgs-watchdog" "${PREFIX}/etc/rc.syshook.d/stop/23-xgs-watchdog"
@@ -952,6 +952,30 @@ case "${BOARD}" in
     kldstat -q -n superio || kldload superio 2>/dev/null || true
     ;;
 esac
+
+# ---------------------------------------------------------------- hardware watchdog
+
+# The host's hardware watchdog armed now, as the start hook 08-xgs-watchdog arms it at the end of
+# every boot, so that an appliance installed or updated is watched before its first reboot. Until
+# 2026-11-17 an install left it to that hook, and rc.syshook finds a level's hooks once, before it runs
+# any: the hook a first install puts in place - by hand on a running OPNsense, or from an image's
+# first-boot hook, itself a start hook - ran only at the next boot, and the host went unwatched until
+# then. watchdog.sh start does what the hook does and says what it did: armed; armed already - an
+# update, whose watchdogd runs on as it is; switched off in the settings; no timer on this host; the
+# timer held by another watchdogd, left to it; watchdogd not started. Whatever it answers, and if it
+# cannot be run at all, that is said and the install goes on. With descriptor 9 closed, as every
+# daemon this script starts is: an update's lock is held on it.
+echo "== hardware watchdog =="
+DOGRC=0
+DOG=$(/bin/sh "${PREFIX}/opnsense/scripts/xgs/watchdog.sh" start 2>&1 9>&-) || DOGRC=$?
+if [ -n "${DOG}" ]; then
+    printf '%s\n' "${DOG}" | sed 's/^/   /'
+fi
+if [ "${DOGRC}" != 0 ]; then
+    echo "   watchdog.sh start ended with status ${DOGRC}; the install goes on"
+elif [ -z "${DOG}" ]; then
+    echo "   watchdog.sh start said nothing"
+fi
 
 echo
 echo "== installed =="

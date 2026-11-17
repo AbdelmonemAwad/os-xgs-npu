@@ -3,21 +3,29 @@
 # SPDX-License-Identifier: BSD-2-Clause
 # Copyright (c) 2026 Abdelmonem Awad <eg2@live.com>
 #
-"""scripts/xgs/watchdog.sh, away from the appliance.
+"""scripts/xgs/watchdog.sh, and install/install.sh arming the host's hardware watchdog with it, away
+from the appliance.
 
   - start: the timer armed where the setting is on - as it is in a configuration whose page was never
     saved - its driver loaded and watchdogd started with -t 128 -s 1 and the script's own pidfile, and
     said; nothing armed where the setting says 0 (a watchdogd of the script's own stopped), or where no
-    timer attached; once only - a second start leaves the running watchdogd as it is; a timer another
-    watchdogd holds - os-watchdog's, or one started by hand - left to it, none started beside it; a
-    watchdogd that did not start said. Each exits 0.
+    timer attached; once only - a second start, as an update's install makes, leaves the running
+    watchdogd as it is; a timer another watchdogd holds - os-watchdog's, or one started by hand - left
+    to it, none started beside it; a watchdogd that did not start said. Each exits 0.
   - status and stop name the other watchdogd that holds the timer, and stop leaves it running.
+  - install.sh: watchdog.sh start once, after the script and both its hooks are in place and before
+    every exit the run can end on after them; with descriptor 9 closed, which an update's lock is held
+    on (scripts/xgs/update.py); its answer said under its own heading, and the install going on under
+    its own set -e whatever the script answers - an error, nothing at all, or no script. And the real
+    script through those lines twice, an install and then an update: the timer armed once, by a
+    watchdogd that does not hold descriptor 9.
 
 watchdog.sh runs in a copy whose kldstat, kldload, sysctl, pgrep, logger and watchdogd are stand-ins
 in a temporary directory, its pidfile and config.xml moved there too; any other path it names outside
 the few read-only tools it uses stops the test. The watchdogd stand-in leaves a sleep running for the
 daemon and writes its process id where -I says; pgrep lists those still alive and the sleeps the test
-starts for another watchdogd; all of them are killed at the end. /bin/sh, so on Linux.
+starts for another watchdogd; all of them are killed at the end. install.sh's lines are cut from it
+and run with PREFIX in that directory. /bin/sh, so on Linux.
 
     python3 tools/test-watchdog.py
 """
@@ -32,14 +40,26 @@ import unittest
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.join(HERE, '..')
 SCRIPT = os.path.join(ROOT, 'src', 'opnsense', 'scripts', 'xgs', 'watchdog.sh')
+INSTALL = os.path.join(ROOT, 'install', 'install.sh')
 POSIX = os.path.exists('/bin/sh') and sys.platform != 'win32'
 TIMER = 'AMD FCH Rev 41h+ Watchdog Timer'
+HEADING = 'echo "== hardware watchdog =="'
 STANDS_IN = ('/usr/sbin/watchdogd', '/sbin/kldstat', '/sbin/kldload', '/sbin/sysctl', '/usr/bin/logger',
              '/bin/pgrep')
 MOVED = {'/var/run/xgs-watchdogd.pid', '/conf/config.xml'}
-# What the copy may still run of the machine's own: reads, the shell, and kill on the stand-ins' pids.
+# What the copy may still run of the machine's own: the shell, reads, kill on the stand-ins' pids and rm
+# on the moved pidfile.
 LEFT = {'/bin/sh', '/bin/kill', '/bin/cat', '/bin/rm', '/usr/bin/sed', '/usr/bin/head', '/dev/null'}
 PATHS = re.compile(r'(?<![\w.}$/-])(/(?:usr/)?s?bin/[\w.-]+|/(?:var|conf|dev|boot|etc)/[\w./-]*)')
+
+
+def installer_lines():
+    """install.sh's lines that arm the watchdog: its heading, and the paragraph it opens."""
+    with open(INSTALL, encoding='utf-8') as handle:
+        lines = handle.read().splitlines()
+    start = lines.index(HEADING)
+    end = lines.index('', start)
+    return '\n'.join(lines[start:end]) + '\n'
 
 
 @unittest.skipUnless(POSIX, 'watchdog.sh runs under /bin/sh')
@@ -249,6 +269,96 @@ class Script(Bench):
         open(self.path('fail'), 'w').close()
         self.assertEqual(self.run_script('start'), ['watchdogd did not start; the timer is not armed'])
         self.assertEqual(len(self.called('watchdogd')), 1)
+
+
+class Installer(Bench):
+
+    def setUp(self):
+        super().setUp()
+        self.prefix = self.path('prefix')
+        self.script = os.path.join(self.prefix, 'opnsense', 'scripts', 'xgs', 'watchdog.sh')
+        os.makedirs(os.path.dirname(self.script))
+
+    def stand_in(self, body):
+        """watchdog.sh as a stand-in that notes how it was called, and whether it was given descriptor 9."""
+        with open(self.script, 'w', newline='\n') as handle:
+            handle.write('#!/bin/sh\necho "watchdog.sh $*" >> "%s"\n'
+                         'if (true >&9) 2>/dev/null; then echo "9 open" >> "%s"; else echo "9 closed" >> "%s"; fi\n'
+                         '%s\n' % (self.calls, self.calls, self.calls, body))
+
+    def install(self):
+        """The install's lines, under the install's own set -e, with descriptor 9 open as an update has
+        it, and a line after them that says the install went on."""
+        text = 'set -e\nexec 9> "%s"\n%secho "the install goes on"\n' % (self.path('lock'), installer_lines())
+        done = subprocess.run(['/bin/sh', '-c', text], env=dict(os.environ, PREFIX=self.prefix),
+                              capture_output=True, text=True, errors='replace', timeout=60)
+        self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+        said = done.stdout.splitlines()
+        self.assertEqual((said[0], said[-1]), ('== hardware watchdog ==', 'the install goes on'), said)
+        return said[1:-1]
+
+    def test_watchdog_sh_start_once_with_nine_closed(self):
+        self.stand_in('echo "armed: %s, 128 s, watchdogd 4242"' % TIMER)
+        self.assertEqual(self.install(), ['   armed: %s, 128 s, watchdogd 4242' % TIMER])
+        self.assertEqual(self.called(), ['watchdog.sh start', '9 closed'])
+
+    def test_every_line_it_says_is_said(self):
+        self.stand_in('echo "the hardware watchdog is switched off in the settings"\necho "not armed"')
+        self.assertEqual(self.install(), ['   the hardware watchdog is switched off in the settings',
+                                          '   not armed'])
+
+    def test_an_error_is_said_and_the_install_goes_on(self):
+        self.stand_in('echo "watchdog.sh: something went wrong" >&2\nexit 3')
+        self.assertEqual(self.install(), ['   watchdog.sh: something went wrong',
+                                          '   watchdog.sh start ended with status 3; the install goes on'])
+
+    def test_no_answer_is_said(self):
+        self.stand_in('exit 0')
+        self.assertEqual(self.install(), ['   watchdog.sh start said nothing'])
+
+    def test_no_script_at_all(self):
+        said = self.install()
+        self.assertEqual(len(said), 2, said)
+        self.assertTrue(said[0].startswith('   ') and 'watchdog.sh' in said[0], said)
+        self.assertRegex(said[1], r'^   watchdog\.sh start ended with status [1-9][0-9]*; the install goes on$')
+
+    def test_an_install_then_an_update_arm_it_once(self):
+        self.patched(self.script)
+        said = self.install()
+        pid = self.ours()
+        self.assertEqual(said, ['   armed: %s, 128 s, watchdogd %d' % (TIMER, pid)])
+        self.assertEqual(self.install(), ['   armed already, watchdogd %d' % pid])
+        self.assertEqual(self.called('watchdogd'), ['watchdogd -t 128 -s 1 -I %s' % self.pidfile])
+        self.assertTrue(self.alive(pid))
+        self.assertNotIn('watchdogd holds 9', self.called())
+
+
+class Order(unittest.TestCase):
+    """Where install.sh arms it: once its pieces are in place, and on every way the run ends after them."""
+
+    def setUp(self):
+        with open(INSTALL, encoding='utf-8') as handle:
+            self.lines = [line for line in handle.read().splitlines() if not line.lstrip().startswith('#')]
+
+    def at(self, text):
+        found = [i for i, line in enumerate(self.lines) if text in line]
+        self.assertEqual(len(found), 1, text)
+        return found[0]
+
+    def test_once_its_pieces_are_in_place(self):
+        arms = self.at('watchdog.sh" start')
+        self.assertLess(self.at('for f in apply.php '), arms)
+        self.assertIn(' watchdog.sh ', self.lines[self.at('for f in apply.php ')])
+        self.assertLess(self.at('rc.syshook.d/start/08-xgs-watchdog" "${PREFIX}'), arms)
+        self.assertLess(self.at('rc.syshook.d/stop/23-xgs-watchdog" "${PREFIX}'), arms)
+        self.assertEqual(self.lines[arms - 2], HEADING)
+
+    def test_before_every_exit_after_them(self):
+        arms = self.at('watchdog.sh" start')
+        hooks = self.at('rc.syshook.d/stop/23-xgs-watchdog" "${PREFIX}')
+        exits = [i for i, line in enumerate(self.lines) if re.match(r'\s*exit\b', line) and i > hooks]
+        self.assertTrue(exits)
+        self.assertEqual([i for i in exits if i < arms], [])
 
 
 if __name__ == '__main__':
