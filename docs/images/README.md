@@ -19,10 +19,10 @@ to a new image, and the checks fail on one without them.
 |---|---|---|
 | [screens/](screens/) | The web interface, page by page, in English and in Arabic | 108 |
 | [hardware/](hardware/) | Photographs and drawings of the appliances, one folder each | 41 |
-| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 910 |
+| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 912 |
 | [readme/](readme/) | The README's banner and status board, drawn by tools/readme-art.py | 6 |
 
-1104 images in all.
+1106 images in all.
 
 ## The web interface
 
@@ -1399,6 +1399,15 @@ The page: [revive-hold-136-2026-10-24.md](../measurements/revive-hold-136-2026-1
 |---|---|---|
 | [01-136-far-side-sends-hold-in-turn.png](measurements/revive-hold-136-2026-10-24/01-136-far-side-sends-hold-in-turn.png) | Twelve runs, flow.revive_hold 0 and 1 in turn: with 1, four of six runs nearly all through the host and taken out at a streak; with 0, none | [revive-hold-136-2026-10-24.md](../measurements/revive-hold-136-2026-10-24.md) |
 | [02-136-pc-sends-hold-off.png](measurements/revive-hold-136-2026-10-24/02-136-pc-sends-hold-off.png) | The PC's own way with flow.revive_hold 0: in hardware, as before | [revive-hold-136-2026-10-24.md](../measurements/revive-hold-136-2026-10-24.md) |
+
+### measurements/route-to-2026-11-17/ (2)
+
+The page: [route-to-2026-11-17.md](../measurements/route-to-2026-11-17.md).
+
+| image | what it shows | used on |
+|---|---|---|
+| [01-route-to.png](measurements/route-to-2026-11-17/01-route-to.png) | route-to: by Port8 with the rule, by Port6 without it, in hardware each time | [route-to-2026-11-17.md](../measurements/route-to-2026-11-17.md) |
+| [02-reply-to.png](measurements/route-to-2026-11-17/02-reply-to.png) | reply-to: the replies by Port8 with the rule, by Port6 without it, in hardware each time | [route-to-2026-11-17.md](../measurements/route-to-2026-11-17.md) |
 
 ### measurements/rpc-bounds-2026-10-19/ (1)
 
