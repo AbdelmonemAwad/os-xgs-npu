@@ -400,6 +400,15 @@ bar, the **Installer log** tab showing what the installer wrote; the new driver 
 boot. **Channel** is **Releases** for an appliance in service, or **Test** for every change merged.
 This appliance follows releases, and is up to date with the newest.
 
+**Driver**, since 2026-11-17 (not in the photograph): whether the driver module is built for the kernel
+the next boot takes - one an update of OPNsense has staged and not applied yet, or put in `/boot/kernel` -
+so that it can be read before the reboot that takes it. Under it, the kernel the module is built for, the
+kernel the next boot takes, and the kernel follower's last run: what it found or did, when, why where it
+failed, and when it last built the module. It is read from the follower's own files
+(`install/kernel-follow.sh` records each whole run since that day), so it needs no other plugin. Where
+the follower has sent the next boot to `/boot/kernel.old`, which the module is built for, the row says
+so: one kernel behind, with the front ports up.
+
 Step by step, each step photographed on the three appliances: [Updating an appliance](updating.md).
 
 **Plugins** is the appliance plugins' own updates - Arabic, right-to-left, fan control, the front panel, link

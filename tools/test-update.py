@@ -17,6 +17,10 @@ three times at most, and nothing a failed update made is left behind, nor anythi
 taken away; and the releases are read past the first twenty when the installed one is further back.
 The update runs end to end there: codeload stood in for, a tarball made here, and the install.sh in
 it a stand-in.
+
+And since 2026-11-17 (svc-4-18) the driver's line on the Status tab: whether the module the kernel
+follower follows is built for the kernel the next boot takes - staged by an update or in /boot - and
+what the follower last found or did, from the follower's own files, made up in a temporary directory.
 """
 import datetime
 import hashlib
@@ -1102,7 +1106,182 @@ check('update.py installed with -S (flushed to disk)', UPDATE_IN > 0, True)
 check('... and the scripts beside it, plugins.py among them',
       'install -S -m 0755 "${SRC}/src/opnsense/scripts/xgs/${f}"' in INSTALL_SH, True)
 
-for path in (STATE, WORK, KEYS):
+# ---------------------------------------------------------------- the driver's line (svc-4-18, 2026-11-17)
+# Whether the module the kernel follower follows is built for the kernel the next boot takes, said before
+# the reboot that takes it, from the follower's own files alone: the module's stamp, the kernel an update
+# has staged or put in /boot, the follower's record of its last run, its lock and its mark of a fall-back
+# to kernel.old. Until then nothing on XGS: Updates said it; os-kernelfollow's page did, where installed.
+DRV = tempfile.mkdtemp(prefix='test-update-driver-')
+up.FOLLOWED = tuple(os.path.join(DRV, 'modules', name) for name in ('octep.ko', 'npuep.ko'))
+up.KERNEL = os.path.join(DRV, 'kernel', 'kernel')
+up.KERNEL_OLD = os.path.join(DRV, 'kernel.old', 'kernel')
+up.WORKPREFIX = os.path.join(DRV, 'update')
+up.FOLLOW_RESULT = os.path.join(DRV, 'kernel-follow.result')
+up.FOLLOW_LOCK = os.path.join(DRV, 'octep-follow.lock')
+up.FOLLOW_ARMED = os.path.join(DRV, 'octep-follow.armed')
+up.BANNERS = os.path.join(DRV, 'banners.json')
+K_OLD = 'FreeBSD 15.1-RELEASE-p4 stable/26.7-n284159-abbbe67a45e7 SMP'     # running; kernel.old after the update
+K_NEW = KERNEL                                                             # the update's, in /boot
+K_STAGED = 'FreeBSD 15.1-RELEASE-p7 stable/26.7-n284285-1633399de9dd SMP'  # an update's, staged
+K_OTHER = 'FreeBSD 15.1-RELEASE-p2 stable/26.7-n284102-0f1e2d3c4b5a SMP'
+up.running_kernel = lambda: K_OLD
+OCTEP_KO, NPUEP_KO = up.FOLLOWED
+AT = 1763370000
+
+
+def put(path, text):
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, 'w', encoding='utf-8') as handle:
+        handle.write(text)
+
+
+def kernel_file(path, version):
+    """a kernel binary as the follower's strings(1) reads it"""
+    put(path, '\0\0' + version + '\n\0')
+
+
+def fresh(boot=K_OLD, stamp=K_OLD, module=OCTEP_KO):
+    """an appliance as it is before any update: /boot/kernel the kernel running, the module built for it;
+    nothing staged, no record, no lock taken, no fall-back armed"""
+    shutil.rmtree(DRV, ignore_errors=True)
+    kernel_file(up.KERNEL, boot)
+    if module:
+        put(module, 'ELF')
+        if stamp is not None:
+            put(module + '.kernel', stamp + '\n')
+
+
+def recorded(**fields):
+    put(up.FOLLOW_RESULT, ''.join('%s=%s\n' % kv for kv in fields.items()))
+
+
+def stage(version, name='boot/kernel/kernel'):
+    """a kernel an update has fetched and not applied yet, as opnsense-update leaves it"""
+    kernel_file(os.path.join(DRV, 'staged-kernel'), version)
+    os.makedirs(os.path.join(up.WORKPREFIX, '.sets.pending'), exist_ok=True)
+    with tarfile.open(os.path.join(up.WORKPREFIX, '.sets.pending', 'kernel-26.7.9-amd64.txz'), 'w:xz') as archive:
+        archive.add(os.path.join(DRV, 'modules'), arcname='boot/modules')    # a member before the kernel
+        archive.add(os.path.join(DRV, 'staged-kernel'), arcname=name)
+    put(os.path.join(up.WORKPREFIX, '.kernel.pending'), '26.7.9\n')
+
+
+def line():
+    d = up.driver()
+    return d['state'], d['stamp'], d['next'], d['where']
+
+
+fresh(module=None)
+check('svc-4-18: no module installed', line(), ('none', None, K_OLD, 'boot'))
+fresh()
+check('svc-4-18: before any update, built for the kernel the next boot takes', line(), ('ready', K_OLD, K_OLD, 'boot'))
+check('... and its stamp, the kernel running and the module named', (up.driver()['running'], up.driver()['module']),
+      (K_OLD, OCTEP_KO))
+
+# an update of OPNsense has put its kernel in /boot (System: Firmware's update), and the follower has not run yet
+fresh(boot=K_NEW)
+check('svc-4-18: a new kernel in /boot, the module built for the one running', line(), ('stale', K_OLD, K_NEW, 'boot'))
+check('... no record of the follower: no last run, no build time',
+      (up.driver()['last'], up.driver()['built_at']), (None, None))
+recorded(module=OCTEP_KO, result='failed', message='could not get kernel sources for ' + K_NEW, target=K_NEW,
+         at=AT, built_at=AT - 86400)
+d = up.driver()
+check('... the follower\'s last run failed: what it said, and when it last built the module',
+      (d['state'], d['last'], d['built_at']),
+      ('stale', {'result': 'failed', 'message': 'could not get kernel sources for ' + K_NEW, 'target': K_NEW,
+                 'at': AT}, AT - 86400))
+recorded(module=NPUEP_KO, result='built', message='rebuilt for the kernel to follow', target=K_NEW, at=AT,
+         built_at=AT)
+check('... a record of another module is not taken for this one',
+      (up.driver()['last'], up.driver()['built_at']), (None, None))
+if up.fcntl is not None:
+    with open(up.FOLLOW_LOCK, 'w') as held:
+        up.fcntl.flock(held, up.fcntl.LOCK_EX)
+        check('... a run of the follower holding its lock: being built', (line()[0], up.driver()['following']),
+              ('building', True))
+    check('... its lock given back: not', (line()[0], up.driver()['following']), ('stale', False))
+put(up.FOLLOW_ARMED, '')
+kernel_file(up.KERNEL_OLD, K_OLD)
+d = up.driver()
+check('... the follower has sent the next boot to kernel.old, which the module is built for',
+      (d['state'], d['kernel_old']), ('behind', K_OLD))
+kernel_file(up.KERNEL_OLD, K_OTHER)
+check('... its mark, and kernel.old another kernel than the module\'s: not', line()[0], 'stale')
+os.unlink(up.FOLLOW_ARMED)
+
+# the follower has rebuilt it
+fresh(boot=K_NEW, stamp=K_NEW)
+recorded(module=OCTEP_KO, result='built', message='rebuilt for the kernel to follow', target=K_NEW, at=AT, built_at=AT)
+d = up.driver()
+check('svc-4-18: rebuilt by the follower for the kernel in /boot: ready, said when',
+      (d['state'], d['next'], d['where'], d['last']['result'], d['built_at']), ('ready', K_NEW, 'boot', 'built', AT))
+
+# an upgrade has staged its kernel and not applied it yet, the module built for /boot's
+stage(K_STAGED)
+check('svc-4-18: a kernel staged by an update is the one the next boot takes', line(), ('stale', K_NEW, K_STAGED, 'staged'))
+put(OCTEP_KO + '.kernel', K_STAGED + '\n')
+check('... the module rebuilt for it: ready', line(), ('ready', K_STAGED, K_STAGED, 'staged'))
+fresh(boot=K_NEW, stamp=K_STAGED)
+stage(K_STAGED, name='./boot/kernel/kernel')
+check('... a set that names its kernel ./boot/kernel/kernel', line(), ('ready', K_STAGED, K_STAGED, 'staged'))
+os.unlink(os.path.join(up.WORKPREFIX, '.kernel.pending'))
+check('... a set without its marker is not staged: /boot/kernel', line(), ('stale', K_STAGED, K_NEW, 'boot'))
+
+# the kernel in /boot taken back to the one before, the module rebuilt for the newer: the bring-up loads the
+# module kept beside it, built for this one (bringup.sh)
+fresh(boot=K_OLD, stamp=K_NEW)
+put(OCTEP_KO + '.prev.kernel', K_OLD + '\n')
+check('svc-4-18: only its stamp kept beside it, no module: not ready', line()[0], 'stale')
+put(OCTEP_KO + '.prev', 'ELF')
+check('... the module kept beside it built for the kernel the next boot takes', line()[0], 'previous')
+
+fresh(stamp=None)
+check('svc-4-18: a module with no stamp', line()[0], 'unstamped')
+fresh()
+os.unlink(up.KERNEL)
+check('svc-4-18: no kernel to read in /boot', line(), ('unread', K_OLD, None, 'boot'))
+fresh(module=NPUEP_KO)
+check('svc-4-18: the ARMADA family\'s npuep.ko', (up.driver()['module'], line()[0]), (NPUEP_KO, 'ready'))
+put(OCTEP_KO, 'ELF')
+check('... with an octep.ko beside it, octep.ko, as the follower takes it', up.driver()['module'], OCTEP_KO)
+
+# each kernel read once: by its size and time - the page reads the status every two seconds while an update runs
+fresh()
+before = os.stat(up.KERNEL)
+check('svc-4-18: the kernel read', up.driver()['next'], K_OLD)
+kernel_file(up.KERNEL, K_OTHER)                       # as long as K_OLD
+os.utime(up.KERNEL, ns=(before.st_atime_ns, before.st_mtime_ns))
+check('... read once: the same size and time, not read again', up.driver()['next'], K_OLD)
+os.utime(up.KERNEL, ns=(before.st_atime_ns, before.st_mtime_ns + 1000000000))
+check('... another time: read again', up.driver()['next'], K_OTHER)
+
+# the status carries it
+fresh()
+check('svc-4-18: the status carries the driver\'s line', (up.status().get('driver') or {}).get('state'), 'ready')
+
+# and the page says each: every state the line can have has its words on XGS: Updates (updates.volt, DRIVER),
+# and every word the follower records for its last run is said in the page's language (FOLLOWER)
+with open(os.path.join(HERE, '..', 'src', 'opnsense', 'mvc', 'app', 'views', 'OPNsense', 'XGS', 'updates.volt'),
+          encoding='utf-8') as handle:
+    VOLT = handle.read()
+
+
+def keys_of(name):
+    block = re.search(r'const %s = \{(.*?)\n        \};' % name, VOLT, re.S)
+    return set(re.findall(r'^\s*(\w+): ', block.group(1), re.M)) if block else set()
+
+
+with open(up.__file__, encoding='utf-8') as handle:
+    DRIVER_SOURCE = handle.read().split('\ndef driver():', 1)[1].split('\ndef ', 1)[0]
+STATES = set(re.findall(r"\bstate = '(\w+)'", DRIVER_SOURCE) + re.findall(r"'state': '(\w+)'", DRIVER_SOURCE))
+check('svc-4-18: the line\'s states, as driver() gives them', len(STATES), 8)
+check('... each with its words on the page', sorted(STATES - keys_of('DRIVER')), [])
+check('... and none on the page that the line never has', sorted(keys_of('DRIVER') - STATES), [])
+with open(os.path.join(HERE, '..', 'install', 'kernel-follow.sh'), encoding='utf-8') as handle:
+    WORDS = set(re.findall(r'^\s*record (\w+) ', handle.read(), re.M))
+check('... the words the follower records', sorted(WORDS), ['built', 'failed', 'ok', 'skipped'])
+check('... each said in the page\'s language', sorted(WORDS - keys_of('FOLLOWER')), [])
+
+for path in (STATE, WORK, KEYS, DRV):
     shutil.rmtree(path, ignore_errors=True)
 print('all passed' if not failures else f'{failures} failed')
 sys.exit(1 if failures else 0)
