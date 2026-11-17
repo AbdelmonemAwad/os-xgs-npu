@@ -169,8 +169,13 @@ keeps the timer: `watchdog.sh` says it is held by another watchdogd and starts n
 at Apply and at install alike. One started with `-n`, a dry run that never opens the timer, is not
 counted. One on the kernel's software timer only (`--softtimeout`) is left to as well, and said to leave
 the hardware timer unarmed: the kernel refuses to switch between the two timers while either is armed,
-so a watchdogd started beside it would only fail. Tested away from the appliances
-(`tools/test-watchdog.py`); not yet run on one.
+so a watchdogd started beside it would only fail. Tried on 2026-11-17 on the second XGS 3300 and the
+XGS 136, `install.sh` run by hand from a copy of the tree: a first install armed the timer, an update
+found it armed and left its watchdogd running, os-watchdog's watchdogd was taken over, one started by
+hand was left the timer, a dry run was not counted, and a watchdogd started by hand beside one on the
+software timer was refused by the kernel (`setting WDIOC_SETSOFT 0: Invalid argument`); after a
+reboot the stop hook had disarmed the timer and the start hook armed it again, and the last restart
+read as a reboot.
 
 Measured 2026-10-17: armed, disarmed and armed again by hand on both appliances; then through a
 reboot of the XGS 3300 with nothing done by hand - the stop hook ran at 14:24:53, the start hook at
