@@ -398,6 +398,15 @@ octep_pf_copy(struct octep_pf_state *out, struct pf_kstate *s)
 	out->wscale[1] = s->dst.wscale;
 	out->rewrites = octep_pf_rewrites(s);
 	strlcpy(out->ifname, s->kif != NULL ? s->kif->pfik_name : "", sizeof(out->ifname));
+	/* the gateway a rule names, if any (#1182): octep_pf_state_read puts it where it applies */
+	bzero(&out->rt_one, sizeof(out->rt_one));
+	out->rt_one.kind = s->act.rt;
+	if (s->act.rt != 0) {
+		out->rt_one.af = (uint8_t)s->act.rt_af;
+		if (s->act.rt_kif != NULL && s->act.rt_kif->pfik_ifp != NULL)
+			out->rt_one.ifindex = (uint16_t)if_getindex((if_t)s->act.rt_kif->pfik_ifp);
+		memcpy(out->rt_one.addr6, &s->act.rt_addr, sizeof(out->rt_one.addr6));
+	}
 	bzero(out->wire_addr, sizeof(out->wire_addr));
 	bzero(out->stack_addr, sizeof(out->stack_addr));
 	bzero(out->wire_port, sizeof(out->wire_port));
@@ -445,6 +454,55 @@ octep_pf_copy(struct octep_pf_state *out, struct pf_kstate *s)
 }
 
 /*
+ * Put one state's gateway (#1182, struct octep_pf_state's rt) where it applies: a route-to on the
+ * direction from the opener, a reply-to on the replies - pf_route reroutes the packets that go the
+ * way their state was made for the one, the other way for the other, and every state is made by
+ * the opener's first packet. What cannot be followed is said in *keep, and keeps the connection
+ * with the host: each frame sent once, by one gateway of its own family.
+ */
+static void
+octep_pf_rt_merge(struct octep_pf_rt *rt, const char **keep, const struct octep_pf_state *one)
+{
+	const struct octep_pf_rt *r = &one->rt_one;
+	int w, n, i, zero;
+
+	if (r->kind == 0)
+		return;
+	if (r->kind == PF_DUPTO) {
+		*keep = "a rule copies its packets to a gateway as well (dup-to), and the coprocessor "
+		    "sends each frame once";
+		return;
+	}
+	if (r->kind != PF_ROUTETO && r->kind != PF_REPLYTO) {
+		*keep = "a rule names a gateway in a way this driver does not know";
+		return;
+	}
+	w = (r->kind == PF_ROUTETO) ? 0 : 1;
+	if (r->af != one->af) {
+		*keep = "a rule sends it by a gateway of the other address family (af-to)";
+		return;
+	}
+	n = (r->af == AF_INET6) ? 4 : 1;
+	for (i = 0, zero = 1; i < n; i++)
+		if (r->addr6[i] != 0)
+			zero = 0;
+	if (zero) {
+		*keep = "a rule names an interface for it and no gateway address";
+		return;
+	}
+	if (r->ifindex == 0) {
+		*keep = "a rule names a gateway on an interface that is gone";
+		return;
+	}
+	if (rt[w].kind == 0) {
+		rt[w] = *r;
+		return;
+	}
+	if (rt[w].ifindex != r->ifindex || memcmp(rt[w].addr6, r->addr6, n * sizeof(uint32_t)) != 0)
+		*keep = "two of its states name two gateways for one direction";
+}
+
+/*
  * Read the state pf holds for this tuple, preferring the one that carries the translation.
  *
  * A frame punted from a LAN port on its way out is held by TWO states. The rule on its own
@@ -466,11 +524,15 @@ int
 octep_pf_state_read(const struct octep_pf_tuple *t, struct octep_pf_state *out)
 {
 	struct octep_pf_state plain, nat;
+	struct octep_pf_rt rt[2];
 	struct pf_state_key_cmp key;
 	struct pf_kstate *s;
 	const u_int dirs[2] = { PF_IN, PF_OUT };
+	const char *rt_keep = NULL;
 	uint16_t tags[2] = { 0, 0 };
 	int d, order, have_plain = 0, have_nat = 0;
+
+	bzero(rt, sizeof(rt));
 
 	if (!octep_pf_present())
 		return (0);
@@ -492,6 +554,7 @@ octep_pf_state_read(const struct octep_pf_tuple *t, struct octep_pf_state *out)
 			octep_pf_orient(out, t);
 			if (out->tag != 0 && out->tag != tags[0] && out->tag != tags[1])
 				tags[tags[0] == 0 ? 0 : 1] = out->tag;
+			octep_pf_rt_merge(rt, &rt_keep, out);
 			if (out->nat_valid && !have_nat) {
 				nat = *out;
 				have_nat = 1;
@@ -506,6 +569,9 @@ octep_pf_state_read(const struct octep_pf_tuple *t, struct octep_pf_state *out)
 	*out = have_nat ? nat : plain;
 	out->tags[0] = tags[0];
 	out->tags[1] = tags[1];
+	out->rt[0] = rt[0];
+	out->rt[1] = rt[1];
+	out->rt_keep = rt_keep;
 	return (1);
 }
 

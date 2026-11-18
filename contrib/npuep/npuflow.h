@@ -84,6 +84,18 @@ struct npuep_pf_state {
 	uint16_t max_win[2];
 	uint8_t	 wscale[2];
 	int	 rewrites;
+	/*
+	 * A gateway a rule names for the connection (#1182), as octep.h's struct octep_pf_state keeps
+	 * it and says why: rt_one the state npuep_pf_copy read, rt[0] the direction from the opener
+	 * (route-to), rt[1] the replies (reply-to), rt_keep why the host keeps the connection instead.
+	 */
+	struct npuep_pf_rt {
+		uint8_t	 kind;		/* pf's act.rt: 0, PF_ROUTETO, PF_REPLYTO or PF_DUPTO */
+		uint8_t	 af;		/* the gateway's address family (act.rt_af) */
+		uint16_t ifindex;	/* the interface pf sends by (act.rt_kif's), 0 when none */
+		uint32_t addr6[4];	/* the gateway (act.rt_addr); an IPv4 one in addr6[0], network order */
+	} rt_one, rt[2];
+	const char *rt_keep;		/* NULL, or why the host keeps the connection */
 };
 
 /* What all of pf's states for a connection say about its window: octep.h's struct octep_pf_tcp. */
@@ -214,6 +226,8 @@ int	npuep_pf_peer_room(const struct npuep_pf_tuple *t);
 #define	NPUEP_HINT_LAGG_ONLY	0x4000
 int	npuep_nhop_resolve(uint32_t dst, int hint_port, struct npuep_nhop *out);
 int	npuep_nhop_resolve6(const uint32_t *dst6, int hint_port, struct npuep_nhop *out);
+int	npuep_nhop_resolve_via(int af, uint16_t ifindex, const uint32_t *gw, int hint_port,
+	    struct npuep_nhop *out);
 /* npuflow.c: a front port lost its link - its connections are taken back by the next sweep */
 void	npuflow_port_down(int port);
 
