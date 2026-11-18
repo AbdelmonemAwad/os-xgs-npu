@@ -147,7 +147,10 @@ and the driver's build.
   driver from before keeps running and is loaded at the next boot too, and the release is offered
   again, since it is not recorded as installed until its driver is in place.
 - **No driver for the kernel the next boot will use** - do not reboot until one is built; the end of
-  the installer's log says how.
+  the installer's log says how. Since 2026-11-17 the Status tab's **Driver** row says whether one is,
+  and what the kernel follower last did. An update of OPNsense from **System: Firmware** reboots by
+  itself once its kernel is in place, so for one of those the row shows only after that boot what the
+  follower's hooks made of it ([XGS: Updates](the-pages.md#xgs-updates)).
 
 A second **Update** while one runs is refused ("an update is already running").
 
