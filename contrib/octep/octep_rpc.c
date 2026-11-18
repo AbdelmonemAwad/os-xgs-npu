@@ -2954,6 +2954,8 @@ octep_rpc_fw_rev_bump_task(void *arg, int pending __unused)
 	sc->rpc_cmd_num = s_cmd;
 	sc->rpc_internal = 0;
 	mtx_unlock(&sc->mtx);
+	/* what the forgotten connections had counted, to pf now the lock is dropped (#1189) */
+	octep_dp_forgot_give(sc);
 }
 
 /*
