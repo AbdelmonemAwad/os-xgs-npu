@@ -1964,17 +1964,29 @@ struct octep_conn_mf {
 #define	  OCTEP_TCP_SCALE_ORIG_SHIFT	24
 
 /*
- * A take-back whose window goes to pf once the softc lock is dropped: pf's states are never
- * touched with it held (octep_dp_handback_run). The connection's two tuples, the fast path's
- * numbers as CONN_RECLAIM_FP answered them, and the two window scales the connection was sent
- * with, opener's first.
+ * A take-back whose window, or counts, go to pf once the softc lock is dropped: pf's states are
+ * never touched with it held (octep_dp_handback_run). The connection's two tuples, the fast path's
+ * numbers as CONN_RECLAIM_FP answered them and the two window scales the connection was sent with,
+ * opener's first, when win is 1; and what the coprocessor counted for it that the keep-alive had
+ * not yet given to pf, each direction (issue #1189): the keep-alive visits a connection every
+ * OCTEP_KA_PERIOD seconds, and what it counted since the last visit went with the connection when
+ * it was taken out - 3.3 to 4.9 s of a stream released mid-transfer, and nearly all of a short
+ * connection's bytes, on the XGS 3300 (os-quota's phase 0, 2026-11-17). npuep gives them from its
+ * let-go pass since 2026-10-19 (npuflow_give_pf).
+ *
+ * 256: a pass of the sweep takes out many connections under one hold of the lock - A5 (ii)'s load
+ * ended with 1,033 taken back - and an entry is now made for each one with counts, not only for a
+ * TCP connection whose window is checked. A full queue still loses: the window as before (the state
+ * stays sloppy, dp.tcp_lost), the counts counted in dp.hw_pf_lost.
  */
-#define	OCTEP_HB_MAX			32
+#define	OCTEP_HB_MAX			256
 struct octep_handback {
 	uint32_t		 idx;		/* the connection's index, for dp.tcp_last */
 	struct octep_pf_tuple	 tuple[2];
 	uint8_t			 seq[OCTEP_TCP_SEQ_LEN];
 	uint8_t			 scale[2];
+	uint8_t			 win;		/* 1: seq and scale are the window for pf */
+	uint64_t		 pk[2], by[2];	/* counts pf was not yet given; all 0: none */
 };
 
 /* The translation, in the connection's orientation, kept so a re-create needs no new pf read. */
@@ -3509,6 +3521,8 @@ struct octep_softc {
 	uint32_t		 dp_hw_to_pf;
 	uint64_t		 dp_hw_pf_conns;
 	uint64_t		 dp_hw_pf_states;
+	/* connections taken out whose last counts went to pf with the take-back; lost to a full queue */
+	uint64_t		 dp_hw_pf_final, dp_hw_pf_lost;
 	/*
 	 * The last received frame's whole prefix, kept so it can be read from userland.
 	 *

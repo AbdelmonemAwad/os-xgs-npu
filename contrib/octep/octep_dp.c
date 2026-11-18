@@ -4592,10 +4592,12 @@ octep_conn_takeout(struct octep_softc *sc, struct octep_conn *c, int reclaim)
 	struct octep_handback *hb;
 	const char *why;
 	uint8_t seq[OCTEP_TCP_SEQ_LEN];
+	uint64_t gp[2] = { 0, 0 }, gb[2] = { 0, 0 };
 	uint32_t f, cst, crev;
-	int d, err, want;
+	int d, err, want, win, give;
 
 	mtx_assert(&sc->mtx, MA_OWNED);
+	win = 0;
 	for (d = 0; d < 2; d++) {
 		if (c->mf[d].state != OCTEP_MF_PROGRAMMED)
 			continue;
@@ -4651,18 +4653,48 @@ octep_conn_takeout(struct octep_softc *sc, struct octep_conn *c, int reclaim)
 				sc->dp_tcp_lost++;
 			} else if (why != NULL)
 				sc->dp_tcp_kept++;
-			if (why == NULL) {
-				hb = &sc->dp_hb[sc->dp_hb_n++];
-				hb->idx = c->idx;
-				hb->tuple[0] = c->tuple[0];
-				hb->tuple[1] = c->tuple[1];
-				memcpy(hb->seq, seq, OCTEP_TCP_SEQ_LEN);
-				f = le32dec(c->tcp + OCTEP_TCP_OFF_FLAGS);
-				hb->scale[0] = (uint8_t)(f >> OCTEP_TCP_SCALE_ORIG_SHIFT);
-				hb->scale[1] = (uint8_t)(f >> OCTEP_TCP_SCALE_REPLY_SHIFT);
-			} else
+			if (why == NULL)
+				win = 1;
+			else
 				snprintf(sc->dp_tcp_last, sizeof(sc->dp_tcp_last),
 				    "connection %u: left sloppy in pf - %s\n", c->idx, why);
+		}
+	}
+	/*
+	 * And what the coprocessor counted for it that pf has not been given: the keep-alive gives it
+	 * at its visits only, OCTEP_KA_PERIOD apart, and the connection is leaving now (issue #1189).
+	 * Given with the window, or alone, once the lock is dropped; not for one whose pf states have
+	 * gone. What the fast path counted after its last statistics message is not in hw_pkts yet,
+	 * and goes with the connection still.
+	 */
+	give = 0;
+	if (reclaim != OCTEP_TAKEOUT_GONE && sc->dp_hw_to_pf == 1) {
+		for (d = 0; d < 2; d++) {
+			gp[d] = c->hw_pkts[d] - c->hw_pf_pkts[d];
+			gb[d] = c->hw_bytes[d] - c->hw_pf_bytes[d];
+			if (gp[d] != 0 || gb[d] != 0)
+				give = 1;
+		}
+		if (give && !win && sc->dp_hb_n >= OCTEP_HB_MAX) {
+			sc->dp_hw_pf_lost++;
+			give = 0;
+		}
+	}
+	if (win || give) {
+		hb = &sc->dp_hb[sc->dp_hb_n++];
+		hb->idx = c->idx;
+		hb->tuple[0] = c->tuple[0];
+		hb->tuple[1] = c->tuple[1];
+		hb->win = (uint8_t)win;
+		if (win) {
+			memcpy(hb->seq, seq, OCTEP_TCP_SEQ_LEN);
+			f = le32dec(c->tcp + OCTEP_TCP_OFF_FLAGS);
+			hb->scale[0] = (uint8_t)(f >> OCTEP_TCP_SCALE_ORIG_SHIFT);
+			hb->scale[1] = (uint8_t)(f >> OCTEP_TCP_SCALE_REPLY_SHIFT);
+		}
+		for (d = 0; d < 2; d++) {
+			hb->pk[d] = give ? gp[d] : 0;
+			hb->by[d] = give ? gb[d] : 0;
 		}
 	}
 	octep_conn_free(sc, c);
@@ -4670,19 +4702,20 @@ octep_conn_takeout(struct octep_softc *sc, struct octep_conn *c, int reclaim)
 }
 
 /*
- * Give pf the windows of the connections just taken back: the queue octep_conn_takeout fills,
- * emptied one entry at a time with the lock dropped around each, because pf's states are never
- * touched with the softc lock held - the transmit path takes it, and pf may hold a state's lock
- * while it sends. Called right after a lock that took connections out is dropped, so the frames
- * that reach pf while it is still sloppy are as few as can be; every caller of a takeout calls it,
- * and the sweep calls it each second for anything left. A state that does not take the numbers
- * stays sloppy and is counted with the kept ones.
+ * Give pf the windows of the connections just taken back, and their last counts: the queue
+ * octep_conn_takeout fills, emptied one entry at a time with the lock dropped around each, because
+ * pf's states are never touched with the softc lock held - the transmit path takes it, and pf may
+ * hold a state's lock while it sends. Called right after a lock that took connections out is
+ * dropped, so the frames that reach pf while it is still sloppy are as few as can be; every caller
+ * of a takeout calls it, and the sweep calls it each second for anything left. A state that does
+ * not take the numbers stays sloppy and is counted with the kept ones; counts no state takes are
+ * not counted as given.
  */
 void
 octep_dp_handback_run(struct octep_softc *sc)
 {
 	struct octep_handback one;
-	int n;
+	int n, ns;
 
 	mtx_assert(&sc->mtx, MA_NOTOWNED);
 	if (sc->dp_hb_n == 0)	/* unlocked: one missed now is found by the next call */
@@ -4700,17 +4733,27 @@ octep_dp_handback_run(struct octep_softc *sc)
 		 * run with none set; this driver's interfaces are in vnet0 (octep_dp_poll).
 		 */
 		CURVNET_SET_QUIET(vnet0);
-		n = octep_pf_handback(one.tuple, one.seq, one.scale);
+		ns = 0;
+		if (one.pk[0] != 0 || one.pk[1] != 0 || one.by[0] != 0 || one.by[1] != 0)
+			ns = octep_pf_count(one.tuple, one.pk, one.by);
+		n = one.win ? octep_pf_handback(one.tuple, one.seq, one.scale) : 0;
 		CURVNET_RESTORE();
-		if (n > 0)
-			sc->dp_tcp_handback++;
-		else
-			sc->dp_tcp_kept++;
 		mtx_lock(&sc->mtx);
-		snprintf(sc->dp_tcp_last, sizeof(sc->dp_tcp_last), n > 0 ?
-		    "connection %u: handed back, %d pf state(s) took the fast path's numbers\n" :
-		    "connection %u: no pf state took the fast path's numbers - gone, or the answer "
-		    "did not look like a window\n", one.idx, n);
+		if (ns > 0) {
+			sc->dp_hw_pf_conns++;
+			sc->dp_hw_pf_states += (uint64_t)ns;
+			sc->dp_hw_pf_final++;
+		}
+		if (one.win) {
+			if (n > 0)
+				sc->dp_tcp_handback++;
+			else
+				sc->dp_tcp_kept++;
+			snprintf(sc->dp_tcp_last, sizeof(sc->dp_tcp_last), n > 0 ?
+			    "connection %u: handed back, %d pf state(s) took the fast path's numbers\n" :
+			    "connection %u: no pf state took the fast path's numbers - gone, or the answer "
+			    "did not look like a window\n", one.idx, n);
+		}
 		mtx_unlock(&sc->mtx);
 	}
 }
@@ -9406,6 +9449,12 @@ octep_dp_add_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
 	    CTLFLAG_RD, &sc->dp_hw_pf_conns, 0, "connections whose counts were added to pf");
 	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "hw_pf_states",
 	    CTLFLAG_RD, &sc->dp_hw_pf_states, 0, "pf states those counts were added to");
+	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "hw_pf_final",
+	    CTLFLAG_RD, &sc->dp_hw_pf_final, 0,
+	    "connections taken out whose last counts went to pf with the take-back (issue #1189)");
+	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "hw_pf_lost",
+	    CTLFLAG_RD, &sc->dp_hw_pf_lost, 0,
+	    "connections taken out whose last counts were lost: the queue to pf was full");
 	SYSCTL_ADD_PROC(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "rx_prefix",
 	    CTLTYPE_STRING | CTLFLAG_RD | CTLFLAG_MPSAFE, sc, 0,
 	    octep_sysctl_dp_rx_prefix, "A",
