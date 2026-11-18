@@ -80,7 +80,7 @@ Only the parts that are installed, each one's reports going to its own repositor
 | kind | found in | is a problem when |
 |---|---|---|
 | logged error | the system log, `/var/log/xgs`, configd's log | a line of severity error or worse from one of the parts' programs, or a configd action of one of them that failed; lines one program logs within three seconds of each other are one report, its first line the title and every line its evidence - since 2026-10-19, when the kernel follower's four-line account of one failed build became four issues ([#509](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/509)) |
-| driver | the same logs, kernel lines | a line of one of the coprocessor's devices that says something failed, timed out, was refused or did not complete - `device_printf` carries no severity, so the words are what there is |
+| driver | the same logs, kernel lines | a line of one of the coprocessor's devices that says something failed, timed out, was refused or did not complete - `device_printf` carries no severity, so the words are what there is. Not a port whose link went down: "Port7 lost its link: N connection(s) leaving by it taken back to the host" is the driver doing what it is for when a cable is pulled or the other end restarts (since 2026-11-18, #1196; before, the word "lost" filed it). And since then octep's "link down: the far side stopped answering after N connection(s) ..." is one: the coprocessor did not answer while its connections were taken back |
 | page error | PHP's error log | an error in one of the parts' pages or scripts |
 | driver missing | `board.sh`, `sysctl`; for the evidence the kernel's lines, `/boot/modules`, `kldstat` and `/var/db/os-xgs-npu/install-build.log` | the board has a coprocessor and no driver is attached ten minutes after boot. Since 2026-10-21 the report also says whether the module is installed, which kernel it was built for and whether it is loaded, and carries the last twelve lines of the installer's build of it - the kernel's lines alone said nothing on an XGS 126 whose module was never built, and why was in the build log ([#625](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/625), [#657](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/657)) |
 | driver not ready | `dev.octep.0.ready` | attached, and the handshake not done ten minutes after boot |
@@ -102,7 +102,14 @@ time down there. At boot, a boot before this one that left no such line, and no 
 the login accounting (`reboot(8)` at a shell bypasses the hook but not that), did not shut down. The
 report says what is known about why:
 
-- a crash dump on the dump device (`savecore -C`): the kernel panicked, and the dump is reported on its
+- a crash dump written in the boot that ended - its own time, savecore's `Dumptime` in `info.N`,
+  between that boot's start and this one's: no report of the restart at all, the dump's own report is
+  its record, with the panic and its backtrace; a panic in the shutdown too. rc's savecore runs before
+  the reporter's look and takes the dump off the device, so until 2026-11-18 (#1197) the check below
+  found none and every such panic was reported twice, the restart's report saying "No crash dump was
+  written" beside the dump's saying one was saved. A dump of a boot further back, saved by this one,
+  does not stand for this restart, nor one whose time cannot be read;
+- a crash dump still on the dump device (`savecore -C`): the kernel panicked, and the dump is reported on its
   own once savecore has saved it;
 - no dump, and the message buffer kept the boot before with a panic in it (since 2026-10-26): the
   kernel panicked and restarted the machine itself, which the chipset records as a reboot - a report

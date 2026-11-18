@@ -198,12 +198,14 @@ class ReporterTest(unittest.TestCase):
 
     # ----------------------------------------------------------------------------- crash dumps
 
-    def dump(self, number, panic, frames, msgbuf=None):
+    def dump(self, number, panic, frames, msgbuf=None, when=None):
         """A crash dump as savecore leaves it: info.N, and textdump.tar.N with ddb.txt and msgbuf.txt."""
         import io
         import tarfile
         self.write('/var/crash/info.%d' % number,
-                   'Dump header from device: /dev/ada0p3\n  Panic String: %s\n' % panic)
+                   'Dump header from device: /dev/ada0p3\n' +
+                   ('  Dumptime: %s\n' % time.strftime('%Y-%m-%d %H:%M:%S +0000', time.gmtime(when)) if when else '') +
+                   '  Panic String: %s\n' % panic)
         trace = ''.join('%s() at %s+0x1%d/frame 0xfffffe00d3990b%02d\n' % (f, f, i, i)
                         for i, f in enumerate(frames))
         with tarfile.open(os.path.join(self.root, 'var/crash/textdump.tar.%d' % number), 'w') as tar:
@@ -328,6 +330,21 @@ class ReporterTest(unittest.TestCase):
         self.assertNotIn('EXAMPLE', text)
 
     # ---------------------------------------------------------------------------------- the logs
+
+    def test_a_port_losing_its_link_is_not_a_driver_problem(self):
+        # 2026-11-15 to 11-18, the XGS 136: seventeen of these were queued as a driver problem, every
+        # one a cable or the other end going down in the lab - the driver doing what it is for
+        self.write(self.log, self.line(11, 'fanctl', 'restore failed before install'), 'a')
+        self.assertEqual(self.collect()['found'], 0)
+        self.write(self.log, ''.join([
+            self.line(13, 'kernel', '[225] npuep0: Port7 lost its link: 16 connection(s) leaving by it taken back to the host'),
+            self.line(13, 'kernel', '[226] npuep0: Port8 lost its link: 1 connection(s) leaving by it taken back to the host'),
+            self.line(13, 'kernel', '[227] oxp8: link down: 3 connection(s) leaving by it taken back to the host'),
+        ]), 'a')
+        self.assertEqual(self.collect()['found'], 0)
+        # and a line of the driver's that is a failure is still one
+        self.write(self.log, self.line(13, 'kernel', '[228] npuep0: giu: PF_DISABLE failed (60)'), 'a')
+        self.assertEqual(self.collect()['found'], 1)
 
     def test_first_pass_reads_no_history_then_new_lines_are_found(self):
         self.write(self.log, self.line(11, 'fanctl', 'restore failed before install'), 'a')
@@ -1163,6 +1180,58 @@ class ReporterTest(unittest.TestCase):
         # a panic is another problem than a reset with nothing said
         self.assertEqual(reset[0]['id'], self.reporter.fingerprint(
             'os-xgs-npu', 'unexpected-reset', 'unexpected reset panic'))
+
+    def test_a_panic_whose_dump_was_saved_is_one_problem(self):
+        # 2026-11-03 and 11-05, the XGS 136: rc's savecore saved each panic's dump before the reporter
+        # looked, so savecore -C found none, and the restart was filed as well - "No crash dump was
+        # written" beside the dump's own "saved a crash dump"
+        self.machine.dmesg = ('---<<BOOT>>---\nCopyright (c) 1992-2025 The FreeBSD Project.\n'
+                              'panic: watchdog pre-timeout, WD_SOFT_PANIC set\ncpuid = 0\n'
+                              '---<<BOOT>>---\nCopyright (c) 1992-2025 The FreeBSD Project.\n')
+        self.dump(9, 'watchdog pre-timeout, WD_SOFT_PANIC set', ['kdb_enter', 'panic', 'wd_timeout_cb'],
+                  when=BOOT - 600)
+        self.reporter.save('boots.json', {'last_boot': BOOT - 3600})
+        self.reporter.collect(at_boot=True)
+        kinds = sorted(e['kind'] for e in self.reporter.entries().values())
+        self.assertEqual(kinds, ['kernel-panic'])
+        self.assertEqual(self.reporter.load('boots.json', {}).get('last_boot'), BOOT)
+
+    def test_a_dump_from_a_boot_before_does_not_hide_this_reset(self):
+        # saved by this boot (the file is new) but written a day before - a boot further back panicked,
+        # and the boot that just ended was reset for another reason (the review of 2026-11-18)
+        self.dump(3, 'page fault', ['kdb_enter', 'panic', 'trap_pfault'], when=BOOT - 86400)
+        self.reporter.save('boots.json', {'last_boot': BOOT - 3600})
+        self.reporter.collect(at_boot=True)
+        kinds = sorted(e['kind'] for e in self.reporter.entries().values())
+        self.assertIn('unexpected-reset', kinds)
+
+    def test_a_dump_whose_time_cannot_be_read_hides_nothing(self):
+        self.dump(4, 'page fault', ['kdb_enter', 'panic', 'trap_pfault'])
+        self.reporter.save('boots.json', {'last_boot': BOOT - 3600})
+        self.reporter.collect(at_boot=True)
+        kinds = sorted(e['kind'] for e in self.reporter.entries().values())
+        self.assertIn('unexpected-reset', kinds)
+
+    def test_a_panic_in_the_shutdown_with_a_dump_is_one_problem(self):
+        os.makedirs(self.state, exist_ok=True)
+        with open(os.path.join(self.state, 'clean-shutdown'), 'w') as handle:
+            handle.write('%d\n' % (BOOT - 300))
+        self.machine.dmesg = ('---<<BOOT>>---\nCopyright (c) 1992-2025 The FreeBSD Project.\n'
+                              'Fatal trap 12: page fault while in kernel mode\npanic: page fault\n'
+                              '---<<BOOT>>---\nCopyright (c) 1992-2025 The FreeBSD Project.\n')
+        self.dump(5, 'page fault', ['kdb_enter', 'panic', 'trap_pfault'], when=BOOT - 200)
+        self.reporter.save('boots.json', {'last_boot': BOOT - 3600})
+        self.reporter.collect(at_boot=True)
+        kinds = sorted(e['kind'] for e in self.reporter.entries().values())
+        self.assertEqual(kinds, ['kernel-panic'])
+
+    def test_the_far_side_stopping_is_a_driver_problem(self):
+        # octep's line when the far side of a link stopped answering - none of the words until now
+        self.write(self.log, self.line(11, 'fanctl', 'restore failed before install'), 'a')
+        self.assertEqual(self.collect()['found'], 0)
+        self.write(self.log, self.line(
+            13, 'kernel', '[300] oxp8: link down: the far side stopped answering after 4 connection(s) leaving by it were taken back'), 'a')
+        self.assertEqual(self.collect()['found'], 1)
 
     def test_a_second_reset_is_reported_as_its_own_boot_with_its_own_lines(self):
         # #701: the repeat said the first boot had ended, with both boots' lines mixed.
