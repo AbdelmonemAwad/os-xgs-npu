@@ -19,10 +19,10 @@ to a new image, and the checks fail on one without them.
 |---|---|---|
 | [screens/](screens/) | The web interface, page by page, in English and in Arabic | 108 |
 | [hardware/](hardware/) | Photographs and drawings of the appliances, one folder each | 41 |
-| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 915 |
+| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 930 |
 | [readme/](readme/) | The README's banner and status board, drawn by tools/readme-art.py | 6 |
 
-1109 images in all.
+1124 images in all.
 
 ## The web interface
 
@@ -1626,6 +1626,28 @@ The page: [tacacs-2026-11-15.md](../measurements/tacacs-2026-11-15.md).
 |---|---|---|
 | [01-the-tool.png](measurements/tacacs-2026-11-15/01-the-tool.png) | The second XGS 3300: xgs-tacauth against the lab TACACS+ server - PASS with the right password and FAIL with a wrong one for PAP, ASCII and CHAP, FAIL for an unknown user, ERROR for a wrong secret, a stopped server and an IPv6 address, no temporary folder left | [tacacs-2026-11-15.md](../measurements/tacacs-2026-11-15.md) |
 | [02-through-opnsense.png](measurements/tacacs-2026-11-15/02-through-opnsense.png) | The second XGS 3300: the TACACS+ type in OPNsense's list of server types with its five fields, and authenticate() accepting the right password and refusing a wrong one with each method, and refusing when the server is stopped | [tacacs-2026-11-15.md](../measurements/tacacs-2026-11-15.md) |
+
+### measurements/takeout-counts-2026-11-18/ (15)
+
+The page: [takeout-counts-2026-11-18.md](../measurements/takeout-counts-2026-11-18.md).
+
+| image | what it shows | used on |
+|---|---|---|
+| [136-b3-after.png](measurements/takeout-counts-2026-11-18/136-b3-after.png) | After: a stream handed back at its third second, the XGS 136 | [takeout-counts-2026-11-18.md](../measurements/takeout-counts-2026-11-18.md) |
+| [136-b3-before.png](measurements/takeout-counts-2026-11-18/136-b3-before.png) | Before: a stream handed back at its third second, the XGS 136 | [takeout-counts-2026-11-18.md](../measurements/takeout-counts-2026-11-18.md) |
+| [136-build.png](measurements/takeout-counts-2026-11-18/136-build.png) | npuep.ko built on the XGS 136 | [takeout-counts-2026-11-18.md](../measurements/takeout-counts-2026-11-18.md) |
+| [136-down.png](measurements/takeout-counts-2026-11-18/136-down.png) | The kept module put back on the XGS 136 | [takeout-counts-2026-11-18.md](../measurements/takeout-counts-2026-11-18.md) |
+| [136-up.png](measurements/takeout-counts-2026-11-18/136-up.png) | The fixed module on the XGS 136 | [takeout-counts-2026-11-18.md](../measurements/takeout-counts-2026-11-18.md) |
+| [3300-a1-control.png](measurements/takeout-counts-2026-11-18/3300-a1-control.png) | The control: the same stream never handed back, the XGS 3300 | [takeout-counts-2026-11-18.md](../measurements/takeout-counts-2026-11-18.md) |
+| [3300-a4check-after.png](measurements/takeout-counts-2026-11-18/3300-a4check-after.png) | After: 20 short connections, the XGS 3300 | [takeout-counts-2026-11-18.md](../measurements/takeout-counts-2026-11-18.md) |
+| [3300-a4check-before.png](measurements/takeout-counts-2026-11-18/3300-a4check-before.png) | Before: 20 short connections, the XGS 3300 | [takeout-counts-2026-11-18.md](../measurements/takeout-counts-2026-11-18.md) |
+| [3300-a5i-after.png](measurements/takeout-counts-2026-11-18/3300-a5i-after.png) | After: a stream handed back at its third second, the XGS 3300 | [takeout-counts-2026-11-18.md](../measurements/takeout-counts-2026-11-18.md) |
+| [3300-a5i-before.png](measurements/takeout-counts-2026-11-18/3300-a5i-before.png) | Before: a stream handed back at its third second, the XGS 3300 | [takeout-counts-2026-11-18.md](../measurements/takeout-counts-2026-11-18.md) |
+| [3300-build.png](measurements/takeout-counts-2026-11-18/3300-build.png) | octep.ko built on the XGS 3300 | [takeout-counts-2026-11-18.md](../measurements/takeout-counts-2026-11-18.md) |
+| [3300-down.png](measurements/takeout-counts-2026-11-18/3300-down.png) | The kept module put back on the XGS 3300 | [takeout-counts-2026-11-18.md](../measurements/takeout-counts-2026-11-18.md) |
+| [3300-reclaim-answer.png](measurements/takeout-counts-2026-11-18/3300-reclaim-answer.png) | The reclaim's answer read as counters, the XGS 3300 | [takeout-counts-2026-11-18.md](../measurements/takeout-counts-2026-11-18.md) |
+| [3300-status.png](measurements/takeout-counts-2026-11-18/3300-status.png) | The take-out's counters after the runs, the XGS 3300 | [takeout-counts-2026-11-18.md](../measurements/takeout-counts-2026-11-18.md) |
+| [3300-up.png](measurements/takeout-counts-2026-11-18/3300-up.png) | The fixed module on the XGS 3300 | [takeout-counts-2026-11-18.md](../measurements/takeout-counts-2026-11-18.md) |
 
 ### measurements/tcp-window-2026-10-22/ (21)
 

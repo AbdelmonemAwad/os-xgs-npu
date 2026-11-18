@@ -132,6 +132,13 @@ struct npuflow_conn {
 	 * hw_pf_* is how much of that the keepalive has added to pf's states for it.
 	 */
 	uint32_t	hw_raw[2][2];
+	/*
+	 * 1 while hw_raw holds the totals a reclaim answered with (npuflow_tail), not a message's: a
+	 * message the coprocessor sent before that reclaim and this host reads after it is behind them,
+	 * and is passed over (npuflow_hw_behind). The slot's, as hw_raw is; cleared by the first
+	 * message that is not behind.
+	 */
+	uint8_t		hw_raw_ans;
 	uint64_t	hw_pkts[2];
 	uint64_t	hw_bytes[2];
 	uint64_t	hw_pf_pkts[2];
@@ -204,6 +211,14 @@ struct npuflow_conn {
 #define	NPUFLOW_HW_PKT_SHIFT		3
 #define	NPUFLOW_HW_PKT_MASK		0x1fffffffu	/* 29 bits of packets */
 #define	NPUFLOW_HW_BYTE_BITS		35
+/*
+ * CONN_RECLAIM_FP's answer: struct usfp_tcp_seq (NPUFLOW_TCP_SEQ_LEN bytes), then the slot's running
+ * totals at the reclaim, each direction as a statistics message gives it, opener's first (issue
+ * #1189) - read on the second XGS 3300, 2026-11-18, where the OCTEON TX driver takes them too
+ * (OCTEP_RECLAIM_OFF_TOTALS).
+ */
+#define	NPUFLOW_RECLAIM_OFF_TOTALS	NPUFLOW_TCP_SEQ_LEN
+#define	NPUFLOW_RECLAIM_ANSWER_LEN	(NPUFLOW_TCP_SEQ_LEN + 16)
 
 /*
  * The tables are the board's own size. The XGS 136's platform block says 1,500,000 connections
@@ -481,6 +496,11 @@ struct npuflow_softc {
 	uint64_t		 hw_applied, hw_stale, hw_bad;
 	int			 hw_to_pf;
 	uint64_t		 hw_pf_conns, hw_pf_states;
+	/*
+	 * Reclaim answers whose totals gave the connection its tail (npuflow_tail); answers behind the
+	 * slot's last message, not taken; messages behind an answer, passed over (npuflow_hw_behind)
+	 */
+	uint64_t		 hw_tail, hw_tail_odd, hw_behind;
 	int			 lif_apply;
 	uint64_t		 lif_applied, lif_unknown;
 	uint64_t		 lif_pkts[NPUEP_NFRONT][2], lif_bytes[NPUEP_NFRONT][2];
@@ -498,6 +518,9 @@ static void	npuflow_letgo(struct npuflow_softc *);
 static void	npuflow_fast(void *, int);
 static int	npuflow_conn_find(struct npuflow_softc *, const struct npuep_pf_tuple *);
 static void	npuflow_takeout_how(struct npuflow_softc *, int, int);
+static void	npuflow_give_pf(struct npuflow_softc *, int);
+static void	npuflow_tail(struct npuflow_softc *, int, const struct npuep_pf_tuple *, uint16_t, uint8_t,
+		    const uint8_t *);
 static int	npuflow_sysctl_auto(SYSCTL_HANDLER_ARGS);
 static int	npuflow_sysctl_ipsec_flows(SYSCTL_HANDLER_ARGS);
 static int	npuflow_make(struct npuflow_softc *, uint32_t, int, struct sbuf *);
@@ -1388,22 +1411,33 @@ npuflow_lu_listed(struct npuflow_softc *sc, uint16_t luid)
 	return (npuflow_lu_find(sc->lu, sc->nlu, luid) != NULL);
 }
 
-/* What moved for a connection with a live user, given to its user: index 0 from the client. */
+/*
+ * What moved for a connection with a live user, given to its user: index 0 from the client. By the
+ * user and side, for a connection that has left the table (npuflow_tail).
+ */
 static void
-npuflow_lu_count(struct npuflow_softc *sc, const struct npuflow_conn *c, const uint64_t pk[2],
+npuflow_lu_add(struct npuflow_softc *sc, uint16_t luid, uint8_t lu_side, const uint64_t pk[2],
     const uint64_t by[2])
 {
 	struct npuflow_live_user *u;
 	int d;
 
-	if ((u = npuflow_lu_find(sc->lu, sc->nlu, c->luid)) == NULL)
+	if ((u = npuflow_lu_find(sc->lu, sc->nlu, luid)) == NULL)
 		return;
 	for (d = 0; d < 2; d++) {
-		u->pkts[d ^ c->lu_side] += pk[d];
-		u->bytes[d ^ c->lu_side] += by[d];
+		u->pkts[d ^ lu_side] += pk[d];
+		u->bytes[d ^ lu_side] += by[d];
 	}
 	if (pk[0] != 0 || pk[1] != 0)
 		u->moved = time_second;
+}
+
+static void
+npuflow_lu_count(struct npuflow_softc *sc, const struct npuflow_conn *c, const uint64_t pk[2],
+    const uint64_t by[2])
+{
+
+	npuflow_lu_add(sc, c->luid, c->lu_side, pk, by);
 }
 
 /* Reserve a connection index for a flow being made. Caller holds FLOW_LOCK. Returns -1 if full. */
@@ -1604,14 +1638,18 @@ npuflow_conn_reclaim(uint32_t ci, uint32_t conn_rev)
  * The same command waited for, for a connection whose window was checked in hardware (issue #679):
  * the answer starts with the fast path's struct usfp_tcp_seq, which the take-back gives to pf.
  * Returns 0 with the NPUFLOW_TCP_SEQ_LEN bytes in seq, or an errno - and then the connection has
- * been taken out or not as the far side decided, and pf's states stay sloppy. No lock held.
+ * been taken out or not as the far side decided, and pf's states stay sloppy. And when tot is not
+ * NULL and the answer carried them, the slot's totals after the window (NPUFLOW_RECLAIM_OFF_TOTALS,
+ * 16 bytes) in tot, *got 1 (issue #1189). No lock held.
  */
 static int
-npuflow_conn_reclaim_seq(uint32_t ci, uint32_t conn_rev, uint8_t *seq)
+npuflow_conn_reclaim_seq(uint32_t ci, uint32_t conn_rev, uint8_t *seq, uint8_t *tot, int *got)
 {
-	uint8_t pl[8], resp[64];
+	uint8_t pl[8], resp[NPUFLOW_RECLAIM_ANSWER_LEN];
 	int n, rc = 0;
 
+	if (got != NULL)
+		*got = 0;
 	memset(pl, 0, sizeof(pl));
 	le32enc(pl + 0, ci);
 	le16enc(pl + 4, (uint16_t)conn_rev);
@@ -1625,6 +1663,11 @@ npuflow_conn_reclaim_seq(uint32_t ci, uint32_t conn_rev, uint8_t *seq)
 	if (n < NPUFLOW_TCP_SEQ_LEN)
 		return (EMSGSIZE);
 	memcpy(seq, resp, NPUFLOW_TCP_SEQ_LEN);
+	if (tot != NULL && got != NULL && n >= NPUFLOW_RECLAIM_ANSWER_LEN) {
+		memcpy(tot, resp + NPUFLOW_RECLAIM_OFF_TOTALS, NPUFLOW_RECLAIM_ANSWER_LEN -
+		    NPUFLOW_RECLAIM_OFF_TOTALS);
+		*got = 1;
+	}
 	return (0);
 }
 
@@ -2898,11 +2941,27 @@ npuflow_takeout_how(struct npuflow_softc *sc, int ci, int invalidate)
 {
 	struct npuep_pf_tuple tup[2];
 	const char *why;
-	uint8_t seq[NPUFLOW_TCP_SEQ_LEN];
+	uint8_t seq[NPUFLOW_TCP_SEQ_LEN], tot[NPUFLOW_RECLAIM_ANSWER_LEN - NPUFLOW_RECLAIM_OFF_TOTALS];
 	uint32_t rev, f, cst;
-	uint8_t scale[2];
-	int tcp_on, w;
+	uint16_t luid;
+	uint8_t scale[2], lu_side;
+	int tcp_on, w, got;
 
+	/*
+	 * What it counted since the last sweep, to pf before it goes, whoever takes it out (#1189):
+	 * flow.release, a cut, a policy that no longer covers it. The let-go pass has given it already
+	 * (invalidate 0), and a connection whose pf states have gone has nobody to give it to. Given
+	 * as a difference, so a second call gives nothing twice. Measured on the XGS 136, 2026-11-18:
+	 * a stream released by hand at its third second missed about a second of its bytes in pf.
+	 * What moved after the slot's last message comes from the reclaim's answer below, when the
+	 * reclaim is waited for (npuflow_tail); one only posted leaves it in the slot, for the next
+	 * connection to hold it.
+	 */
+	if (invalidate == 1) {
+		CURVNET_SET_QUIET(vnet0);
+		npuflow_give_pf(sc, ci);
+		CURVNET_RESTORE();
+	}
 	FLOW_LOCK(sc);
 	if (sc->conn == NULL || ci < 2 || (uint32_t)ci >= sc->conn_cap || !sc->conn[ci].used ||
 	    sc->conn[ci].making) {
@@ -2913,6 +2972,8 @@ npuflow_takeout_how(struct npuflow_softc *sc, int ci, int invalidate)
 	tcp_on = sc->conn[ci].tcp_on;
 	tup[0] = sc->conn[ci].tuple[0];
 	tup[1] = sc->conn[ci].tuple[1];
+	luid = sc->conn[ci].luid;
+	lu_side = sc->conn[ci].lu_side;
 	f = le32dec(sc->conn[ci].tcp + NPUFLOW_TCP_OFF_FLAGS);
 	scale[0] = (uint8_t)(f >> NPUFLOW_TCP_SCALE_ORIG_SHIFT);
 	scale[1] = (uint8_t)(f >> NPUFLOW_TCP_SCALE_REPLY_SHIFT);
@@ -2926,11 +2987,13 @@ npuflow_takeout_how(struct npuflow_softc *sc, int ci, int invalidate)
 		why = NULL;
 		if (npuflow_conn_read((uint32_t)ci, rev, &cst) != 0 || cst != NPURPC_CONN_STATE_VALID)
 			why = "the fast path had given it back already";
-		if (npuflow_conn_reclaim_seq((uint32_t)ci, rev, seq) != 0) {
+		if (npuflow_conn_reclaim_seq((uint32_t)ci, rev, seq, tot, &got) != 0) {
 			if (why == NULL)
 				why = "the reclaim was not answered with its numbers";
 		} else if (why == NULL && NPUFLOW_TCP_FIN_STATE(seq[NPUFLOW_TCP_OFF_FIN]) != 0)
 			why = "the fast path had seen it closing";
+		if (got)
+			npuflow_tail(sc, ci, tup, luid, lu_side, tot);
 		if (why == NULL) {
 			CURVNET_SET_QUIET(vnet0);
 			w = npuep_pf_handback(tup, seq, scale);
@@ -3026,13 +3089,28 @@ npuflow_fw_rev_bump(struct npuflow_softc *sc)
 {
 	uint8_t pl[2];
 	uint16_t prev;
-	int n, rc;
+	int i, k, n, rc;
 
 	prev = sc->fw_rev;
 	sc->fw_rev = (uint16_t)((prev + 1) & 0xffffu);
 	le16enc(pl, sc->fw_rev);
 	n = npurpc_send(RPC_CMD_FW_STATE_REV_SET, pl, sizeof(pl), NULL, 0, &rc);
 	if (n >= 0 && rc == 0) {
+		/*
+		 * What each connection counted since the last sweep goes to pf before it is forgotten:
+		 * its pf states outlive the bump, and a reload of the rules bumps the revision with
+		 * every connection in hardware (issue #1189). As the let-go pass gives it; what moved
+		 * after a slot's last message stays in the slot, no reclaim answering with it.
+		 */
+		CURVNET_SET_QUIET(vnet0);
+		for (k = (int)sc->conn_nlive - 1; k >= 0; k--) {
+			FLOW_LOCK(sc);
+			i = (uint32_t)k < sc->conn_nlive ? (int)sc->conn_live[k] : -1;
+			FLOW_UNLOCK(sc);
+			if (i >= 0)
+				npuflow_give_pf(sc, i);
+		}
+		CURVNET_RESTORE();
 		npuflow_forget_all(sc);
 		sc->fw_rev_bumps++;
 	} else {
@@ -3066,6 +3144,80 @@ npuflow_hw_diff(uint32_t raw[2], uint32_t lo, uint32_t olp, uint64_t *pkts, uint
 	*bytes = b1;
 	*pkts = pk;
 	return (pk != 0 || b1 != 0);
+}
+
+/*
+ * Is a direction's total, as a message or a reclaim's answer gives it, behind raw - sent before the
+ * totals raw holds (issue #1189)? A difference past half of either width is taken as behind: what
+ * moves between two messages about a second apart is far less, 1.25 GB at 10 Gbit/s against 16 GiB
+ * and 268 million packets. raw is left as it is.
+ */
+static int
+npuflow_hw_behind(const uint32_t raw[2], uint32_t lo, uint32_t olp)
+{
+	uint64_t b0, b1;
+	uint32_t pk;
+
+	b1 = ((uint64_t)(olp & ((1u << NPUFLOW_HW_PKT_SHIFT) - 1)) << 32) | lo;
+	b0 = ((uint64_t)(raw[1] & ((1u << NPUFLOW_HW_PKT_SHIFT) - 1)) << 32) | raw[0];
+	b1 = (b1 - b0) & ((1ull << NPUFLOW_HW_BYTE_BITS) - 1);
+	pk = ((olp >> NPUFLOW_HW_PKT_SHIFT) - (raw[1] >> NPUFLOW_HW_PKT_SHIFT)) & NPUFLOW_HW_PKT_MASK;
+	return (b1 >= (1ull << (NPUFLOW_HW_BYTE_BITS - 1)) || pk > (NPUFLOW_HW_PKT_MASK >> 1));
+}
+
+/*
+ * What the fast path counted for a connection after its last statistics message, from the reclaim's
+ * answer (issue #1189): the answer ends with the slot's running totals at the moment the fast path
+ * let it go (NPUFLOW_RECLAIM_OFF_TOTALS), so what moved since the slot's last message is the
+ * connection's tail - given to its pf states here, and to its live user; and raw moves to those
+ * totals, so the next connection to hold the slot does not start with it. Measured on the XGS 136,
+ * 2026-11-18: with the counts given at the take-out, a stream released by hand at its third second
+ * still missed 3 to 11 MB in pf, 0.04 to 0.15 s of it. The connection has left the table by now -
+ * npuflow_takeout_how frees it before the commands - so its tuples, user and side are the caller's
+ * copies. An answer behind the slot's last message is not taken, and counted. No lock held.
+ */
+static void
+npuflow_tail(struct npuflow_softc *sc, int ci, const struct npuep_pf_tuple *tup, uint16_t luid,
+    uint8_t lu_side, const uint8_t *tot)
+{
+	struct npuflow_conn *c;
+	uint64_t pk[2], by[2];
+	int d, ns, moved, give;
+
+	FLOW_LOCK(sc);
+	if (sc->conn == NULL || ci < 2 || (uint32_t)ci >= sc->conn_cap) {
+		FLOW_UNLOCK(sc);
+		return;
+	}
+	c = &sc->conn[ci];
+	for (d = 0; d < 2; d++) {
+		if (npuflow_hw_behind(c->hw_raw[d], le32dec(tot + 8 * d), le32dec(tot + 8 * d + 4))) {
+			sc->hw_tail_odd++;
+			FLOW_UNLOCK(sc);
+			return;
+		}
+	}
+	moved = 0;
+	for (d = 0; d < 2; d++)
+		moved |= npuflow_hw_diff(c->hw_raw[d], le32dec(tot + 8 * d), le32dec(tot + 8 * d + 4),
+		    &pk[d], &by[d]);
+	c->hw_raw_ans = 1;
+	sc->hw_tail++;
+	if (moved && luid != 0)
+		npuflow_lu_add(sc, luid, lu_side, pk, by);
+	give = (moved && sc->hw_to_pf == 1);
+	FLOW_UNLOCK(sc);
+	if (!give)
+		return;
+	CURVNET_SET_QUIET(vnet0);
+	ns = npuep_pf_count(tup, pk, by);
+	CURVNET_RESTORE();
+	if (ns <= 0)
+		return;
+	FLOW_LOCK(sc);
+	sc->hw_pf_conns++;
+	sc->hw_pf_states += (uint64_t)ns;
+	FLOW_UNLOCK(sc);
 }
 
 /*
@@ -3216,6 +3368,19 @@ npuflow_cmsg_rx(const uint8_t *f, uint32_t flen)
 			}
 			/* the slot's totals move whoever they are for: see npuflow_hw_diff */
 			c = &sc->conn[idx + k];
+			/*
+			 * Unless the slot's last totals came from a reclaim's answer, and this message
+			 * was sent before that reclaim: passed over, raw left at the answer's (issue
+			 * #1189). The first one not behind them is read as any other.
+			 */
+			if (c->hw_raw_ans) {
+				if (npuflow_hw_behind(c->hw_raw[0], le32dec(p), le32dec(p + 4)) ||
+				    npuflow_hw_behind(c->hw_raw[1], le32dec(p + 8), le32dec(p + 12))) {
+					sc->hw_behind++;
+					continue;
+				}
+				c->hw_raw_ans = 0;
+			}
 			moved = 0;
 			for (d = 0; d < 2; d++)
 				moved |= npuflow_hw_diff(c->hw_raw[d], le32dec(p + 8 * d),
@@ -3735,7 +3900,7 @@ npuflow_revive(struct npuflow_softc *sc, int ci)
 			    "unchecked after %d ms - %s", ci, waited * 1000 / hz, why);
 		}
 	} else if (tcp_on && sc->tcp_revive == 1) {
-		if (npuflow_conn_reclaim_seq((uint32_t)ci, conn_rev, seq) == 0)
+		if (npuflow_conn_reclaim_seq((uint32_t)ci, conn_rev, seq, NULL, NULL) == 0)
 			npuflow_tcp_rearm(tcp, seq);
 		else
 			tcp_on = 0;
@@ -5880,6 +6045,15 @@ npuflow_attach(device_t dev, struct sysctl_ctx_list *ctx, struct sysctl_oid *par
 		    &sc->hw_pf_conns, 0, "connections whose counts were added to pf");
 		SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "hw_pf_states", CTLFLAG_RD,
 		    &sc->hw_pf_states, 0, "pf states those counts were added to");
+		SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "hw_tail", CTLFLAG_RD,
+		    &sc->hw_tail, 0, "reclaims whose answer gave the connection what the fast path "
+		    "counted after its last statistics message (issue #1189)");
+		SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "hw_tail_odd", CTLFLAG_RD,
+		    &sc->hw_tail_odd, 0, "reclaim answers behind the slot's last statistics message: "
+		    "not taken");
+		SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "hw_behind", CTLFLAG_RD,
+		    &sc->hw_behind, 0, "statistics messages sent before a reclaim and read after its "
+		    "answer: passed over");
 		SYSCTL_ADD_PROC(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "lif_counted",
 		    CTLTYPE_STRING | CTLFLAG_RD | CTLFLAG_MPSAFE, sc, 0, npuflow_sysctl_lif_counted, "A",
 		    "what the coprocessor forwarded itself on each port (type 0), in and out, since attach "

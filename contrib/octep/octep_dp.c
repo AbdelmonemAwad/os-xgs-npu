@@ -2102,6 +2102,25 @@ octep_hw_diff(uint32_t raw[2], uint32_t lo, uint32_t olp, uint64_t *pkts, uint64
 }
 
 /*
+ * Is a direction's total, as a message or a reclaim's answer gives it, behind raw - sent before the
+ * totals raw holds (issue #1189)? A difference past half of either width is taken as behind: what
+ * moves between two messages about a second apart is far less, 1.25 GB at 10 Gbit/s against 16 GiB
+ * and 268 million packets. raw is left as it is.
+ */
+static int
+octep_hw_behind(const uint32_t raw[2], uint32_t lo, uint32_t olp)
+{
+	uint64_t b0, b1;
+	uint32_t pk;
+
+	b1 = ((uint64_t)(olp & ((1u << OCTEP_HW_PKT_SHIFT) - 1)) << 32) | lo;
+	b0 = ((uint64_t)(raw[1] & ((1u << OCTEP_HW_PKT_SHIFT) - 1)) << 32) | raw[0];
+	b1 = (b1 - b0) & ((1ull << OCTEP_HW_BYTE_BITS) - 1);
+	pk = ((olp >> OCTEP_HW_PKT_SHIFT) - (raw[1] >> OCTEP_HW_PKT_SHIFT)) & OCTEP_HW_PKT_MASK;
+	return (b1 >= (1ull << (OCTEP_HW_BYTE_BITS - 1)) || pk > (OCTEP_HW_PKT_MASK >> 1));
+}
+
+/*
  * The coprocessor's count of one port (type 0, LIF_STATS), for each LIF it forwarded on - a port's
  * own LIF is its index shifted left by twelve, VLAN 0, and a VLAN subinterface's the same with its
  * VLAN (octep_dp_vlan_lifs).
@@ -2535,6 +2554,19 @@ octep_dp_cmsg_rx(struct octep_softc *sc, const uint8_t *f, uint32_t flen)
 			}
 			/* the slot's totals move whoever they are for: see octep_hw_diff */
 			c = &sc->dp_conn[idx + k];
+			/*
+			 * Unless the slot's last totals came from a reclaim's answer, and this message
+			 * was sent before that reclaim: passed over, raw left at the answer's (issue
+			 * #1189). The first one not behind them is read as any other.
+			 */
+			if (c->hw_raw_ans) {
+				if (octep_hw_behind(c->hw_raw[0], le32dec(p), le32dec(p + 4)) ||
+				    octep_hw_behind(c->hw_raw[1], le32dec(p + 8), le32dec(p + 12))) {
+					sc->dp_hw_behind++;
+					continue;
+				}
+				c->hw_raw_ans = 0;
+			}
 			moved = 0;
 			for (d = 0; d < 2; d++)
 				moved |= octep_hw_diff(c->hw_raw[d], le32dec(p + 8 * d),
@@ -4476,21 +4508,65 @@ octep_dp_tuple_from_ip(const uint8_t *ip, uint32_t len, struct octep_pf_tuple *t
  * of a connection it would be programmed into nothing. A slot whose word stays taken keeps its
  * places, as every slot kept its one before this was done at all, and is counted.
  *
+ * And what each had counted that pf was not yet given is kept for it (issue #1189): pf's states
+ * outlive the bump, and a reload of the rules or a new WAN lease bumps the revision with every
+ * connection in hardware, each up to OCTEP_KA_PERIOD of its traffic behind. An array made for it
+ * here, given by octep_dp_forgot_give once the bump has dropped the lock; one that cannot be had
+ * now loses them, counted in dp.hw_pf_lost. What moved after a slot's last statistics message
+ * stays in the slot: no reclaim answers with it.
+ *
  * Called with the softc lock held, by the revision bump and by nothing else.
  */
 void
 octep_dp_flows_forget(struct octep_softc *sc)
 {
 	struct octep_flow_cand_slot *cs;
-	int got, i, s;
+	struct octep_conn *c;
+	struct octep_forgot *f;
+	uint64_t gp[2], gb[2];
+	int d, give, got, i, k, n, s;
 
 	mtx_assert(&sc->mtx, MA_OWNED);
 
-	for (i = 0; i < (int)sc->dp_conn_cap; i++) {
-		if (!sc->dp_conn[i].used)
+	for (n = 0, i = 0; sc->dp_hw_to_pf == 1 && i < (int)sc->dp_conn_cap; i++) {
+		c = &sc->dp_conn[i];
+		if (c->used && (c->hw_pkts[0] != c->hw_pf_pkts[0] || c->hw_pkts[1] != c->hw_pf_pkts[1] ||
+		    c->hw_bytes[0] != c->hw_pf_bytes[0] || c->hw_bytes[1] != c->hw_pf_bytes[1]))
+			n++;
+	}
+	f = NULL;
+	if (n > 0 && sc->dp_forgot == NULL) {
+		f = malloc(sizeof(*f) * (size_t)n, M_DEVBUF, M_NOWAIT);
+		if (f == NULL)
+			sc->dp_hw_pf_lost += (uint64_t)n;
+	} else if (n > 0)
+		sc->dp_hw_pf_lost += (uint64_t)n;	/* the last bump's not given yet: not met */
+	for (k = 0, i = 0; i < (int)sc->dp_conn_cap; i++) {
+		c = &sc->dp_conn[i];
+		if (!c->used)
 			continue;
-		sc->dp_conn[i].used = 0;
+		give = 0;
+		for (d = 0; d < 2; d++) {
+			gp[d] = c->hw_pkts[d] - c->hw_pf_pkts[d];
+			gb[d] = c->hw_bytes[d] - c->hw_pf_bytes[d];
+			if (gp[d] != 0 || gb[d] != 0)
+				give = 1;
+		}
+		if (give && f != NULL && k < n) {
+			f[k].tuple[0] = c->tuple[0];
+			f[k].tuple[1] = c->tuple[1];
+			for (d = 0; d < 2; d++) {
+				f[k].pk[d] = gp[d];
+				f[k].by[d] = gb[d];
+			}
+			k++;
+		}
+		c->used = 0;
 		sc->dp_flow_forgot++;
+	}
+	if (f != NULL) {
+		sc->dp_forgot = f;
+		sc->dp_forgot_n = k;
 	}
 	sc->dp_conn_used = 0;
 	memset(sc->dp_conn_hot, 0, sizeof(sc->dp_conn_hot));
@@ -4561,6 +4637,56 @@ octep_conn_free(struct octep_softc *sc, struct octep_conn *c)
 }
 
 /*
+ * What the fast path counted for a connection after its last statistics message, from the reclaim's
+ * answer: the answer ends with the slot's running totals at the moment the fast path let it go
+ * (OCTEP_RECLAIM_OFF_TOTALS), so what moved since the last message is the connection's tail. Added
+ * to its counts - and to its live user's and its IPsec flow's, as a message's are - so the take-back
+ * gives it to pf with the rest; and raw moves to those totals, so the next connection to hold the
+ * slot does not start with this one's tail. Until 2026-11-18 it did: with the take-back's counts
+ * given (issue #1189), one of 20 short connections on the second XGS 3300 was counted 121 % of its
+ * payload, 4.5 MB of another connection's on top, and the rest 103 to 105 %. An answer behind the
+ * last message is not taken, and counted. Called with the softc lock held, right after the answer.
+ */
+static void
+octep_conn_tail(struct octep_softc *sc, struct octep_conn *c)
+{
+	const uint8_t *a;
+	uint64_t pk[2], by[2];
+	int d, moved;
+
+	mtx_assert(&sc->mtx, MA_OWNED);
+	/*
+	 * Read on vendor version 22 only, the second XGS 3300's: an answer of the same length from
+	 * another version is not taken as totals until it has been read there too.
+	 */
+	if (sc->rpc_sfos != 22 || sc->rpc_last_len < OCTEP_RECLAIM_ANSWER_LEN)
+		return;
+	a = sc->rpc_last_reply + OCTEP_RECLAIM_OFF_TOTALS;
+	for (d = 0; d < 2; d++) {
+		if (octep_hw_behind(c->hw_raw[d], le32dec(a + 8 * d), le32dec(a + 8 * d + 4))) {
+			sc->dp_hw_tail_odd++;
+			return;
+		}
+	}
+	moved = 0;
+	for (d = 0; d < 2; d++) {
+		moved |= octep_hw_diff(c->hw_raw[d], le32dec(a + 8 * d), le32dec(a + 8 * d + 4),
+		    &pk[d], &by[d]);
+		c->hw_pkts[d] += pk[d];
+		c->hw_bytes[d] += by[d];
+	}
+	c->hw_raw_ans = 1;
+	sc->dp_hw_tail++;
+	if (!moved)
+		return;
+	c->hw_moved = time_uptime;
+	if (c->ipsec)
+		octep_ipsec_flow_count(sc, c, pk, by);
+	if (c->luid != 0)
+		octep_lu_count(sc, c, pk, by);
+}
+
+/*
  * Take a connection out of the fast path: each programmed direction back to INACTIVE, then the
  * connection reclaimed, then the host's record freed.
  *
@@ -4592,10 +4718,12 @@ octep_conn_takeout(struct octep_softc *sc, struct octep_conn *c, int reclaim)
 	struct octep_handback *hb;
 	const char *why;
 	uint8_t seq[OCTEP_TCP_SEQ_LEN];
+	uint64_t gp[2] = { 0, 0 }, gb[2] = { 0, 0 };
 	uint32_t f, cst, crev;
-	int d, err, want;
+	int d, err, want, win, give;
 
 	mtx_assert(&sc->mtx, MA_OWNED);
+	win = 0;
 	for (d = 0; d < 2; d++) {
 		if (c->mf[d].state != OCTEP_MF_PROGRAMMED)
 			continue;
@@ -4641,6 +4769,8 @@ octep_conn_takeout(struct octep_softc *sc, struct octep_conn *c, int reclaim)
 			sc->dp_flow_reclaimed++;
 		else
 			sc->dp_reclaim_refused++;	/* the far side had already left RECLAIM_PENDING, or holds another rev */
+		if (err == 0)
+			octep_conn_tail(sc, c);		/* even when nobody is left to give it to: the slot's */
 		if (c->tcp_on && reclaim != OCTEP_TAKEOUT_GONE) {
 			if (why == NULL && err != 0)
 				why = "the reclaim was not answered with its numbers";
@@ -4651,18 +4781,50 @@ octep_conn_takeout(struct octep_softc *sc, struct octep_conn *c, int reclaim)
 				sc->dp_tcp_lost++;
 			} else if (why != NULL)
 				sc->dp_tcp_kept++;
-			if (why == NULL) {
-				hb = &sc->dp_hb[sc->dp_hb_n++];
-				hb->idx = c->idx;
-				hb->tuple[0] = c->tuple[0];
-				hb->tuple[1] = c->tuple[1];
-				memcpy(hb->seq, seq, OCTEP_TCP_SEQ_LEN);
-				f = le32dec(c->tcp + OCTEP_TCP_OFF_FLAGS);
-				hb->scale[0] = (uint8_t)(f >> OCTEP_TCP_SCALE_ORIG_SHIFT);
-				hb->scale[1] = (uint8_t)(f >> OCTEP_TCP_SCALE_REPLY_SHIFT);
-			} else
+			if (why == NULL)
+				win = 1;
+			else
 				snprintf(sc->dp_tcp_last, sizeof(sc->dp_tcp_last),
 				    "connection %u: left sloppy in pf - %s\n", c->idx, why);
+		}
+	}
+	/*
+	 * And what the coprocessor counted for it that pf has not been given: the keep-alive gives it
+	 * at its visits only, OCTEP_KA_PERIOD apart, and the connection is leaving now (issue #1189).
+	 * Given with the window, or alone, once the lock is dropped; not for one whose pf states have
+	 * gone. What the fast path counted after its last statistics message is in it too, from the
+	 * reclaim's answer (octep_conn_tail); a connection taken out with no reclaim answered - one
+	 * the fast path had reclaimed itself, or a reclaim refused - leaves that tail in the slot, for
+	 * the next connection to hold it.
+	 */
+	give = 0;
+	if (reclaim != OCTEP_TAKEOUT_GONE && sc->dp_hw_to_pf == 1) {
+		for (d = 0; d < 2; d++) {
+			gp[d] = c->hw_pkts[d] - c->hw_pf_pkts[d];
+			gb[d] = c->hw_bytes[d] - c->hw_pf_bytes[d];
+			if (gp[d] != 0 || gb[d] != 0)
+				give = 1;
+		}
+		if (give && !win && sc->dp_hb_n >= OCTEP_HB_MAX) {
+			sc->dp_hw_pf_lost++;
+			give = 0;
+		}
+	}
+	if (win || give) {
+		hb = &sc->dp_hb[sc->dp_hb_n++];
+		hb->idx = c->idx;
+		hb->tuple[0] = c->tuple[0];
+		hb->tuple[1] = c->tuple[1];
+		hb->win = (uint8_t)win;
+		if (win) {
+			memcpy(hb->seq, seq, OCTEP_TCP_SEQ_LEN);
+			f = le32dec(c->tcp + OCTEP_TCP_OFF_FLAGS);
+			hb->scale[0] = (uint8_t)(f >> OCTEP_TCP_SCALE_ORIG_SHIFT);
+			hb->scale[1] = (uint8_t)(f >> OCTEP_TCP_SCALE_REPLY_SHIFT);
+		}
+		for (d = 0; d < 2; d++) {
+			hb->pk[d] = give ? gp[d] : 0;
+			hb->by[d] = give ? gb[d] : 0;
 		}
 	}
 	octep_conn_free(sc, c);
@@ -4670,19 +4832,20 @@ octep_conn_takeout(struct octep_softc *sc, struct octep_conn *c, int reclaim)
 }
 
 /*
- * Give pf the windows of the connections just taken back: the queue octep_conn_takeout fills,
- * emptied one entry at a time with the lock dropped around each, because pf's states are never
- * touched with the softc lock held - the transmit path takes it, and pf may hold a state's lock
- * while it sends. Called right after a lock that took connections out is dropped, so the frames
- * that reach pf while it is still sloppy are as few as can be; every caller of a takeout calls it,
- * and the sweep calls it each second for anything left. A state that does not take the numbers
- * stays sloppy and is counted with the kept ones.
+ * Give pf the windows of the connections just taken back, and their last counts: the queue
+ * octep_conn_takeout fills, emptied one entry at a time with the lock dropped around each, because
+ * pf's states are never touched with the softc lock held - the transmit path takes it, and pf may
+ * hold a state's lock while it sends. Called right after a lock that took connections out is
+ * dropped, so the frames that reach pf while it is still sloppy are as few as can be; every caller
+ * of a takeout calls it, and the sweep calls it each second for anything left. A state that does
+ * not take the numbers stays sloppy and is counted with the kept ones; counts no state takes are
+ * not counted as given.
  */
 void
 octep_dp_handback_run(struct octep_softc *sc)
 {
 	struct octep_handback one;
-	int n;
+	int n, ns;
 
 	mtx_assert(&sc->mtx, MA_NOTOWNED);
 	if (sc->dp_hb_n == 0)	/* unlocked: one missed now is found by the next call */
@@ -4700,19 +4863,87 @@ octep_dp_handback_run(struct octep_softc *sc)
 		 * run with none set; this driver's interfaces are in vnet0 (octep_dp_poll).
 		 */
 		CURVNET_SET_QUIET(vnet0);
-		n = octep_pf_handback(one.tuple, one.seq, one.scale);
+		ns = 0;
+		if (one.pk[0] != 0 || one.pk[1] != 0 || one.by[0] != 0 || one.by[1] != 0)
+			ns = octep_pf_count(one.tuple, one.pk, one.by);
+		n = one.win ? octep_pf_handback(one.tuple, one.seq, one.scale) : 0;
 		CURVNET_RESTORE();
-		if (n > 0)
-			sc->dp_tcp_handback++;
-		else
-			sc->dp_tcp_kept++;
 		mtx_lock(&sc->mtx);
-		snprintf(sc->dp_tcp_last, sizeof(sc->dp_tcp_last), n > 0 ?
-		    "connection %u: handed back, %d pf state(s) took the fast path's numbers\n" :
-		    "connection %u: no pf state took the fast path's numbers - gone, or the answer "
-		    "did not look like a window\n", one.idx, n);
+		if (ns > 0) {
+			sc->dp_hw_pf_conns++;
+			sc->dp_hw_pf_states += (uint64_t)ns;
+			sc->dp_hw_pf_final++;
+		}
+		if (one.win) {
+			if (n > 0)
+				sc->dp_tcp_handback++;
+			else
+				sc->dp_tcp_kept++;
+			snprintf(sc->dp_tcp_last, sizeof(sc->dp_tcp_last), n > 0 ?
+			    "connection %u: handed back, %d pf state(s) took the fast path's numbers\n" :
+			    "connection %u: no pf state took the fast path's numbers - gone, or the answer "
+			    "did not look like a window\n", one.idx, n);
+		}
 		mtx_unlock(&sc->mtx);
 	}
+}
+
+/*
+ * Give pf what a revision bump's forgotten connections had counted (octep_dp_flows_forget): called
+ * by the bump once it has dropped the lock, as the take-outs' callers call octep_dp_handback_run.
+ * Each entry given as the keep-alive gives, with the lock dropped; the array freed after.
+ */
+void
+octep_dp_forgot_give(struct octep_softc *sc)
+{
+	struct octep_forgot *f;
+	uint64_t conns, states;
+	int i, n, ns;
+
+	mtx_assert(&sc->mtx, MA_NOTOWNED);
+	mtx_lock(&sc->mtx);
+	f = sc->dp_forgot;
+	n = sc->dp_forgot_n;
+	sc->dp_forgot = NULL;
+	sc->dp_forgot_n = 0;
+	mtx_unlock(&sc->mtx);
+	if (f == NULL)
+		return;
+	conns = states = 0;
+	CURVNET_SET_QUIET(vnet0);
+	for (i = 0; i < n; i++) {
+		ns = octep_pf_count(f[i].tuple, f[i].pk, f[i].by);
+		if (ns > 0) {
+			conns++;
+			states += (uint64_t)ns;
+		}
+	}
+	CURVNET_RESTORE();
+	free(f, M_DEVBUF);
+	mtx_lock(&sc->mtx);
+	sc->dp_hw_pf_conns += conns;
+	sc->dp_hw_pf_states += states;
+	sc->dp_hw_pf_final += conns;
+	mtx_unlock(&sc->mtx);
+}
+
+/*
+ * Room in that queue for a loop that takes many connections out under one hold of the lock -
+ * dp.flow_exclude's, dp.live_users': when it is full, the lock is dropped, the queue given to pf,
+ * and the lock taken again, so the take-outs after the 256th keep their windows and counts (issue
+ * #1189). Returns 1 when the lock was dropped: the caller looks at its connection again.
+ */
+static int
+octep_dp_handback_room(struct octep_softc *sc)
+{
+
+	mtx_assert(&sc->mtx, MA_OWNED);
+	if (sc->dp_hb_n < OCTEP_HB_MAX)
+		return (0);
+	mtx_unlock(&sc->mtx);
+	octep_dp_handback_run(sc);
+	mtx_lock(&sc->mtx);
+	return (1);
 }
 
 /*
@@ -5486,6 +5717,10 @@ octep_sysctl_dp_flow_exclude(SYSCTL_HANDLER_ARGS)
 			if (!c->used || c->doomed || (!octep_flow_excl_names(sc, &c->tuple[0]) &&
 			    !octep_flow_excl_names(sc, &c->tuple[1])))
 				continue;
+			if (octep_dp_handback_room(sc)) {
+				k++;		/* the lock was dropped: this place looked at again */
+				continue;
+			}
 			if (octep_conn_takeout(sc, c, 1) == ETIMEDOUT)
 				break;		/* the audit finishes the doomed one; the rest go by their punts */
 			sc->dp_flow_excluded++;
@@ -5711,6 +5946,10 @@ octep_sysctl_dp_live_users(SYSCTL_HANDLER_ARGS)
 				c = &sc->dp_conn[ci];
 				if (!c->used || c->doomed || c->luid != lu)
 					continue;
+				if (octep_dp_handback_room(sc)) {
+					k++;	/* the lock was dropped: this place looked at again */
+					continue;
+				}
 				if (octep_conn_takeout(sc, c, 1) == ETIMEDOUT)
 					break;		/* the audit finishes the doomed one */
 				sc->dp_lu_out++;
@@ -7332,6 +7571,8 @@ octep_dp_flow_make(struct octep_softc *sc, const struct octep_pf_tuple *tin, uin
 			perr = octep_conn_probe(sc, c);
 			if (perr != 0) {
 				mtx_unlock(&sc->mtx);
+				/* a connection the probe took out has its counts queued for pf (#1189) */
+				octep_dp_handback_run(sc);
 				if (perr == ETIMEDOUT) {
 					if (stop != NULL)
 						*stop = 1;
@@ -8005,6 +8246,9 @@ octep_dp_flow_drain(struct octep_softc *sc, int kicked)
 				perr = octep_conn_probe(sc, c);
 			}
 			mtx_unlock(&sc->mtx);
+			/* a connection the probe took out has its counts queued for pf (#1189) */
+			if (perr == EJUSTRETURN)
+				octep_dp_handback_run(sc);
 			/*
 			 * Not answered: that was two seconds with the transmit path's lock held,
 			 * and the next candidate would wait its own two. The poll ends here.
@@ -8272,6 +8516,17 @@ octep_flow_keepalive(struct octep_softc *sc)
 			if (sc->dp_hw_to_pf == 1 && (gp[d] != 0 || gb[d] != 0))
 				give = 1;
 		}
+		/*
+		 * Marked given before the lock is dropped: a take-out in the meantime - the fast task's
+		 * probe, flow.release, IPsec's - gives pf the rest, never this share again (issue
+		 * #1189). Put back below if no state took it, and the connection is still this one.
+		 */
+		if (give) {
+			for (d = 0; d < 2; d++) {
+				c->hw_pf_pkts[d] += gp[d];
+				c->hw_pf_bytes[d] += gb[d];
+			}
+		}
 		mtx_unlock(&sc->mtx);
 
 		if (nums) {
@@ -8284,16 +8539,18 @@ octep_flow_keepalive(struct octep_softc *sc)
 			sc->dp_ka_touched++;
 		else if (!silent)
 			sc->dp_ka_idle++;
-		if (give && (ns = octep_pf_count(tup, gp, gb)) > 0) {
+		if (give) {
+			ns = octep_pf_count(tup, gp, gb);
 			mtx_lock(&sc->mtx);
-			if (c->used && c->conn_rev == crev) {
+			if (ns > 0) {
+				sc->dp_hw_pf_conns++;
+				sc->dp_hw_pf_states += (uint64_t)ns;
+			} else if (c->used && c->conn_rev == crev) {
 				for (d = 0; d < 2; d++) {
-					c->hw_pf_pkts[d] += gp[d];
-					c->hw_pf_bytes[d] += gb[d];
+					c->hw_pf_pkts[d] -= gp[d];
+					c->hw_pf_bytes[d] -= gb[d];
 				}
 			}
-			sc->dp_hw_pf_conns++;
-			sc->dp_hw_pf_states += (uint64_t)ns;
 			mtx_unlock(&sc->mtx);
 		}
 		if (silent) {
@@ -9149,6 +9406,9 @@ octep_dp_table_free(struct octep_softc *sc)
 	free(sc->dp_conn_free, M_DEVBUF);
 	free(sc->dp_conn_live, M_DEVBUF);
 	free(sc->dp_hold, M_DEVBUF);
+	free(sc->dp_forgot, M_DEVBUF);		/* a bump's counts not given: none to give them to now */
+	sc->dp_forgot = NULL;
+	sc->dp_forgot_n = 0;
 	sc->dp_hold = NULL;
 	sc->dp_conn = NULL;
 	sc->dp_conn_head = NULL;
@@ -9428,6 +9688,22 @@ octep_dp_add_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
 	    CTLFLAG_RD, &sc->dp_hw_pf_conns, 0, "connections whose counts were added to pf");
 	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "hw_pf_states",
 	    CTLFLAG_RD, &sc->dp_hw_pf_states, 0, "pf states those counts were added to");
+	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "hw_pf_final",
+	    CTLFLAG_RD, &sc->dp_hw_pf_final, 0,
+	    "connections taken out whose last counts went to pf with the take-back (issue #1189)");
+	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "hw_pf_lost",
+	    CTLFLAG_RD, &sc->dp_hw_pf_lost, 0,
+	    "connections taken out whose last counts were lost: the queue to pf was full");
+	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "hw_tail",
+	    CTLFLAG_RD, &sc->dp_hw_tail, 0,
+	    "reclaims whose answer gave the connection what the fast path counted after its last "
+	    "statistics message (issue #1189)");
+	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "hw_tail_odd",
+	    CTLFLAG_RD, &sc->dp_hw_tail_odd, 0,
+	    "reclaim answers behind the slot's last statistics message: not taken");
+	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "hw_behind",
+	    CTLFLAG_RD, &sc->dp_hw_behind, 0,
+	    "statistics messages sent before a reclaim and read after its answer: passed over");
 	SYSCTL_ADD_PROC(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "rx_prefix",
 	    CTLTYPE_STRING | CTLFLAG_RD | CTLFLAG_MPSAFE, sc, 0,
 	    octep_sysctl_dp_rx_prefix, "A",

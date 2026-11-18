@@ -1987,17 +1987,40 @@ struct octep_conn_mf {
 #define	  OCTEP_TCP_SCALE_ORIG_SHIFT	24
 
 /*
- * A take-back whose window goes to pf once the softc lock is dropped: pf's states are never
- * touched with it held (octep_dp_handback_run). The connection's two tuples, the fast path's
- * numbers as CONN_RECLAIM_FP answered them, and the two window scales the connection was sent
- * with, opener's first.
+ * A take-back whose window, or counts, go to pf once the softc lock is dropped: pf's states are
+ * never touched with it held (octep_dp_handback_run). The connection's two tuples, the fast path's
+ * numbers as CONN_RECLAIM_FP answered them and the two window scales the connection was sent with,
+ * opener's first, when win is 1; and what the coprocessor counted for it that the keep-alive had
+ * not yet given to pf, each direction (issue #1189): the keep-alive visits a connection every
+ * OCTEP_KA_PERIOD seconds, and what it counted since the last visit went with the connection when
+ * it was taken out - 3.3 to 4.9 s of a stream released mid-transfer, and nearly all of a short
+ * connection's bytes, on the XGS 3300 (os-quota's phase 0, 2026-11-17). npuep gives them from its
+ * let-go pass since 2026-10-19 (npuflow_give_pf). With them goes what the fast path counted after
+ * its last statistics message, taken from the reclaim's answer (octep_conn_tail).
+ *
+ * 256: a pass of the sweep takes out many connections under one hold of the lock - A5 (ii)'s load
+ * ended with 1,033 taken back - and an entry is now made for each one with counts, not only for a
+ * TCP connection whose window is checked. A full queue still loses: the window as before (the state
+ * stays sloppy, dp.tcp_lost), the counts counted in dp.hw_pf_lost.
  */
-#define	OCTEP_HB_MAX			32
+#define	OCTEP_HB_MAX			256
+/*
+ * What a revision bump's forgotten connections had counted that pf was not yet given: one entry
+ * each, in an array made for the bump (octep_dp_flows_forget) and given once its lock is dropped
+ * (octep_dp_forgot_give), because a reload of the rules or a new WAN lease bumps the revision with
+ * every connection in hardware at once - more than the hand-back queue holds (issue #1189).
+ */
+struct octep_forgot {
+	struct octep_pf_tuple	 tuple[2];
+	uint64_t		 pk[2], by[2];
+};
 struct octep_handback {
 	uint32_t		 idx;		/* the connection's index, for dp.tcp_last */
 	struct octep_pf_tuple	 tuple[2];
 	uint8_t			 seq[OCTEP_TCP_SEQ_LEN];
 	uint8_t			 scale[2];
+	uint8_t			 win;		/* 1: seq and scale are the window for pf */
+	uint64_t		 pk[2], by[2];	/* counts pf was not yet given; all 0: none */
 };
 
 /* The translation, in the connection's orientation, kept so a re-create needs no new pf read. */
@@ -2192,6 +2215,13 @@ struct octep_conn {
 	 * in seconds of uptime; 0 until a message has named it.
 	 */
 	uint32_t		 hw_raw[2][2];
+	/*
+	 * 1 while hw_raw holds the totals a reclaim answered with (octep_conn_tail), not a message's:
+	 * a message the coprocessor sent before that reclaim and this host reads after it is behind
+	 * them, and is passed over rather than taken as a difference (octep_hw_behind). The slot's, as
+	 * hw_raw is; cleared by the first message that is not behind.
+	 */
+	uint8_t			 hw_raw_ans;
 	uint64_t		 hw_pkts[2];
 	uint64_t		 hw_bytes[2];
 	time_t			 hw_moved;
@@ -2240,6 +2270,17 @@ struct octep_conn {
 #define	OCTEP_HW_PKT_SHIFT		3
 #define	OCTEP_HW_PKT_MASK		0x1fffffffu	/* 29 bits of packets */
 #define	OCTEP_HW_BYTE_BITS		35
+/*
+ * CONN_RECLAIM_FP's answer: struct usfp_tcp_seq (OCTEP_TCP_SEQ_LEN bytes), then the slot's running
+ * totals at the reclaim, each direction as a statistics message gives it - the bytes' low word,
+ * then the bytes' bits 32 to 34 under the packets shifted left by three - opener's first (issue
+ * #1189). Measured on the second XGS 3300, 2026-11-18: 64 bytes each time; totals of 1,500 bytes a
+ * packet one way and 41 the other, a stream and its acknowledgements; and the second of two
+ * reclaims of one slot answered with the first one's totals and the second connection's bytes on
+ * top, running totals for the slot as the messages carry them.
+ */
+#define	OCTEP_RECLAIM_OFF_TOTALS	OCTEP_TCP_SEQ_LEN
+#define	OCTEP_RECLAIM_ANSWER_LEN	(OCTEP_TCP_SEQ_LEN + 16)
 
 /*
  * A next hop the far side has been given: where a frame leaves and to whom. Keyed by what
@@ -2460,6 +2501,7 @@ int	octep_nhop_resolve_via(struct octep_softc *, int, uint16_t, const uint32_t *
 int	octep_nhop_get(struct octep_softc *, const struct octep_nhop *, uint32_t *);
 void	octep_nhop_put(struct octep_softc *, uint32_t);
 void	octep_dp_flows_forget(struct octep_softc *);
+void	octep_dp_forgot_give(struct octep_softc *);
 void	octep_dp_handback_run(struct octep_softc *);
 
 /* octep_ipsec.c */
@@ -3534,6 +3576,16 @@ struct octep_softc {
 	uint32_t		 dp_hw_to_pf;
 	uint64_t		 dp_hw_pf_conns;
 	uint64_t		 dp_hw_pf_states;
+	/* connections taken out whose last counts went to pf with the take-back; lost to a full queue */
+	uint64_t		 dp_hw_pf_final, dp_hw_pf_lost;
+	/*
+	 * Reclaim answers whose totals gave the connection its tail (octep_conn_tail); answers behind
+	 * the slot's last message, not taken; messages behind an answer, passed over (octep_hw_behind)
+	 */
+	uint64_t		 dp_hw_tail, dp_hw_tail_odd, dp_hw_behind;
+	/* the counts a revision bump's forgotten connections had not given pf, until given */
+	struct octep_forgot	*dp_forgot;
+	int			 dp_forgot_n;
 	/*
 	 * The last received frame's whole prefix, kept so it can be read from userland.
 	 *
