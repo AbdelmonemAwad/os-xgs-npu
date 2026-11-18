@@ -378,6 +378,7 @@ struct npuflow_softc {
 	int			 revive_hold;
 	uint64_t		 streak_out;
 	uint64_t		 flow_bridged, flow_bridged_kept;
+	uint64_t		 flow_rt, flow_rt_kept;	/* a rule's gateway followed (#1182), and not */
 	/* VLAN subinterfaces' connections, and their logical interfaces (discovery 10) */
 	int			 vlan_flows;	/* flow.vlan_flows: octep.h's dp_vlan_flows */
 	uint64_t		 flow_vlan, flow_vlan_kept;
@@ -2413,6 +2414,20 @@ npuflow_make(struct npuflow_softc *sc, uint32_t id, int slot, struct sbuf *sb)
 	 * encrypting direction alone, with the association (npuflow_make_tunnel) - when the frame in
 	 * hand is of that direction, untranslated, and did not arrive by the tunnel's own port.
 	 */
+	/*
+	 * A gateway a rule names (#1182, pf's route-to or reply-to): the next hops below are the rule's
+	 * gateway in its direction, as pf sends it. A connection whose rule cannot be followed stays with
+	 * the host, and so does a tunnelled one a rule sends by a gateway - its direction leaves by its
+	 * association - and a bridged one (below): the bridge does not route.
+	 */
+	if (st.rt_keep != NULL ||
+	    ((st.rt[0].kind != 0 || st.rt[1].kind != 0) && npuipsec_flow_covered(tup))) {
+		sc->flow_rt_kept++;
+		if (sb != NULL)
+			sbuf_printf(sb, "not accelerated: %s - the host keeps it\n", st.rt_keep != NULL ?
+			    st.rt_keep : "a rule sends a tunnelled connection by a gateway");
+		return (EACCES);
+	}
 	if (npuipsec_flow_covered(tup)) {
 		struct npuipsec_flow fi;
 		int r = -1;
@@ -2486,6 +2501,8 @@ npuflow_make(struct npuflow_softc *sc, uint32_t id, int slot, struct sbuf *sb)
 			why = "flow.bridge_flows is 0";
 		else if (fb < 0)
 			why = "it is addressed to a group, which the bridge sends to every port";
+		else if (st.rt[0].kind != 0 || st.rt[1].kind != 0)
+			why = "a rule sends it by a gateway (#1182), and the bridge does not route";
 		else if (st.nat_valid || npuipsec_flow_covered(tup))
 			why = "pf translates it or an IPsec policy covers it";
 		else if (r.port == c.port)
@@ -2542,15 +2559,23 @@ npuflow_make(struct npuflow_softc *sc, uint32_t id, int slot, struct sbuf *sb)
 		 * was refused, its route naming the lagg and no port; a bridge's is left as it was. The
 		 * OCTEON TX driver's octep_dp_flow_make takes the same port for it.
 		 */
-		err = npuflow_nhop_for(&tup[0], tup[0].dip6, tup[0].dip,
-		    ((d == 0) ? r.port : c.port) | NPUEP_HINT_LAGG_ONLY, &nho);
+		if (st.rt[0].kind != 0)
+			err = npuep_nhop_resolve_via(tup[0].af, st.rt[0].ifindex, st.rt[0].addr6,
+			    ((d == 0) ? r.port : c.port) | NPUEP_HINT_LAGG_ONLY, &nho);
+		else
+			err = npuflow_nhop_for(&tup[0], tup[0].dip6, tup[0].dip,
+			    ((d == 0) ? r.port : c.port) | NPUEP_HINT_LAGG_ONLY, &nho);
 		if (err != 0) {
 			sc->make_nonhop++;
 			if (sb != NULL) sbuf_printf(sb, "the original direction's next hop did not resolve "
 			    "(%d%s)\n", err, npuflow_nhop_why(err));
 			return (err);
 		}
-		err = npuflow_nhop_for(&tup[0], st.orig_src6, st.orig_src, lan_port, &nhr);
+		if (st.rt[1].kind != 0)
+			err = npuep_nhop_resolve_via(tup[0].af, st.rt[1].ifindex, st.rt[1].addr6, lan_port,
+			    &nhr);
+		else
+			err = npuflow_nhop_for(&tup[0], st.orig_src6, st.orig_src, lan_port, &nhr);
 		if (err != 0) {
 			sc->make_nonhop++;
 			if (sb != NULL) sbuf_printf(sb, "the reply direction's next hop did not resolve "
@@ -2686,6 +2711,8 @@ npuflow_make(struct npuflow_softc *sc, uint32_t id, int slot, struct sbuf *sb)
 		sc->flow_dscp++;
 	if (bridged)
 		sc->flow_bridged++;
+	if (st.rt[0].kind != 0 || st.rt[1].kind != 0)
+		sc->flow_rt++;
 	if (c.vlan != 0 || r.vlan != 0 || nho.vlan != 0 || nhr.vlan != 0)
 		sc->flow_vlan++;
 	if (c.tuple.proto == IPPROTO_TCP) {
@@ -5814,6 +5841,13 @@ npuflow_attach(device_t dev, struct sysctl_ctx_list *ctx, struct sysctl_oid *par
 		    &sc->flow_bridged_kept, 0, "times a bridged connection was left to the host's "
 		    "bridge - flow.bridge_flows 0, a group address, a translation or a tunnel, or its two "
 		    "directions not on two ports of one bridge - an attempt each");
+		SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "rt", CTLFLAG_RD,
+		    &sc->flow_rt, 0, "connections made with a next hop a firewall rule names - pf's "
+		    "route-to or reply-to - in place of the main routing table's route (#1182)");
+		SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "rt_kept", CTLFLAG_RD,
+		    &sc->flow_rt_kept, 0, "times a connection a rule sends by a gateway was left to the "
+		    "host - a dup-to, a gateway of the other family or none, two gateways for one "
+		    "direction, or a tunnelled connection - an attempt each");
 		SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "dscp", CTLFLAG_RD,
 		    &sc->flow_dscp, 0, "connections made with pf's DSCP mark in their microflows, for "
 		    "the fast path to write into every frame as pf would");

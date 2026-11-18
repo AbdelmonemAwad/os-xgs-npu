@@ -407,6 +407,97 @@ npuep_nhop_resolve(uint32_t dst, int hint_port, struct npuep_nhop *out)
  * passes it); with a plain is_gw the lookup is made for family 0 and answers EWOULDBLOCK for ever -
  * the OCTEON TX driver's octep_nhop_resolve6 records that measurement.
  */
+/*
+ * The next hop a rule names (#1182): pf's route-to or reply-to, the interface and the gateway pf
+ * keeps in the connection's state and sends by in place of the main routing table - the OCTEON TX
+ * driver's octep_nhop_resolve_via. From the interface on, everything is as for a route through a
+ * gateway in npuep_nhop_resolve: never lo0, Ethernet underneath, the front port it is (a VLAN's
+ * port, the bridge's or a lagg's hint), its link, our side's MAC and MTU, then the gateway's MAC.
+ * af is the connection's family; gw the gateway's address, an IPv4 one in gw[0], network order.
+ * The interface is looked up by its index inside the net epoch: one gone since pf made the state is
+ * EHOSTUNREACH.
+ */
+int
+npuep_nhop_resolve_via(int af, uint16_t ifindex, const uint32_t *gw, int hint_port,
+    struct npuep_nhop *out)
+{
+	struct sockaddr_in sin;
+	struct sockaddr_in6 sin6;
+	struct epoch_tracker et;
+	struct ifnet *ifp;
+	u_char lh[LLE_MAX_LINKHDR];
+	uint32_t flags;
+	int i, n, port, error, lagg_only = 0;
+
+	if (hint_port >= 0 && (hint_port & NPUEP_HINT_LAGG_ONLY) != 0) {
+		lagg_only = 1;
+		hint_port &= ~NPUEP_HINT_LAGG_ONLY;
+	}
+	bzero(out, sizeof(*out));
+	out->port = -1;
+	NET_EPOCH_ENTER(et);
+	ifp = ifnet_byindex(ifindex);
+	if (ifp == NULL || (if_getflags((if_t)ifp) & IFF_LOOPBACK) != 0) {
+		NET_EPOCH_EXIT(et);
+		return (EHOSTUNREACH);
+	}
+	if (!npuep_nhop_ether(ifp)) {
+		error = npuep_nhop_not_ether(ifp);
+		NET_EPOCH_EXIT(et);
+		return (error);
+	}
+	port = -1;
+	n = npugiu_port_count();
+	for (i = 0; i < n; i++) {
+		if ((struct ifnet *)npugiu_port_ifp(i) == ifp) {
+			port = i;
+			break;
+		}
+	}
+	if (port < 0)
+		port = npuep_nhop_vlan_port(ifp, &out->vlan);
+	if (port >= 0 && npugiu_port_link(port) == 0) {
+		NET_EPOCH_EXIT(et);
+		return (ENETDOWN);
+	}
+	if (port < 0 && hint_port >= 0 && hint_port < n && npugiu_port_ifp(hint_port) != NULL &&
+	    npugiu_port_link(hint_port) == 1 &&
+	    (!lagg_only || npuep_nhop_is_lagg(ifp)) &&
+	    npuep_nhop_hint_fits(ifp, (struct ifnet *)npugiu_port_ifp(hint_port))) {
+		port = hint_port;
+		out->from_hint = 1;
+	}
+	if (port < 0) {
+		NET_EPOCH_EXIT(et);
+		return (ENETUNREACH);
+	}
+	memcpy(out->smac, if_getlladdr((if_t)ifp), ETHER_ADDR_LEN);
+	out->iface = npugiu_port_iface(port);
+	out->tag = npugiu_port_tag(port);
+	out->mtu = (uint16_t)if_getmtu((if_t)ifp);
+	out->port = port;
+	flags = 0;
+	/* into a link header's room, as npuep_nhop_resolve says why (issue 483) */
+	if (af == AF_INET6) {
+		bzero(&sin6, sizeof(sin6));
+		sin6.sin6_family = AF_INET6;
+		sin6.sin6_len = sizeof(sin6);
+		memcpy(&sin6.sin6_addr, gw, sizeof(sin6.sin6_addr));
+		error = nd6_resolve(ifp, LLE_SF(AF_INET6, 1), NULL, (struct sockaddr *)&sin6, lh,
+		    &flags, NULL);
+	} else {
+		bzero(&sin, sizeof(sin));
+		sin.sin_family = AF_INET;
+		sin.sin_len = sizeof(sin);
+		sin.sin_addr.s_addr = gw[0];
+		error = arpresolve(ifp, 1, NULL, (struct sockaddr *)&sin, lh, &flags, NULL);
+	}
+	if (error == 0)
+		memcpy(out->dmac, lh, ETHER_ADDR_LEN);
+	NET_EPOCH_EXIT(et);
+	return (error);
+}
+
 int
 npuep_nhop_resolve6(const uint32_t *dst6, int hint_port, struct npuep_nhop *out)
 {
