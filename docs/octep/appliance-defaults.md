@@ -152,6 +152,32 @@ first of all, and a host that stopped in the rebuild was not reset; the coproces
 of the XGS 136 on 2026-11-06, as its console printed it: octep, kernelfollow, xgs-feeder, xgs-watchdog.
 Apply on the page arms or disarms it at once.
 
+Since 2026-11-17 `install/install.sh` arms it too, on every install and update - one by hand, an
+image's first-boot hook, XGS: Updates - with `watchdog.sh start`, as the start hook does, so an
+appliance is watched before its first reboot. It does so as soon as the script and its two hooks are in
+place, before the driver is built and the rest is copied, so a failure later in the run does not leave
+the host unwatched. Until then an install left it to the start hook, and OPNsense's `rc.syshook` finds
+a level's hooks once, before it runs any: the hook a first install put in place ran only at the next
+boot, so a first install by hand on a running OPNsense, the live session of an image's install medium
+and the first session of a nano image ran unwatched until a reboot. The install says what it did under
+**hardware watchdog** and goes on whatever the answer: armed; armed already - an update, whose
+watchdogd runs on as it is; os-watchdog's watchdogd taken over; off in the settings; no timer on the
+host. os-watchdog stands aside while this plugin is installed, so its watchdogd - running where that
+plugin armed the timer first - is stopped and this plugin's started in its place: left running, it
+would be stopped by the next Apply on its page, and none started after it. A watchdogd started by hand
+keeps the timer: `watchdog.sh` says it is held by another watchdogd and starts none beside it, at boot,
+at Apply and at install alike. One started with `-n`, a dry run that never opens the timer, is not
+counted. One on the kernel's software timer only (`--softtimeout`) is left to as well, and said to leave
+the hardware timer unarmed: the kernel refuses to switch between the two timers while either is armed,
+so a watchdogd started beside it would only fail. Tried on 2026-11-17 on the second XGS 3300 and the
+XGS 136, `install.sh` run by hand from a copy of the tree: a first install armed the timer, an update
+found it armed and left its watchdogd running, os-watchdog's watchdogd was taken over, one started by
+hand was left the timer, a dry run was not counted, and a watchdogd started by hand beside one on the
+software timer was refused by the kernel (`setting WDIOC_SETSOFT 0: Invalid argument`); after a
+reboot the stop hook had disarmed the timer and the start hook armed it again, and the last restart
+read as a reboot. The steps on the XGS 136 again, photographed:
+[watchdog-install-2026-11-17](../measurements/watchdog-install-2026-11-17.md).
+
 Measured 2026-10-17: armed, disarmed and armed again by hand on both appliances; then through a
 reboot of the XGS 3300 with nothing done by hand - the stop hook ran at 14:24:53, the start hook at
 14:27:27, and the timer was armed one second later. That the timer actually resets a host that has
