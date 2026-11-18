@@ -183,6 +183,7 @@ import tempfile
 with tempfile.TemporaryDirectory() as tmp:
     fl.SEEN = os.path.join(tmp, 'seen.json')
     fl.GONE = os.path.join(tmp, 'gone.json')
+    fl.TRACK_LOCK = os.path.join(tmp, 'track.lock')
     a = {'id': 5, 'rev': 3, 'protocol': 'TCP', 'src': '192.0.2.20', 'sport': 50001, 'dst': '203.0.113.9', 'dport': 443}
     b = {'id': 6, 'rev': 1, 'protocol': 'UDP', 'src': '192.0.2.21', 'sport': 4000, 'dst': '203.0.113.9', 'dport': 53}
     first = fl.track([a, b], True, now=1000)
@@ -197,6 +198,25 @@ with tempfile.TemporaryDirectory() as tmp:
     check('a listing cut short: nothing told, and the next whole one starts again',
           (len(third['gone']), third['complete'], os.path.exists(fl.SEEN)), (2, False, False))
     check('after a cut-short listing, a whole one tells nothing new', len(fl.track([], True, now=1030)['gone']), 2)
+
+    # The page asks three runs at once (2026-11-15: "flows.py returned exit status 1", three in thirty):
+    # runs in parallel, each tracking whole and cut-short listings, end with no error, no file of a
+    # run left behind, and a list that still reads.
+    import multiprocessing
+
+    def runs(n):
+        for i in range(60):
+            fl.track([a] if i % 3 else [b], i % 7 != 0, now=2000 + n * 1000 + i)
+
+    # fork, not a fresh interpreter (Python 3.14's default here), which would run this whole test again
+    procs = [multiprocessing.get_context('fork').Process(target=runs, args=(n,)) for n in range(4)]
+    for p in procs:
+        p.start()
+    for p in procs:
+        p.join()
+    check('runs at once: every one ended without an error', [p.exitcode for p in procs], [0, 0, 0, 0])
+    check('runs at once: no file of a run left behind', sorted(f for f in os.listdir(tmp) if f.endswith('.tmp')), [])
+    check('runs at once: the kept list still reads', isinstance(fl.load(fl.GONE, None), list), True)
 
 print('%d failed' % len(FAILED) if FAILED else 'all passed')
 sys.exit(1 if FAILED else 0)

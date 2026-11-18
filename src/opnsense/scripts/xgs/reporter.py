@@ -177,12 +177,18 @@ PARTS = [
 # says "refusing to start". A driver still not ready ten minutes after boot is from_driver()'s.
 DRIVER_TROUBLE = re.compile(
     r'\b(?:failed|failure|timed out|refusing|refused|did not complete|giving up|'
-    r'stuck|lost|panic|error -?\d+)\b', re.IGNORECASE)
+    r'stuck|lost|stopped answering|panic|error -?\d+)\b', re.IGNORECASE)
 # A tally is not a failure. npuep prints "nwa: 44332 commands, 0 refused, 0 timed out" when it is
 # unloaded, and two of its words are DRIVER_TROUBLE's - an unload on 2026-10-20 was reported as one
 # (#599). A count of none is taken out of the line before the words are looked for.
 NONE_COUNTED = re.compile(
     r'\b(?:0|no|none) (?:failed|failures?|timed out|refused|lost|stuck)\b', re.IGNORECASE)
+# A port whose link went down is no failure of the driver's either: npuep says "Port7 lost its link:
+# 16 connection(s) leaving by it taken back to the host" (octep the same in other words, "link down:
+# ..."), what it does when a cable is pulled or the other end restarts. Its "lost" made it a driver
+# problem on the XGS 136 - seventeen lines from 2026-11-15 to 11-18, each a lab restart or speed test
+# (#1196).
+LINK_LOST = re.compile(r'\blost its link\b', re.IGNORECASE)
 
 SYSLOG = re.compile(r'^<(\d{1,3})>1 (\S+) \S+ (\S+) \S+ \S+ (?:\[[^\]]*\] )?(.*)$')
 KERNEL_TEXT = re.compile(r'^(?:<(\d{1,3})>)?(?:\[\d+\] )?(.*)$')
@@ -933,7 +939,7 @@ def from_logs(parts, cursor, first_run):
                     if part['kernel'] is None or not part['kernel'].search(text):
                         continue
                     if (level is not None and int(level) & 7 <= 3) or \
-                            DRIVER_TROUBLE.search(NONE_COUNTED.sub('', text)):
+                            DRIVER_TROUBLE.search(LINK_LOST.sub('', NONE_COUNTED.sub('', text))):
                         line_text = '%s kernel: %s' % (stamp, text)
                         add((part['name'], 'kernel'), at, line_text, {
                             'part': part['name'], 'kind': 'driver', 'at': at,
@@ -1490,6 +1496,34 @@ def unread_end(started, until):
     }
 
 
+DUMP_SLACK = 5         # seconds either side of a boot's bounds, for a dump's own time against them
+
+
+def dumped_between(started, until):
+    """Whether a crash dump savecore saved was written in the boot that ran from `started` to `until`:
+    the dump's own time, savecore's "Dumptime: 2026-11-05 07:57:12 +0000" in its info.N - not the
+    file's, which says only that savecore ran since (a dump of a boot further back, saved by this one,
+    is not this restart's), and moves with a clock that was stepped. By the time this runs, rc's
+    savecore has taken the dump off the dump device - savecore -C then finds none - and from_crash()
+    reports it. An info.N with no time read is not taken as this boot's."""
+    if not started or not until:
+        return False
+    for info in glob.glob(path('/var/crash/info.*')):
+        if not re.search(r'\.\d+$', info):
+            continue
+        found = re.search(r'Dumptime:\s*(\d{4}-\d\d-\d\d \d\d:\d\d:\d\d [+-]\d{4})',
+                          read(info[len(ROOT):] if ROOT else info))
+        if not found:
+            continue
+        try:
+            when = datetime.datetime.strptime(found.group(1), '%Y-%m-%d %H:%M:%S %z').timestamp()
+        except ValueError:
+            continue
+        if started - DUMP_SLACK <= when <= until + DUMP_SLACK:
+            return True
+    return False
+
+
 def from_reset():
     boot = boot_time()
     record = load('boots.json', {})
@@ -1531,7 +1565,13 @@ def from_reset():
     # taken for the end, and the panic was not (the review's P13). A hang there that only the power
     # ended leaves nothing a boot can read - the disks were synced with the record on them, and the
     # buffer went with the memory - and still reads as orderly.
-    if ended and (not orderly or panicked):
+    # A PANIC THAT SAVED A DUMP IS ONE PROBLEM, NOT TWO. rc's savecore runs before this and takes the
+    # dump off the device, so the check below found none and filed this restart too, saying "No crash
+    # dump was written" beside the dump's own report saying one was saved: the XGS 136's panics of
+    # 2026-11-03 and 11-05, each queued twice (#1197). A dump written in the boot that ended - one that panicked
+    # in its shutdown too - is reported by from_crash(), and that report is this restart's record.
+    saved = ended and dumped_between(previous, boot)
+    if ended and (not orderly or panicked) and not saved:
         dumpdev = sysctl('kern.shutdown.dumpdevname')
         dumped = not orderly and bool(dumpdev) and succeeds(['/sbin/savecore', '-C', '/dev/' + dumpdev])
         if orderly:

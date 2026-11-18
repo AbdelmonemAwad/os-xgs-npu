@@ -40,6 +40,8 @@ it: handed back, returned by hand, or let go for another reason). Not done when 
 short (the drivers print the first 4,096): a connection past it would read as gone.
 """
 
+import contextlib
+import fcntl
 import json
 import os
 import re
@@ -48,6 +50,11 @@ import sys
 import time
 
 SEEN = '/var/db/os-xgs-npu/flows-seen.json'
+# Offloaded Flows asks for its figures, its search and its list of the connections that left at once,
+# three runs of this script in the same second: one at a time through track(), or the second one's
+# rename found the first one's file gone and the page got an error (seen 2026-11-15, three in thirty;
+# #1194).
+TRACK_LOCK = '/var/db/os-xgs-npu/flows-track.lock'
 GONE = '/var/db/os-xgs-npu/flows-gone.json'
 GONE_KEEP = 100
 NHOP_LINE = re.compile(r'^\s*(\d+)\s+rev\s+\d+\s+refs\s+\d+\s+iface\s+\d+\s+to\s+([0-9a-f:]{17})\s+from\s+\S+\s+'
@@ -283,23 +290,46 @@ def load(path, default):
 
 
 def save(path, value):
+    """written whole beside the file and then moved over it - only under TRACK_LOCK, which makes the
+    one temporary name safe, and a run cut off half way leaves a file the next run writes over"""
     os.makedirs(os.path.dirname(path), exist_ok=True)
     with open(path + '.tmp', 'w', encoding='utf-8') as handle:
         json.dump(value, handle, separators=(',', ':'))
     os.replace(path + '.tmp', path)
 
 
+@contextlib.contextmanager
+def tracking():
+    """TRACK_LOCK held, one run at a time, from the read of the driver's table to the write of what it
+    found: two runs that read the same last listing would both count a connection that left; and one
+    that read the table first but took its turn second would compare an older listing with a newer
+    one - a connection made in between read as gone, one gone in between written back and counted
+    again at the next look (the review of 2026-11-18)."""
+    os.makedirs(os.path.dirname(TRACK_LOCK), exist_ok=True)
+    with open(TRACK_LOCK, 'a') as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        yield
+
+
 def track(flows, complete, now=None):
     """The connections that left hardware since the last listing, added to the kept list; returns
-    {'gone': [...], 'since': the last listing's time, 'complete': whether it could be told}."""
+    {'gone': [...], 'since': the last listing's time, 'complete': whether it could be told}. Under
+    TRACK_LOCK (tracking()); main() holds it over its read of the table as well, and calls _track()."""
+    with tracking():
+        return _track(flows, complete, now)
+
+
+def _track(flows, complete, now=None):
     now = int(now if now is not None else time.time())
     kept = load(GONE, [])
     kept = kept if isinstance(kept, list) else []
     last = load(SEEN, {})
     if not complete:
         # cut short: what is past the listing would read as gone; start again from the next whole one
-        if os.path.exists(SEEN):
+        try:
             os.unlink(SEEN)
+        except FileNotFoundError:
+            pass
         return {'gone': kept, 'since': None, 'complete': False}
     if isinstance(last, dict) and isinstance(last.get('flows'), dict):
         here = {flow_key(f) for f in flows}
@@ -323,6 +353,17 @@ def main():
     if len(sys.argv) > 2 and sys.argv[1] == 'release':
         # no third argument, or an empty one: no revision
         return release(sys.argv[2].strip(), sys.argv[3].strip() if len(sys.argv) > 3 else '')
+    with tracking():
+        answer = listing()
+        if answer['family']:
+            listed = len(answer['flows'])
+            answer['left'] = _track(answer['flows'], listed >= answer['counters'].get('flows', listed))
+    print(json.dumps(answer))
+    return 0
+
+
+def listing():
+    """The driver's table now, read, with its counters and next hops: what the page shows."""
     answer = {'family': '', 'auto': None, 'counters': {}, 'flows': []}
     table = sysctl('dev.octep.0.dp.flow_table')
     if table is not None:
@@ -358,11 +399,7 @@ def main():
             answer['flows'] = npuep(table)
             answer['to_pf'] = (sysctl('dev.npuep.0.flow.hw_to_pf') or '').strip() == '1'
             answer['nhops'] = {}
-    if answer['family']:
-        listed = len(answer['flows'])
-        answer['left'] = track(answer['flows'], listed >= answer['counters'].get('flows', listed))
-    print(json.dumps(answer))
-    return 0
+    return answer
 
 
 if __name__ == '__main__':
