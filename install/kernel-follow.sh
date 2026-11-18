@@ -302,11 +302,32 @@ pin_old_kernel() {
 	return 0
 }
 
+# LET GO WHEREVER THE MODULE IS BUILT FOR THE KERNEL THE NEXT BOOT TAKES (2026-11-17). Until then a
+# fall-back this follower armed was let go by one run alone: one that rebuilt the module while the kernel
+# to follow was already in /boot/kernel. Three runs that leave the module built for the kernel the next
+# boot takes left it standing: a rebuild for a kernel still staged, a run that finds the module already
+# built for the kernel to follow, and PINONLY=1 at a reboot that finds it built for /boot/kernel. A boot
+# that had fallen back to kernel.old and then took an upgrade showed what that costs (the review of
+# 2026-11-17, measured on copies of this file): the upgrade hook rebuilt the module for the staged
+# kernel, the update applied that kernel - so kernel.old became the one in /boot/kernel before it - and
+# the reboot after it still went to kernel.old, with the module built for the staged kernel and the one
+# kept beside it, .prev, for the kernel before both. The bring-up refuses both: no front ports, no WAN.
+# Each of those runs now lets it go too, where this follower armed it (${ARMED}); one somebody else
+# armed - os-kernelfollow, for a module of its own - is left to them, as before. A module built for a
+# kernel still staged is built for the kernel the next boot takes, as everywhere in this file: the update
+# applies the staged kernel before the reboot that follows (OPNsense's scripts/firmware/upgrade.sh,
+# "pending kernel applies before reboot").
 unpin_old_kernel() {
 	[ -x "${NEXTBOOT}" ] || return 0
 	NEWV=$(version_of_kernel_file "${KERNEL}" || true)
-	# Only once the module really is the one /boot/kernel wants.
-	[ -n "${NEWV}" ] && [ "${NEWV}" = "${TARGET}" ] || return 0
+	if [ -n "${NEWV}" ] && [ "${NEWV}" = "${TARGET}" ]; then
+		# The module really is the one /boot/kernel wants: any fall-back goes, as it always has.
+		gone="any fall-back to kernel.old is cleared; the next boot takes /boot/kernel"
+	elif [ -n "${STAGED}" ] && [ "${STAMP}" = "${TARGET}" ] && [ -f "${ARMED}" ]; then
+		gone="the fall-back to kernel.old this follower armed is cleared; the next boot takes the staged kernel, which the update applies before it"
+	else
+		return 0
+	fi
 	if [ "${DRY}" = "1" ]; then
 		log "DRY=1 - would cancel any fall-back to kernel.old"
 		return 0
@@ -315,7 +336,7 @@ unpin_old_kernel() {
 	# first would mean knowing where nextboot keeps it - which on ZFS is the bootenv, not the file.
 	"${NEXTBOOT}" -D > /dev/null 2>&1 || true
 	/bin/rm -f "${PINNED}" "${ARMED}"
-	log "any fall-back to kernel.old is cleared; the next boot takes /boot/kernel"
+	log "${gone}"
 }
 
 # What a failed step leaves for the next boot. With no module installed at all - a first install that
@@ -344,16 +365,19 @@ no_fallback() {
 # a module built for the old one: refused, so no front ports, the WAN among them.
 #
 # No lock, because nothing here needs one: it writes no module, and the one thing it changes is the
-# nextboot setting, which pin_old_kernel() makes only for a module built for kernel.old. If a run
-# holding the lock installs the rebuilt module and clears the fall-back just as this arms it, the next
-# boot takes kernel.old with the module that run replaced - kept as .prev, stamped for kernel.old, and
-# loaded by the bring-up for exactly that case - one boot behind, ports and all.
+# nextboot setting, which pin_old_kernel() makes only for a module built for kernel.old, and
+# unpin_old_kernel() takes away here only where the module is built for /boot/kernel and this follower
+# armed it. If a run holding the lock installs the rebuilt module and clears the fall-back just as this
+# arms it, the next boot takes kernel.old with the module that run replaced - kept as .prev, stamped for
+# kernel.old, and loaded by the bring-up for exactly that case - one boot behind, ports and all.
 #
 # /boot/kernel and not a staged set, because the question is what the loader boots: with a kernel
 # still staged, /boot/kernel is the one running and kernel.old the one before it.
 #
 # The answer is the exit status, so that the stop hook says only what is so: 0 the next boot is sent
-# to kernel.old; 2 the module is built for /boot/kernel and nothing is armed; 3 no module is
+# to kernel.old; 2 the module is built for /boot/kernel, nothing is armed, and a fall-back this
+# follower armed is let go (since 2026-11-17: until then it stood, and the stop hook said the module
+# was built for the kernel the next boot takes of a boot that took kernel.old); 3 no module is
 # installed; 1 the module is not built for /boot/kernel and the next boot could not be sent to
 # kernel.old, for the reason in the lines before it.
 if [ "${PINONLY}" = "1" ]; then
@@ -368,6 +392,10 @@ if [ "${PINONLY}" = "1" ]; then
 		exit 1
 	fi
 	if [ "${NEXTV}" = "${STAMP}" ]; then
+		if [ -f "${ARMED}" ]; then
+			TARGET=${NEXTV}
+			unpin_old_kernel
+		fi
 		echo "the module is built for ${KERNEL}, the kernel the next boot takes - nothing to arm"
 		exit 2
 	fi
@@ -455,6 +483,39 @@ kernel_staged() {
 	return 1
 }
 
+# ---------------------------------------------------------------- what the last run found, for the pages
+#
+# XGS: Updates says whether the driver is built for the kernel the next boot takes, and what this
+# follower last did (scripts/xgs/update.py, driver), and os-kernelfollow's status (its status.py)
+# shows this follower's module beside its own: both read this record of the last whole run - not DRY=1,
+# not PINONLY=1 - written as os-kernelfollow records each of its own modules. One KEY=value a line: the
+# module followed; one word for what was found or done - ok (it matches the kernel to follow), built
+# (rebuilt and installed for it), failed (not, for the reason in message) or skipped (not installed); the
+# line that says why; the kernel followed; when, in seconds since the epoch; and built_at, when this
+# follower last built and installed the module, carried from one record to the next while that module is
+# installed. Until 2026-11-17 a run left its lines in the log and the build's own log alone, and nothing
+# said when the module was built. Written beside and moved into place, and never a reason for a run to
+# stop.
+: ${RESULT:=/var/db/os-xgs-npu/kernel-follow.result}
+recorded() {
+	/usr/bin/sed -n "s/^$1=//p" "${RESULT}" 2>/dev/null | /usr/bin/tail -1
+}
+record() {
+	[ "${DRY}" = "1" ] && return 0
+	rec_at=$(/bin/date +%s)
+	rec_built=
+	if [ "$1" = built ]; then
+		rec_built=${rec_at}
+	elif [ -f "${MODULE}" ] && [ "$(recorded module)" = "${MODULE}" ]; then
+		rec_built=$(recorded built_at)
+	fi
+	{ /bin/mkdir -p "${RESULT%/*}" &&
+	    printf 'module=%s\nresult=%s\nmessage=%s\ntarget=%s\nat=%s\nbuilt_at=%s\n' "${MODULE}" "$1" "$2" \
+	        "${TARGET}" "${rec_at}" "${rec_built}" > "${RESULT}.new" &&
+	    /bin/mv "${RESULT}.new" "${RESULT}"; } 2>/dev/null
+	return 0
+}
+
 WHERE=
 TARGET=$(kernel_staged || true)
 if [ -n "${TARGET}" ]; then
@@ -469,6 +530,7 @@ if [ -z "${TARGET}" ]; then
 	# Not a failure worth shouting about on a machine that is not this appliance, but this script
 	# cannot do its job without it.
 	warn "cannot read a kernel version from a staged set or from ${KERNEL}; nothing to follow"
+	record failed "cannot read a kernel version from a staged set or from ${KERNEL}"
 	exit 0
 fi
 
@@ -503,12 +565,16 @@ note "module stamp   : ${STAMP:-<none>}"
 # entry runs wherever the plugin is - so without FORCE that is the end of it.
 if [ ! -f "${MODULE}" ] && [ "${FORCE}" != "1" ]; then
 	note "no ${MODULE} - the driver is not installed on this machine, nothing to follow"
+	record skipped "not installed"
 	said
 	exit 0
 fi
 
 if [ "${STAMP}" = "${TARGET}" ] && [ "${FORCE}" != "1" ]; then
 	note "the module already matches the kernel to follow - nothing to do"
+	# But a fall-back to kernel.old this follower armed: it goes now (unpin_old_kernel, 2026-11-17).
+	[ -f "${ARMED}" ] && unpin_old_kernel
+	record ok "matches the kernel to follow"
 	said
 	prune_old_sources
 	exit 0
@@ -547,6 +613,7 @@ fi
 if [ ! -x "${FETCH}" ]; then
 	warn "no ${FETCH} - cannot fetch kernel sources, so the module cannot follow"
 	no_fallback "the next boot will refuse it and the front ports will not come up"
+	record failed "no ${FETCH}, so no kernel sources"
 	exit 1
 fi
 
@@ -582,6 +649,7 @@ if [ -z "${SYSDIR}" ] || [ ! -f "${SYSDIR}/sys/param.h" ]; then
 	echo "${FETCHLOG}" | /usr/bin/tail -8 | while read -r l; do warn "  ${l}"; done
 	warn "the module cannot be built for ${TARGET} here"
 	no_fallback "the next boot will refuse the module and the front ports will not come up"
+	record failed "could not get kernel sources for ${TARGET}"
 	exit 1
 fi
 log "building against ${SYSDIR}"
@@ -609,12 +677,14 @@ log "building against ${SYSDIR}"
 # source file, because "make exited 0" is what the old version trusted.
 if [ ! -f "${SRCTREE}/Makefile" ]; then
 	warn "no driver sources at ${SRCTREE} - run install.sh from os-xgs-npu to lay them down"
+	record failed "no driver sources at ${SRCTREE}"
 	exit 1
 fi
 
 /bin/rm -rf "${BUILDROOT}"
 if ! /bin/mkdir -p "${BUILDROOT}"; then
 	warn "cannot create ${BUILDROOT}; ${MODULE} is untouched"
+	record failed "cannot create ${BUILDROOT}"
 	exit 1
 fi
 /bin/cp "${SRCTREE}"/Makefile "${SRCTREE}"/*.c "${SRCTREE}"/*.h "${BUILDROOT}/"
@@ -633,10 +703,12 @@ if ! ( cd "${BUILDROOT}" && /usr/bin/make SYSDIR="${SYSDIR}" ) > "${BUILDLOG}" 2
 	    while read -r l; do warn "  ${l}"; done
 	warn "the whole log is ${BUILDLOG}"
 	pin_old_kernel || true
+	record failed "the build failed; the whole log is ${BUILDLOG}"
 	exit 1
 fi
 if [ ! -f "${BUILDROOT}/${DRIVER}.ko" ]; then
 	warn "the build reported success but produced no ${DRIVER}.ko; ${MODULE} is untouched"
+	record failed "the build reported success but produced no ${DRIVER}.ko"
 	exit 1
 fi
 NSRC=$(/bin/ls "${BUILDROOT}"/*.c | /usr/bin/wc -l | /usr/bin/tr -d ' ')
@@ -644,6 +716,7 @@ NOBJ=$(/bin/ls "${BUILDROOT}"/*.o 2>/dev/null | /usr/bin/wc -l | /usr/bin/tr -d 
 if [ "${NOBJ}" -lt "${NSRC}" ]; then
 	warn "only ${NOBJ} of ${NSRC} sources were compiled; refusing to install a partial build"
 	pin_old_kernel || true
+	record failed "only ${NOBJ} of ${NSRC} sources were compiled"
 	exit 1
 fi
 MLINK=$(/usr/bin/readlink "${BUILDROOT}/machine" 2>/dev/null || true)
@@ -652,6 +725,7 @@ case "${MLINK}" in
 *)
 	warn "the machine headers came from ${MLINK:-nowhere}, not from ${SYSDIR}; refusing to install"
 	pin_old_kernel || true
+	record failed "the machine headers came from ${MLINK:-nowhere}, not from ${SYSDIR}"
 	exit 1
 	;;
 esac
@@ -685,6 +759,7 @@ fi
 /bin/mkdir -p "${MODDIR}"
 if ! /bin/cp "${BUILDROOT}/${DRIVER}.ko" "${MODULE}.new"; then
 	warn "could not write ${MODULE}.new; ${MODULE} is untouched"
+	record failed "could not write ${MODULE}.new"
 	exit 1
 fi
 # AND NO MODULE IN PLACE UNDER ANOTHER KERNEL'S STAMP. The module and its stamp are two files, and no
@@ -707,6 +782,7 @@ if [ "$(/bin/cat "${MODULE}.kernel.new" 2>/dev/null)" != "${TARGET}" ] ||
     ! { printf '%s\n' "${HOLD}" > "${MODULE}.kernel.hold" && /bin/mv "${MODULE}.kernel.hold" "${MODULE}.kernel"; } 2>/dev/null; then
 	/bin/rm -f "${MODULE}.new" "${MODULE}.kernel.new" "${MODULE}.kernel.hold"
 	warn "could not write the stamp of the new module; ${MODULE} is untouched"
+	record failed "could not write the stamp of the new module"
 	exit 1
 fi
 if ! /bin/mv "${MODULE}.new" "${MODULE}"; then
@@ -715,9 +791,11 @@ if ! /bin/mv "${MODULE}.new" "${MODULE}"; then
 		/bin/rm -f "${MODULE}.kernel"
 	elif ! { printf '%s\n' "${STAMP}" > "${MODULE}.kernel.hold" && /bin/mv "${MODULE}.kernel.hold" "${MODULE}.kernel"; } 2>/dev/null; then
 		warn "could not move ${MODULE}.new into place, nor put back the stamp of the module that is there: it is stamped for no kernel now, so the bring-up refuses it and loads ${MODULE}.prev where that is built for the kernel booted"
+		record failed "could not move ${MODULE}.new into place, nor put back the stamp of the module there"
 		exit 1
 	fi
 	warn "could not move ${MODULE}.new into place; ${MODULE} is untouched and still matches ${STAMP:-<nothing>}"
+	record failed "could not move ${MODULE}.new into place"
 	exit 1
 fi
 if ! /bin/mv "${MODULE}.kernel.new" "${MODULE}.kernel"; then
@@ -725,6 +803,7 @@ if ! /bin/mv "${MODULE}.kernel.new" "${MODULE}.kernel"; then
 		/bin/rm -f "${MODULE}.kernel.new"
 	else
 		warn "${MODULE} is the module built for ${TARGET}, and its stamp could not be put beside it: it is stamped for no kernel, so the bring-up refuses it and loads ${MODULE}.prev where that is built for the kernel booted"
+		record failed "the new module's stamp could not be put beside it"
 		exit 1
 	fi
 fi
@@ -733,8 +812,10 @@ fi
 
 log "installed ${MODULE}, stamped for the kernel the next boot will use"
 log "the front ports will come up on that boot without anything else being done"
+record built "rebuilt for the kernel to follow"
 
-# And if an earlier failure had sent the next boot to kernel.old, it no longer has to.
+# And if an earlier failure had sent the next boot to kernel.old, it no longer has to - with the kernel
+# still staged too, where this follower armed it (unpin_old_kernel, 2026-11-17).
 STAMP=${TARGET}
 unpin_old_kernel
 exit 0

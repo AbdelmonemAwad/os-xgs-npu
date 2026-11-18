@@ -1554,6 +1554,29 @@ struct octep_pf_state {
 	uint16_t max_win[2];
 	uint8_t	 wscale[2];
 	int	 rewrites;
+	/*
+	 * A gateway a rule names for the connection (#1182): pf's route-to or reply-to, which pf keeps
+	 * in each state the rule made and sends by in place of the main routing table. Until this a
+	 * connection in hardware left by the main table's route whatever the rule said: measured
+	 * 2026-11-17 on an XGS 3300, 11 MB by the rule's gateway while the host had it, 2.36 GB by the
+	 * main route once it was offloaded.
+	 *
+	 * rt_one is the gateway of the state octep_pf_copy read; octep_pf_state_read puts every state's
+	 * where it applies. pf_route reroutes a packet that goes the way its state was made when the rule
+	 * is route-to, and one that goes the other way when it is reply-to; every state of a connection
+	 * is made by the opener's first packet. So rt[0] is the gateway of the direction from the
+	 * opener (route-to), rt[1] the replies' (reply-to); kind 0 where no rule names one. rt_keep says
+	 * why the host keeps the connection instead: a dup-to (the coprocessor sends each frame once),
+	 * a gateway of the other address family (af-to), a rule that names an interface and no gateway
+	 * address, an interface that has gone, or two of its states naming two ways for one direction.
+	 */
+	struct octep_pf_rt {
+		uint8_t	 kind;		/* pf's act.rt: 0, PF_ROUTETO, PF_REPLYTO or PF_DUPTO */
+		uint8_t	 af;		/* the gateway's address family (act.rt_af) */
+		uint16_t ifindex;	/* the interface pf sends by (act.rt_kif's), 0 when none */
+		uint32_t addr6[4];	/* the gateway (act.rt_addr); an IPv4 one in addr6[0], network order */
+	} rt_one, rt[2];
+	const char *rt_keep;		/* NULL, or why the host keeps the connection */
 };
 
 /*
@@ -2473,6 +2496,8 @@ struct octep_esp_tx {
 struct octep_softc;
 int	octep_nhop_resolve(struct octep_softc *, uint32_t, int, struct octep_nhop *);
 int	octep_nhop_resolve6(struct octep_softc *, const uint8_t *, int, struct octep_nhop *);
+int	octep_nhop_resolve_via(struct octep_softc *, int, uint16_t, const uint32_t *, int,
+	    struct octep_nhop *);
 int	octep_nhop_get(struct octep_softc *, const struct octep_nhop *, uint32_t *);
 void	octep_nhop_put(struct octep_softc *, uint32_t);
 void	octep_dp_flows_forget(struct octep_softc *);
@@ -3995,6 +4020,8 @@ struct octep_softc {
 	uint64_t		 dp_vlan_lif_disabled;	/* ... switched off when their VLAN went */
 	uint64_t		 dp_flow_bridged;	/* made as bridged flows */
 	uint64_t		 dp_flow_bridged_kept;	/* attempts refused: left to the bridge */
+	uint64_t		 dp_flow_rt;	/* made with a next hop a rule names (route-to, reply-to) */
+	uint64_t		 dp_flow_rt_kept;	/* attempts refused: a rule's gateway not followed */
 	uint64_t		 dp_flow_dropped;	/* connections dropped by their verdict */
 	uint64_t		 dp_drop_held;	/* sweep passes that kept a dropped one */
 	uint64_t		 dp_flow_other_closing;	/* not made: the other direction is ending */

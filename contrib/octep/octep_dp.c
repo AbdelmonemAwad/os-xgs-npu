@@ -7379,9 +7379,26 @@ octep_dp_flow_make(struct octep_softc *sc, const struct octep_pf_tuple *tin, uin
 	nha[1] = st.orig_src;
 	if (ipsec > 0)
 		nha[fi.enc_dir] = fi.out_dst;
+	/*
+	 * A gateway a rule names (#1182, pf's route-to or reply-to): that direction's next hop is the
+	 * rule's gateway, as pf sends it, not the main routing table's route - st.rt[0] the direction
+	 * from the opener, which is d 0 here, st.rt[1] the replies. A connection whose rule cannot be
+	 * followed stays with the host, and so does a bridged or tunnelled one a rule sends by a
+	 * gateway: the bridge does not route, and a tunnel's direction leaves by its association.
+	 */
+	if (!attach && (st.rt_keep != NULL ||
+	    ((st.rt[0].kind != 0 || st.rt[1].kind != 0) && (bridged || ipsec != 0)))) {
+		sc->dp_flow_rt_kept++;
+		sbuf_printf(sb, "not accelerated: %s - the host keeps it\n", st.rt_keep != NULL ?
+		    st.rt_keep : bridged ? "a rule sends a bridged connection by a gateway" :
+		    "a rule sends a tunnelled connection by a gateway");
+		return (EACCES);
+	}
 	/* An IPv6 connection's next hops: the other end in full, by the host's IPv6 route and ND. */
 	if (bridged)
 		err = octep_nhop_bridged(sc, hint, mac, &nh[d]);
+	else if (st.rt[d].kind != 0)
+		err = octep_nhop_resolve_via(sc, st.af, st.rt[d].ifindex, st.rt[d].addr6, hint, &nh[d]);
 	else if (st.af == AF_INET6)
 		err = octep_nhop_resolve6(sc, (const uint8_t *)(d == 0 ? st.orig_dst6 : st.orig_src6),
 		    hint, &nh[d]);
@@ -7427,6 +7444,9 @@ octep_dp_flow_make(struct octep_softc *sc, const struct octep_pf_tuple *tin, uin
 	if (have_rev) {
 		if (bridged)
 			err = octep_nhop_bridged(sc, in_dif, rmac, &nh[rd]);
+		else if (st.rt[rd].kind != 0)
+			err = octep_nhop_resolve_via(sc, st.af, st.rt[rd].ifindex, st.rt[rd].addr6, in_dif,
+			    &nh[rd]);
 		else if (st.af == AF_INET6)
 			err = octep_nhop_resolve6(sc,
 			    (const uint8_t *)(rd == 0 ? st.orig_dst6 : st.orig_src6), in_dif, &nh[rd]);
@@ -7843,6 +7863,8 @@ octep_dp_flow_make(struct octep_softc *sc, const struct octep_pf_tuple *tin, uin
 			sc->dp_flow_dscp++;
 		if (bridged)
 			sc->dp_flow_bridged++;
+		if (st.rt[d].kind != 0 || (have_rev && st.rt[rd].kind != 0))
+			sc->dp_flow_rt++;
 		if (c->mf[0].vlan_rw || c->mf[1].vlan_rw)
 			sc->dp_flow_vlan++;
 		if (t.proto == IPPROTO_TCP) {
@@ -10239,6 +10261,15 @@ octep_dp_add_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
 	    "times a bridged connection was left to the host's bridge - dp.bridge_flows 0, a group "
 	    "address, a translation or a tunnel, or its two directions not on two ports of one bridge "
 	    "- an attempt each, so one connection's frames count more than once");
+	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "flow_rt",
+	    CTLFLAG_RD, &sc->dp_flow_rt, 0,
+	    "connections made with a next hop a firewall rule names - pf's route-to or reply-to - in "
+	    "place of the main routing table's route (#1182)");
+	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "flow_rt_kept",
+	    CTLFLAG_RD, &sc->dp_flow_rt_kept, 0,
+	    "times a connection a rule sends by a gateway was left to the host - a dup-to, a gateway of "
+	    "the other family or none, two gateways for one direction, or a bridged or tunnelled "
+	    "connection - an attempt each, so one connection's frames count more than once");
 	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "flow_dscp",
 	    CTLFLAG_RD, &sc->dp_flow_dscp, 0,
 	    "connections made with pf's DSCP mark in their microflows, for the fast path to write "

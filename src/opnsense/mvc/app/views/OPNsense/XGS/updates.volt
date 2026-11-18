@@ -128,6 +128,86 @@
             }
         }
 
+        /* The driver's line (2026-11-17): whether the module the kernel follower follows is built for the
+           kernel the next boot takes - one an update of OPNsense has staged, or the one in /boot - and
+           what the follower last found or did. Read before a reboot where there is time for it; System:
+           Firmware's own updates reboot by themselves, and for those it says after the boot what came of
+           it (docs/guide/the-pages.md). update.py reads it from the follower's own files (driver), so it
+           needs no other plugin. */
+        const DRIVER = {
+            ready: ['text-success', "{{ lang._('Built for the kernel the next boot takes.') }}"],
+            previous: ['text-success', "{{ lang._('The build kept beside it is built for the kernel the next boot takes, and the boot loads that one.') }}"],
+            behind: ['text-warning', "{{ lang._('Not built yet for the newest kernel: the kernel follower has sent the next boot to /boot/kernel.old, which it is built for - one kernel behind, with the front ports up.') }}"],
+            building: ['text-info', "{{ lang._('Not built for the kernel the next boot takes yet; the kernel follower is building it now.') }}"],
+            stale: ['text-danger', "{{ lang._('Not built for the kernel the next boot takes.') }}"],
+            unstamped: ['text-warning', "{{ lang._('No kernel stamp beside it, so nothing tells which kernel it is built for.') }}"],
+            unread: ['text-warning', "{{ lang._('The kernel the next boot takes could not be read.') }}"],
+            none: ['text-muted', "{{ lang._('No driver module is installed.') }}"]
+        };
+        /* What the follower's last run found or did, as it records it: one English word, said here in the
+           page's language. */
+        const FOLLOWER = {
+            ok: "{{ lang._('matches') }}",
+            built: "{{ lang._('rebuilt') }}",
+            failed: "{{ lang._('failed') }}",
+            skipped: "{{ lang._('skipped') }}"
+        };
+        /* A kernel by its source token, 26.7-n284285-1633399de9dd of stable/26.7-n284285-1633399de9dd: the
+           part that changes from one kernel to the next; the whole banner on hover. Left to right in an
+           Arabic page, or its leading number moves to the far end. */
+        function kernel_token(version) {
+            const text = plain(version);
+            const found = text.match(/stable\/(\S+)/);
+            return $('<bdi dir="ltr"/>').attr('title', text).text(found ? found[1] : (text || '-'));
+        }
+        function show_driver(d) {
+            const $cell = $('#driver').empty();
+            $('#driver-row').toggle(!!d);
+            if (!d) {
+                return;
+            }
+            const st = DRIVER[d.state] || DRIVER.unread;
+            $cell.append($('<div/>').addClass(st[0]).text(st[1]));
+            if (!d.module) {
+                return;
+            }
+            /* sent to /boot/kernel.old by the follower, the next boot takes the kernel there - with an update
+               staged, the one in /boot/kernel now, which applying it moves there (update.py, driver) - in
+               every state, not only where the module is built for it */
+            const fallen = !!d.fallback;
+            const next = fallen ? d.kernel_old : d.next;
+            const where = fallen ? '/boot/kernel.old' : (d.where === 'staged' ? "{{ lang._('staged by an update, not applied yet') }}" :
+                (d.next === d.running ? "{{ lang._('the same kernel') }}" : "{{ lang._('installed, not booted yet') }}"));
+            const $kernels = $('<div class="text-muted"/>')
+                .append(document.createTextNode("{{ lang._('Built for') }}: ")).append(kernel_token(d.stamp))
+                .append(document.createTextNode(' \u00b7 ' + "{{ lang._('Next boot') }}: ")).append(kernel_token(next));
+            if (next) {
+                $kernels.append(document.createTextNode(' (' + where + ')'));
+            }
+            const last = d.last || {};
+            const $follower = $('<div class="text-muted"/>')
+                .append(document.createTextNode("{{ lang._('Last run of the kernel follower') }}: "));
+            if (d.following) {
+                $follower.append(document.createTextNode("{{ lang._('running now') }}"));
+            } else if (last.result) {
+                $follower.append(document.createTextNode((FOLLOWER[last.result] || last.result) +
+                    (last.at ? ', ' + whenAt(last.at) : '')));
+                if (last.target && d.next && last.target !== d.next) {
+                    $follower.append(document.createTextNode(' (' + "{{ lang._('for another kernel') }}" + ')'));
+                }
+                /* why it failed, in the follower's own words, as the installer's log has them */
+                if (last.result === 'failed' && last.message) {
+                    $follower.append(document.createTextNode(' - ' + plain(last.message)));
+                }
+            } else {
+                $follower.append(document.createTextNode("{{ lang._('no run recorded yet') }}"));
+            }
+            if (d.built_at && last.result !== 'built') {
+                $follower.append(document.createTextNode(' \u00b7 ' + "{{ lang._('last built') }}" + ' ' + whenAt(d.built_at)));
+            }
+            $cell.append($kernels).append($follower);
+        }
+
         function show_check(chk) {
             const $res = $('#check-result').empty().attr('class', '');
             /* What changed is a tab of its own, as the changelog is on System: Firmware; it says
@@ -413,6 +493,7 @@
                     return;
                 }
                 show_installed(st.installed);
+                show_driver(st.driver);
                 show_channel(st.channel);
                 show_cards(st);
                 show_check(st.check);
@@ -907,6 +988,10 @@
                 <tr>
                     <td>{{ lang._('Installed') }}</td>
                     <td id="installed"></td>
+                </tr>
+                <tr id="driver-row" style="display: none;">
+                    <td>{{ lang._('Driver') }}</td>
+                    <td id="driver"></td>
                 </tr>
                 <tr>
                     <td>{{ lang._('Latest') }}</td>

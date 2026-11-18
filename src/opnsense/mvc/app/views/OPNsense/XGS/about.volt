@@ -119,6 +119,7 @@
                     <a href="https://github.com/AbdelmonemAwad/os-blocklists" target="_blank" rel="noopener noreferrer">os-blocklists</a> &middot;
                     <a href="https://github.com/AbdelmonemAwad/os-portguard" target="_blank" rel="noopener noreferrer">os-portguard</a> &middot;
                     <a href="https://github.com/AbdelmonemAwad/os-fallbackcrypto" target="_blank" rel="noopener noreferrer">os-fallbackcrypto</a> &middot;
+                    <a href="https://github.com/AbdelmonemAwad/os-trafficpriority" target="_blank" rel="noopener noreferrer">os-trafficpriority</a> &middot;
                     <a href="https://github.com/AbdelmonemAwad/os-theme-xgs" target="_blank" rel="noopener noreferrer">os-theme-xgs</a></td></tr>
             </tbody>
         </table>

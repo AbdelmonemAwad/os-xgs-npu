@@ -123,6 +123,14 @@ class Uninstall(unittest.TestCase):
         self.assertNotIn('the kernel follower armed', said)
         self.assertFalse(self.there('var/run/octep-follow.pinned'))
 
+    def test_the_follower_s_record_of_its_last_run_goes_with_it(self):
+        # what XGS: Updates and os-kernelfollow's status read of the follower's last run (2026-11-17)
+        for name in ('kernel-follow.said', 'kernel-follow.result', 'kernel-follow.result.new'):
+            self.write('var/db/os-xgs-npu/' + name, 'result=ok\n')
+        self.uninstall()
+        self.assertEqual([name for name in ('kernel-follow.said', 'kernel-follow.result', 'kernel-follow.result.new')
+                          if self.there('var/db/os-xgs-npu/' + name)], [])
+
     def test_a_next_boot_set_since_for_another_kernel_is_left(self):
         self.write('var/run/octep-follow.armed')
         self.write('boot/nextboot.conf', 'nextboot_enable="YES"\nkernel="kernel.debug"\nkernel_options=""\n')
