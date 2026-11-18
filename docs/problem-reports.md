@@ -75,6 +75,7 @@ Only the parts that are installed, each one's reports going to its own repositor
 | os-blocklists | `blocklists` | `OPNsense/BlockLists`, `scripts/blocklists` |
 | os-portguard | `portguard` | `OPNsense/PortGuard`, `scripts/portguard` |
 | os-fallbackcrypto | `fallbackcrypto` | `OPNsense/FallbackCrypto`, `scripts/fallbackcrypto` |
+| os-trafficpriority | none of its own: its rules hook logs as `opnsense`, OPNsense's own name, so its lines are not taken by program | `OPNsense/TrafficPriority`, `scripts/trafficpriority`, `plugins.inc.d/trafficpriority.inc` |
 
 | kind | found in | is a problem when |
 |---|---|---|
