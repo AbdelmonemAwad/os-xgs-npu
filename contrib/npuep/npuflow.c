@@ -497,6 +497,7 @@ static void	npuflow_letgo(struct npuflow_softc *);
 static void	npuflow_fast(void *, int);
 static int	npuflow_conn_find(struct npuflow_softc *, const struct npuep_pf_tuple *);
 static void	npuflow_takeout_how(struct npuflow_softc *, int, int);
+static void	npuflow_give_pf(struct npuflow_softc *, int);
 static int	npuflow_sysctl_auto(SYSCTL_HANDLER_ARGS);
 static int	npuflow_sysctl_ipsec_flows(SYSCTL_HANDLER_ARGS);
 static int	npuflow_make(struct npuflow_softc *, uint32_t, int, struct sbuf *);
@@ -2876,6 +2877,18 @@ npuflow_takeout_how(struct npuflow_softc *sc, int ci, int invalidate)
 	uint8_t scale[2];
 	int tcp_on, w;
 
+	/*
+	 * What it counted since the last sweep, to pf before it goes, whoever takes it out (#1189):
+	 * flow.release, a cut, a policy that no longer covers it. The let-go pass has given it already
+	 * (invalidate 0), and a connection whose pf states have gone has nobody to give it to. Given
+	 * as a difference, so a second call gives nothing twice. Measured on the XGS 136, 2026-11-18:
+	 * a stream released by hand at its third second missed about a second of its bytes in pf.
+	 */
+	if (invalidate == 1) {
+		CURVNET_SET_QUIET(vnet0);
+		npuflow_give_pf(sc, ci);
+		CURVNET_RESTORE();
+	}
 	FLOW_LOCK(sc);
 	if (sc->conn == NULL || ci < 2 || (uint32_t)ci >= sc->conn_cap || !sc->conn[ci].used ||
 	    sc->conn[ci].making) {
