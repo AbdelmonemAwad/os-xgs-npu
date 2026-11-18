@@ -5,7 +5,8 @@
 #
 """Updates of this project from its GitHub repository, for XGS: Updates.
 
-    update.py status    what is installed, what the last check found, what the last update did
+    update.py status    what is installed, what the last check found, what the last update did, and
+                        whether the driver is built for the kernel the next boot takes
     update.py check     the newest release, and what changed in every release since the one
                         installed
     update.py apply     download that commit and run its own installer (configd starts this
@@ -82,6 +83,7 @@ import glob
 import hashlib
 import http.client
 import json
+import lzma
 import os
 import re
 import shutil
@@ -862,10 +864,16 @@ def runner_since(pids):
 def plugins_checking():
     """Whether a check of the plugins holds plugins.py's CHECK_LOCK now - asked as plugins.py's own
     check_locked() asks it, with a shared lock given back at once, so a check is never refused for it."""
+    return lock_held(PLUGINS_CHECK_LOCK)
+
+
+def lock_held(path):
+    """Whether something holds the lock on path now: asked with a shared lock given back at once, so
+    nothing that takes it is refused for it, or waits longer than that moment."""
     if fcntl is None:
         return False
     try:
-        fd = os.open(PLUGINS_CHECK_LOCK, os.O_RDONLY)
+        fd = os.open(path, os.O_RDONLY)
     except OSError:
         return False
     try:
@@ -1032,6 +1040,204 @@ def settled(state):
     return state
 
 
+# ---------------------------------------------------------------- the driver and the next boot
+
+# THE DRIVER'S LINE ON THE STATUS TAB (2026-11-17, the improvement plan's svc-4-18). An update of OPNsense
+# puts a new kernel on disk, and the driver has to be built for it before the boot that takes it: the
+# kernel follower does that (install/kernel-follow.sh, from the upgrade and stop hooks and cron). Until now
+# nothing on this page said whether it had - only os-kernelfollow's page, where that plugin is installed,
+# and verify.sh on a shell, which reads /boot/kernel and not a staged set. driver() reads it from the
+# follower's own files, so the line needs no other plugin: the module it follows (octep.ko before
+# npuep.ko, as it takes them), the kernel that module is built for (its stamp), the kernel the next boot
+# takes as the follower reads it - a set an update has staged and not applied yet first, /boot/kernel
+# second - and what the follower's last whole run found or did, from the record it leaves (RESULT).
+FOLLOWED = ('/boot/modules/octep.ko', '/boot/modules/npuep.ko')
+KERNEL = '/boot/kernel/kernel'
+KERNEL_OLD = '/boot/kernel.old/kernel'
+WORKPREFIX = '/var/cache/opnsense-update'
+FOLLOW_RESULT = '/var/db/os-xgs-npu/kernel-follow.result'
+FOLLOW_LOCK = '/var/run/octep-follow.lock'
+# The follower's mark of a fall-back to /boot/kernel.old it armed itself (ARMED in kernel-follow.sh),
+# in /var/run, which a boot empties: a mark there is of a fall-back still to come.
+FOLLOW_ARMED = '/var/run/octep-follow.armed'
+# And nextboot's own setting, which nextboot(8) writes - kernel="kernel.old" while that fall-back
+# stands - and nextboot -D takes away (FreeBSD's sbin/reboot/reboot.c). Read with the mark, as
+# uninstall.sh reads the two: the mark says the follower armed it in this boot, the setting that nothing
+# has taken it back since. Neither alone: on ZFS the loader keeps its one shot in the pool and cannot
+# write this file, which outlives the boot it steered, OPNsense's boot running no nextboot -D; on UFS
+# the loader rewrites its first line to nextboot_enable="NO" (stand/lua/config.lua, checkNextboot).
+NEXTBOOT_CONF = '/boot/nextboot.conf'
+# The banner a kernel carries, as uname -v says it and the follower's strings(1) reads it: FreeBSD's
+# version and its stable/ token, together (os-kernelfollow's status.py reads it the same way).
+BANNER = re.compile(rb'FreeBSD [0-9][^\x00\n]*?stable/[^ \x00\n]+[^\x00\n]*')
+# The banners read, by file, with its inode, size and time: a kernel is some 30 MB and a staged set more,
+# and the page reads the status every two seconds while an update runs, so each file is read once.
+BANNERS = os.path.join(STATE, 'banners.json')
+
+
+def banner_in(data):
+    found = BANNER.search(data)
+    return found.group(0).decode('ascii', 'replace').strip() if found else None
+
+
+def kernel_file(path):
+    with open(path, 'rb') as handle:
+        return banner_in(handle.read())
+
+
+def kernel_in_set(path):
+    """The banner of the kernel in a staged set, out of its boot/kernel/kernel member - named so, or
+    ./boot/kernel/kernel - the members read in order and the rest of the set never unpacked."""
+    with tarfile.open(path, 'r:xz') as archive:
+        for member in archive:
+            name = member.name
+            while name.startswith('./'):
+                name = name[2:]
+            if name == 'boot/kernel/kernel' and member.isfile():
+                handle = archive.extractfile(member)
+                return banner_in(handle.read()) if handle else None
+    return None
+
+
+def banner(path, reader):
+    """The banner of the kernel in path, as reader() reads it, kept in BANNERS by the file's inode, size
+    and time; None where there is none to read."""
+    try:
+        seen = os.stat(path)
+    except OSError:
+        return None
+    key = [seen.st_ino, seen.st_size, seen.st_mtime_ns]
+    kept = read_json(BANNERS, {})
+    if not isinstance(kept, dict):
+        kept = {}
+    hit = kept.get(path)
+    if isinstance(hit, list) and len(hit) == 4 and hit[:3] == key:
+        return hit[3]
+    try:
+        version = reader(path)
+    except (OSError, EOFError, lzma.LZMAError, tarfile.TarError):
+        return None
+    kept = {name: value for name, value in kept.items() if os.path.exists(name)}
+    kept[path] = key + [version]
+    try:
+        write_json(BANNERS, kept)
+    except OSError:
+        pass
+    return version
+
+
+def next_kernel():
+    """The kernel the next boot takes, as install/kernel-follow.sh reads it: a set an update has staged
+    and not applied yet first - its marker, .kernel.pending, and the set's own kernel - and /boot/kernel
+    second. (banner, 'staged' or 'boot'); the banner None where neither can be read."""
+    if os.path.exists(os.path.join(WORKPREFIX, '.kernel.pending')):
+        for path in sorted(glob.glob(os.path.join(WORKPREFIX, '.sets.pending', 'kernel-*.txz'))):
+            found = banner(path, kernel_in_set)
+            if found:
+                return found, 'staged'
+    return banner(KERNEL, kernel_file), 'boot'
+
+
+def running_kernel():
+    try:
+        return subprocess.run(['/usr/bin/uname', '-v'], capture_output=True, text=True, errors='replace',
+                              timeout=10).stdout.strip()
+    except (OSError, subprocess.SubprocessError):
+        return ''
+
+
+def follower_record():
+    """The follower's record of its last whole run, KEY=value a line, as a dict."""
+    record = {}
+    for line in read_text(FOLLOW_RESULT).splitlines():
+        if '=' in line:
+            key, value = line.split('=', 1)
+            record[key.strip()] = value.strip()
+    return record
+
+
+def number(text):
+    return int(text) if (text or '').isdigit() else None
+
+
+def fallen_back():
+    """Whether the follower has sent the next boot to /boot/kernel.old: its mark, and nextboot's setting
+    still naming kernel.old - not one the loader has spent, its first line rewritten to
+    nextboot_enable="NO"."""
+    if not os.path.exists(FOLLOW_ARMED):
+        return False
+    setting = read_text(NEXTBOOT_CONF)
+    return (not setting.startswith('nextboot_enable="NO"') and
+            re.search(r'^\s*kernel="kernel\.old"', setting, re.M) is not None)
+
+
+def driver():
+    """The driver's line: the module the follower follows, the kernel it is built for (stamp), the kernel
+    the next boot takes as the follower reads it (next, and where it was read: 'staged' or 'boot'), the
+    kernel running, whether a run of the follower holds its lock now (following), whether the follower
+    has sent the next boot to /boot/kernel.old (fallback) and then the kernel that boot takes there
+    (kernel_old), what its last whole run found or did (last: result, message, target, at) and when it
+    last built the module (built_at) - these two only from a record of this module. And state, which the
+    page says in words:
+
+        none        no module of this project is installed
+        unread      the kernel the next boot takes cannot be read
+        unstamped   the module has no stamp, so nothing tells which kernel it is built for
+        behind      the follower has sent the next boot to /boot/kernel.old, and the module is built for
+                    the kernel that boot takes there - one kernel behind, with the front ports up
+        ready       it is built for the kernel the next boot takes, and no fall-back sends it elsewhere
+        previous    it is not, and the module kept beside it, .prev, is - the boot loads that one then
+                    (octep's bringup.sh, npuep's early/07-npuep)
+        building    it is not, and a run of the follower is under way
+        stale       it is not, and none of the above
+
+    THE FALL-BACK FIRST (2026-11-17, the review of that day). Until then the stamp was compared with the
+    staged kernel or /boot/kernel - 'ready', then 'previous' - before the follower's mark was looked at,
+    and 'behind' with /boot/kernel.old as it is now. After a boot on kernel.old and an upgrade whose hook
+    rebuilt the module for the staged kernel, the line said 'ready' of a boot the follower still sent to
+    kernel.old; and with its rebuild failed, 'behind' - which the apply had made untrue: it moves the
+    kernel in /boot/kernel to kernel.old, and the module was built for neither. Where the fall-back stands
+    (fallen_back), the kernel the next boot takes is the one in /boot/kernel.old at the reboot: with a set
+    staged, the one in /boot/kernel now, as the follower's pin_old_kernel() reads it; otherwise the one in
+    /boot/kernel.old now. The module is judged against that kernel, and 'ready' is said only where no
+    fall-back stands.
+    """
+    module = next((path for path in FOLLOWED if os.path.exists(path)), None)
+    nxt, where = next_kernel()
+    line = {'module': module, 'stamp': None, 'next': nxt, 'where': where, 'running': running_kernel(),
+            'following': lock_held(FOLLOW_LOCK), 'fallback': False, 'kernel_old': None, 'last': None,
+            'built_at': None, 'state': 'none'}
+    if module is None:
+        return line
+    stamp = read_text(module + '.kernel').strip() or None
+    record = follower_record()
+    if record.get('module') == module:
+        line['last'] = {'result': record.get('result'), 'message': record.get('message'),
+                        'target': record.get('target'), 'at': number(record.get('at'))}
+        line['built_at'] = number(record.get('built_at'))
+    boot = nxt
+    if fallen_back():
+        line['fallback'] = True
+        line['kernel_old'] = boot = banner(KERNEL if where == 'staged' else KERNEL_OLD, kernel_file)
+    prev = read_text(module + '.prev.kernel').strip() if os.path.exists(module + '.prev') else None
+    if not boot:
+        state = 'unread'
+    elif not stamp:
+        state = 'unstamped'
+    elif stamp == boot and line['fallback']:
+        state = 'behind'
+    elif stamp == boot:
+        state = 'ready'
+    elif prev == boot:
+        state = 'previous'
+    elif line['following']:
+        state = 'building'
+    else:
+        state = 'stale'
+    line.update(stamp=stamp, state=state)
+    return line
+
+
 def status():
     # Take what this boot loaded while the files still show it, before any update rewrites them.
     snapshot = boot_snapshot()
@@ -1058,6 +1264,7 @@ def status():
         'plugins_running': plugins_runner(),
         'driver_unchanged': since_boot and not driver_changed,
         'boot_steps_changed': steps,
+        'driver': driver(),
     })
 
 
