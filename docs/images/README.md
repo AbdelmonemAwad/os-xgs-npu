@@ -19,10 +19,10 @@ to a new image, and the checks fail on one without them.
 |---|---|---|
 | [screens/](screens/) | The web interface, page by page, in English and in Arabic | 108 |
 | [hardware/](hardware/) | Photographs and drawings of the appliances, one folder each | 41 |
-| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 910 |
+| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 915 |
 | [readme/](readme/) | The README's banner and status board, drawn by tools/readme-art.py | 6 |
 
-1104 images in all.
+1109 images in all.
 
 ## The web interface
 
@@ -565,6 +565,15 @@ The page: [giu-goodbye-2026-10-25.md](../measurements/giu-goodbye-2026-10-25.md)
 | image | what it shows | used on |
 |---|---|---|
 | [02-sfos21-six-reloads-goodbye-first.png](measurements/giu-goodbye-2026-10-25/02-sfos21-six-reloads-goodbye-first.png) | Six reloads of the XGS 136 with npuep.ko a20cdaf6 in /root/giu741: the first unloads the previous build and its PF_DISABLE fails, the command never taken; the other five say "giu: datapath disabled"; each new load has all fourteen ports confirmed and a ping to the second XGS 3300 answered | [giu-goodbye-2026-10-25.md](../measurements/giu-goodbye-2026-10-25.md) |
+
+### measurements/hand-back-2026-11-17/ (2)
+
+The page: [hand-back-2026-11-17.md](../measurements/hand-back-2026-11-17.md).
+
+| image | what it shows | used on |
+|---|---|---|
+| [01-main-stays-dropped.png](measurements/hand-back-2026-11-17/01-main-stays-dropped.png) | hwdrop.py as on main: the stream dropped by the cut stays dropped after its address leaves the list | [hand-back-2026-11-17.md](../measurements/hand-back-2026-11-17.md) |
+| [02-branch-handed-back.png](measurements/hand-back-2026-11-17/02-branch-handed-back.png) | With release_addresses: handed back at the next run of cut.py, and on again at 128 MB each 5 s | [hand-back-2026-11-17.md](../measurements/hand-back-2026-11-17.md) |
 
 ### measurements/heartbeat-2026-10-22/ (12)
 
@@ -1400,6 +1409,15 @@ The page: [revive-hold-136-2026-10-24.md](../measurements/revive-hold-136-2026-1
 | [01-136-far-side-sends-hold-in-turn.png](measurements/revive-hold-136-2026-10-24/01-136-far-side-sends-hold-in-turn.png) | Twelve runs, flow.revive_hold 0 and 1 in turn: with 1, four of six runs nearly all through the host and taken out at a streak; with 0, none | [revive-hold-136-2026-10-24.md](../measurements/revive-hold-136-2026-10-24.md) |
 | [02-136-pc-sends-hold-off.png](measurements/revive-hold-136-2026-10-24/02-136-pc-sends-hold-off.png) | The PC's own way with flow.revive_hold 0: in hardware, as before | [revive-hold-136-2026-10-24.md](../measurements/revive-hold-136-2026-10-24.md) |
 
+### measurements/route-to-2026-11-17/ (2)
+
+The page: [route-to-2026-11-17.md](../measurements/route-to-2026-11-17.md).
+
+| image | what it shows | used on |
+|---|---|---|
+| [01-route-to.png](measurements/route-to-2026-11-17/01-route-to.png) | route-to: by Port8 with the rule, by Port6 without it, in hardware each time | [route-to-2026-11-17.md](../measurements/route-to-2026-11-17.md) |
+| [02-reply-to.png](measurements/route-to-2026-11-17/02-reply-to.png) | reply-to: the replies by Port8 with the rule, by Port6 without it, in hardware each time | [route-to-2026-11-17.md](../measurements/route-to-2026-11-17.md) |
+
 ### measurements/rpc-bounds-2026-10-19/ (1)
 
 The page: [rpc-bounds-2026-10-19.md](../measurements/rpc-bounds-2026-10-19.md).
@@ -1775,6 +1793,14 @@ The page: [vlan-mtu-2026-11-06.md](../measurements/vlan-mtu-2026-11-06.md).
 | [09-fix-no-vlan-lif.png](measurements/vlan-mtu-2026-11-06/09-fix-no-vlan-lif.png) | First XGS 3300 with the fix: a VLAN id never seen passes 1,514 and 1,518 at a port of 1,500 | [vlan-mtu-2026-11-06.md](../measurements/vlan-mtu-2026-11-06.md) |
 | [10-fix-both-3300s.png](measurements/vlan-mtu-2026-11-06/10-fix-both-3300s.png) | Both XGS 3300s with the fix, ports at 1,500 | [vlan-mtu-2026-11-06.md](../measurements/vlan-mtu-2026-11-06.md) |
 | [11-fix-top-and-bridge.png](measurements/vlan-mtu-2026-11-06/11-fix-top-and-bridge.png) | A vlan over a bridge member takes 1,500 with the fix; raising the member itself is refused on both families | [vlan-mtu-2026-11-06.md](../measurements/vlan-mtu-2026-11-06.md) |
+
+### measurements/watchdog-install-2026-11-17/ (1)
+
+The page: [watchdog-install-2026-11-17.md](../measurements/watchdog-install-2026-11-17.md).
+
+| image | what it shows | used on |
+|---|---|---|
+| [01-xgs136.png](measurements/watchdog-install-2026-11-17/01-xgs136.png) | The steps on the XGS 136, each with what install.sh said and what holds the timer after | [watchdog-install-2026-11-17.md](../measurements/watchdog-install-2026-11-17.md) |
 
 ### measurements/wireguard-2026-11-11/ (6)
 

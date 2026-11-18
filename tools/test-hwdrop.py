@@ -92,6 +92,29 @@ class Driver:
         return done
 
 
+class Releasing(Driver):
+    """The hand-back as each driver answers it (REMAINING A15): "<index> <rev>" written to
+    dp.flow_release or flow.release, refused when the slot's revision has moved."""
+
+    def run(self, cmd, **kw):
+        if '-n' in cmd or not cmd[1].split('=', 1)[0].endswith('release'):
+            return Driver.run(self, cmd, **kw)
+
+        class Done:
+            pass
+        done = Done()
+        done.returncode, done.stdout = 0, ''
+        oid, value = cmd[1].split('=', 1)
+        self.writes.append((oid, value))
+        idx, rev = value.split()[:2]
+        if not self.older and idx in self.now and rev != self.now[idx]:
+            self.last = ('connection %s is rev %s now, not %s: the index has gone to another connection; '
+                         'nothing changed\n' % (idx, self.now[idx], rev))
+        else:
+            self.last = 'connection %s handed back to the host, and kept there until pf lets it go\n' % idx
+        return done
+
+
 def use(driver):
     hd.flows.sysctl = driver.sysctl
     hd.subprocess.run = driver.run
@@ -335,6 +358,43 @@ check('a page\'s first line read back', bool(getattr(hd, 'PAGE_FROM', None) and
                                              hd.PAGE_FROM.fullmatch('from %u, %d in the table' % (4294967295, 10))), True)
 check('a page\'s last line read back', bool(getattr(hd, 'NEXT_FROM', None) and
                                             hd.NEXT_FROM.search('next from %d\n' % 7)), True)
+
+# A cut that is over (REMAINING A15): the connections with an end that has left its list handed back,
+# by index and revision, through each driver's own hand-back - whatever "Cut in hardware" says.
+d = Releasing('octeontx')
+use(d)
+check('XGS 3300: both connections with an end gone from the list handed back',
+      hd.release_addresses({'198.51.100.7'}), 2)
+check('XGS 3300: through dp.flow_release, by slot and its revision',
+      d.writes, [('dev.octep.0.dp.flow_release', '2 7'), ('dev.octep.0.dp.flow_release', '4 5')])
+d = Releasing('armada')
+use(d)
+check('XGS 136: the connection with an end gone handed back', hd.release_addresses({'203.0.113.9'}), 1)
+check('XGS 136: through flow.release, by its index and its revision', d.writes, [('dev.npuep.0.flow.release', '6 9')])
+d = Releasing('octeontx', now={'2': '8'})
+use(d)
+check('XGS 3300: an index gone to another connection since the reading is not counted',
+      hd.release_addresses({'198.51.100.7'}), 1)
+d = Releasing('octeontx')
+use(d)
+check('XGS 3300: no end in the set, nothing handed back', (hd.release_addresses({'192.0.2.200'}), d.writes), (0, []))
+d = Releasing('none')
+use(d)
+check('no driver: nothing handed back, nothing written', (hd.release_addresses({'198.51.100.7'}), d.writes), (0, []))
+asked, hd.enabled = hd.enabled, lambda *a, **k: False
+d = Releasing('octeontx')
+use(d)
+check('"Cut in hardware" off: a connection dropped while it was on still handed back',
+      hd.release_addresses({'198.51.100.7'}), 2)
+hd.enabled = asked
+for name, path, oid in (('XGS 3300', ('contrib', 'octep', 'octep_dp.c'), 'flow_release'),
+                        ('XGS 136', ('contrib', 'npuep', 'npuflow.c'), 'release')):
+    with open(os.path.join(ROOT, *path), encoding='utf-8') as fh:
+        src = fh.read()
+    check(name + ': the hand-back registered and answered as hwdrop.py reads it',
+          ('OID_AUTO, "%s"' % oid in src, '"connection %lu handed back to the host' in src), (True, True))
+check('both hand-backs read by hwdrop.py', sorted(getattr(hd, 'RELEASE', {}).values()),
+      ['dev.npuep.0.flow.release', 'dev.octep.0.dp.flow_release'])
 
 os.unlink(lock.name)
 os.unlink(cfg.name)
