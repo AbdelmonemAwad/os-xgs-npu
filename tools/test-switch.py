@@ -133,6 +133,7 @@ def chip_defaults(d):
             f.write('0x%04x\n' % v)
     for p in range(11):
         put('r.%d.8' % p, 0x2480 if p else 0x2480)
+        put('r.%d.9' % p, 0x0001)
         put('r.%d.10' % p, 0x8000)
         put('r.%d.13' % p, 0x0001 if p else 0x0000)
         put('r.%d.5' % p, 0x0000)
@@ -316,6 +317,14 @@ class Chip(unittest.TestCase):
         self.assertIn(('W', 3, 10), ops)
         self.assertEqual(self.run_sw('show'), 0)
         self.assertEqual(self.out, before)
+
+    def test_show_gives_a_limit_with_another_edec_by_umsds_scale(self):
+        # switch_qos.py's 900 Mbit/s: eDec 90, N 50
+        self.set_reg('r.4.9', 0x005a)
+        self.set_reg('r.4.10', 0x8032)
+        self.assertEqual(self.run_sw('show', 'Port4'), 0)
+        self.assertIn("egress limit 900000 kbit/s at layer 2 by UMSD's scale (eDec 90, N 50)", self.out)
+        self.assertEqual(self.changes(), [])
 
     def test_limit_refused_when_someone_else_set_one(self):
         self.set_reg('r.4.10', 0x8010)
