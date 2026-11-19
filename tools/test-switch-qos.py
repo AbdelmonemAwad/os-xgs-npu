@@ -10,7 +10,8 @@ The register words, as functions (any system):
     and 2026-11-17 for EF to queue 7, every other register of pages 0 and 2 zero, and the operation
     words of the load the lab made (flush 0xa003, page 2 0xb803 ... page 0 0xb003); what a read-back
     compares - the seven registers the lab read back after a load;
-  - QUEUE CONTROL's scheduling words, the WEIGHT TABLE's pairs and length, and the EGRESS LIMIT's
+  - QUEUE CONTROL's scheduling words, the WEIGHT TABLE's pairs and length, PORT 0'S FLOW CONTROL's
+    two words (0x9088 the pause off, 0x908c on as the coprocessor leaves it), and the EGRESS LIMIT's
     eDec and N for 100, 480, 900 and 1000 Mbit/s as UMSD's macro gives them, a rate between steps
     taken down, and 0x09's bits other than 6:0 kept;
   - the settings file's refusals: a third class, a weight sequence that leaves a queue out, a port
@@ -19,9 +20,10 @@ The register words, as functions (any system):
 The runs, against a made-up chip (a POSIX shell): npu-run.sh is a stand-in that runs the command with
 /bin/sh - and stops answering after a number of sessions, as a link that drops or a host stopped in
 the middle of a run; mvsw a stand-in that keeps each register in a file and acts as the chip's TCAM,
-queue-control, weight-table and counter engines do; models.py is the real one, told the model through
-XGS_PLANAR_SERIAL. Every run is held to: each register written read first in the same run, port 0's own
-scheduling and limit never written, no TCAM entry but 3 and 255 ever flushed or loaded. And:
+queue-control, weight-table, flow-control and counter engines do; models.py is the real one, told the
+model through XGS_PLANAR_SERIAL. Every run is held to: each register written read first in the same
+run, port 0's own scheduling and limit never written, no flow control written but port 0's pointer 0x10
+and that only 0x88 or 0x8c, no TCAM entry but 3 and 255 ever flushed or loaded. And:
   - apply sets what the settings file asks, keeps what it found, sets nothing twice, and clear puts it
     all back and reads it again - show the same before and after;
   - an entry or an egress limit that is not this tool's refuses the run before anything is written;
@@ -32,8 +34,14 @@ scheduling and limit never written, no TCAM entry but 3 and 255 ever flushed or 
     state what it could not; a boot with no settings file only puts back;
   - a load that does not read back as written is flushed in its own session, and a run during which
     the vendor's entries change is not kept;
-  - check reads entries 3 and 255 and port 0's mode again;
-  - after a coprocessor boot, reapply sets it all again and keeps the found values;
+  - port 0's pause: with weights, turned off after them - 0x9088, read back 0x1088 - and only over
+    the 0x8c the coprocessor leaves, any other value refusing the run before a write; put back first,
+    0x908c, when the weights go; left as found by strict classes; kept in the state, a run cut before
+    it finished by the next; a set of it that does not read back putting the whole run back, a
+    put-back of it that does not kept for the next run;
+  - check reads entries 3 and 255, port 0's mode and its pause again;
+  - after a coprocessor boot, reapply sets it all again, port 0's pause last, and keeps the found
+    values;
   - writes on the XGS 3300 alone: the XGS 3100 and the XGS 136 refused before the coprocessor is asked;
     on the XGS 136 show reads port registers alone, no TCAM operation; no switch tool on the
     coprocessor, said, and nothing read.
@@ -62,14 +70,16 @@ import switch_qos as sq  # noqa: E402
 
 # The chip. Registers in files r.<dev>.<reg> (decimal, values 0x%04x). The pointer registers - Queue
 # Control (port register 0x1c) and the weight table (Global2 0x1c) - keep what a write with bit 15 sets
-# in p.<dev>.<pointer>; TCAM entries in t.<entry>.<page>.<reg>, loaded and read through the data
-# registers r.31.2 to r.31.27 by the operation register r.31.0; counters in ctr.<port>.<counter>.<bank>.
+# in p.<dev>.<pointer>, and the ports' flow control (port register 0x02) in fc.<dev>.<pointer>; TCAM
+# entries in t.<entry>.<page>.<reg>, loaded and read through the data registers r.31.2 to r.31.27 by
+# the operation register r.31.0; counters in ctr.<port>.<counter>.<bank>.
 # Every read and write goes to the log. "flicker" N: every Nth read answers 0x7bad; "stuck.<dev>.<reg>":
 # writes there go nowhere; "once.<dev>.<reg>": the first write with bit 15 there goes through, and the
-# register is stuck after it; "tstuck.<entry>": loads of that entry go nowhere; "tmix.<entry>": a load of
-# that entry's page 0 lands with another word in octet 19's register, as the agent's operation between
-# two of ours would leave it; "agent": every load also changes the vendor's entry 4, as the agent
-# arming a port would.
+# register is stuck after it; "fcstuck.<dev>.<pointer>": writes with bit 15 to that flow-control pointer
+# go nowhere, the pointer still taken; "tstuck.<entry>": loads of that entry go nowhere; "tmix.<entry>":
+# a load of that entry's page 0 lands with another word in octet 19's register, as the agent's
+# operation between two of ours would leave it; "agent": every load also changes the vendor's entry 4,
+# as the agent arming a port would.
 FAKE_MVSW = r'''#!/bin/sh
 D=${FAKE_SW:?}
 [ "$1" = 0 ] && [ "$2" = 2 ] || { echo "usage"; exit 1; }
@@ -114,6 +124,10 @@ write)
 		v=$(cat "$D/ctr.$p.$c.$bk" 2>/dev/null || echo 0)
 		set_ r.27.30 $(( (v >> 16) & 0xffff )); set_ r.27.31 $(( v & 0xffff ))
 		set_ r.27.29 $(( val & 0x7fff ))
+	elif [ $dev -le 10 ] && [ $reg -eq 2 ]; then
+		ptr=$(( (val >> 8) & 0x7f ))
+		[ $(( val & 0x8000 )) -ne 0 ] && [ ! -f "$D/fcstuck.$dev.$ptr" ] && set_ fc.$dev.$ptr $(( val & 0xff ))
+		set_ r.$dev.2 $(( (ptr << 8) | $(get fc.$dev.$ptr) ))
 	else
 		set_ r.$dev.$reg $val
 	fi
@@ -158,7 +172,9 @@ DEFAULT_WEIGHTS = default_weights()
 
 
 def chip_defaults(d):
-    """What the vendor's coprocessor leaves in the chip, as read on the second XGS 3300 on 2026-11-17."""
+    """What the vendor's coprocessor leaves in the chip, as read on the second XGS 3300 on 2026-11-17;
+    the flow control as read there on 2026-11-19 - port 0's 0x8c and port 8's 0x08, given to every
+    front port here."""
     def put(name, v):
         with open(os.path.join(d, name), 'w') as f:
             f.write('0x%04x\n' % v)
@@ -169,6 +185,7 @@ def chip_defaults(d):
         put('r.%d.10' % p, 0x8000)
         put('r.%d.13' % p, 0x0001 if p else 0x0000)
         put('p.%d.0' % p, 0x00)
+        put('fc.%d.16' % p, 0x08 if p else 0x8c)
     put('p.28.64', len(DEFAULT_WEIGHTS))
     put('p.28.65', 0x01)
     for i in range(0, len(DEFAULT_WEIGHTS), 2):
@@ -241,6 +258,21 @@ class Words(unittest.TestCase):
         self.assertEqual(sq.weight_words(DEFAULT_WEIGHTS)[-1], 0xc063)
         self.assertEqual(len(sq.weight_words([0] * 128)), 65)
         self.assertEqual(sq.weight_words([0] * 128)[-1], 0xc080)
+
+    def test_port0s_flow_control(self):
+        # pointer 0x10 of port register 0x02: the lab's writes on 2026-11-19, read back 0x1088 and 0x108c
+        self.assertEqual(sq.FC, 0x10)
+        self.assertEqual((sq.PAUSE_ON, sq.PAUSE_OFF), (0x8c, 0x88))
+        self.assertEqual(sq.pause_word(sq.PAUSE_OFF), 0x9088)
+        self.assertEqual(sq.pause_word(sq.PAUSE_ON), 0x908c)
+        # UMSD's gprtSetFlowCtrl with en false: bits 2:0 cleared, ForcedFC kept, bit 7 kept
+        self.assertEqual((sq.PAUSE_ON & ~0x07) | 0x08, sq.PAUSE_OFF)
+        # set last, put back first
+        steps = [('weights', [0], [1]), ('pause', 0x8c, 0x88), ('mode', 0, 1), ('limit:8', [1, 0x8000], [1, 0x8005]),
+                 ('entry:3', None, {'dscp': 46, 'mask': 63, 'queue': 7})]
+        self.assertEqual([s[0] for s in sq.order(steps)], ['limit:8', 'entry:3', 'mode', 'weights', 'pause'])
+        back = [('weights', [1], [0]), ('limit:8', [1, 0x8005], [1, 0x8000]), ('pause', 0x88, 0x8c)]
+        self.assertEqual([s[0] for s in sq.order(back)], ['pause', 'limit:8', 'weights'])
 
     def test_egress_limit_as_umsd_gives_it(self):
         # (eDec, N, kbit/s): AMETHYST_MSD_GET_RATE_LIMIT_PER_BYTE, N = 8,000,000 * eDec / (16 * kbit/s) up
@@ -403,6 +435,8 @@ class Chip(unittest.TestCase):
         for d, r, v in self.writes():
             if (d <= 10 or d == 28) and r == 28 and not v & 0x8000:
                 continue
+            if d <= 10 and r == 2 and not v & 0x8000:
+                continue
             if (d, r) == (31, 0) and (v >> 12) & 7 in (sq.OP_READ, sq.OP_NEXT):
                 continue
             if d == 31 and r != 0:
@@ -442,6 +476,17 @@ class Chip(unittest.TestCase):
     def scheduling(self):
         return [self.reg('p.%d.0' % p) for p in range(1, 11)]
 
+    def fc(self, port, pointer=0x10):
+        """A port's flow-control byte as the chip holds it."""
+        return self.reg('fc.%d.%d' % (port, pointer))
+
+    def set_fc(self, port, v, pointer=0x10):
+        self.set_reg('fc.%d.%d' % (port, pointer), v)
+
+    def pause_writes(self):
+        """What the run wrote to port 0's flow control, the pointer's writes aside."""
+        return [v for d, r, v in self.changes() if (d, r) == (0, 2)]
+
     def npu_calls(self):
         try:
             with open(os.path.join(self.sw, 'npu-calls')) as f:
@@ -467,7 +512,7 @@ class Chip(unittest.TestCase):
     def boot(self):
         """The coprocessor boots: the chip as it leaves it."""
         for f in os.listdir(self.sw):
-            if f.split('.')[0] in ('r', 'p', 't'):
+            if f.split('.')[0] in ('r', 'p', 't', 'fc'):
                 os.remove(os.path.join(self.sw, f))
         chip_defaults(self.sw)
 
@@ -477,12 +522,15 @@ class Chip(unittest.TestCase):
         self.assertEqual(self.reg('r.0.13'), 0x0000)
         self.assertEqual(self.scheduling(), [0] * 10)
         self.assertEqual(self.weights(), DEFAULT_WEIGHTS)
+        self.assertEqual(self.fc(0), 0x8c)
 
     # ---- the rules every run is held to ----
     def check_the_rules(self):
         read = set()
         pointer = {}
         read_pointer = set()
+        fc_pointer = {}
+        read_fc = set()
         read_entry = set()
         for op, d, r, v in self.log():
             d, r, v = int(d), int(r), int(v, 16)
@@ -490,6 +538,18 @@ class Chip(unittest.TestCase):
                 read.add((d, r))
                 if (d <= 10 or d == 28) and r == 28 and d in pointer:
                     read_pointer.add((d, pointer[d]))
+                if d <= 10 and r == 2 and d in fc_pointer:
+                    read_fc.add((d, fc_pointer[d]))
+                continue
+            if d <= 10 and r == 2:
+                # flow control: port 0's pointer 0x10 alone, on or off, and read first
+                ptr = (v >> 8) & 0x7f
+                if v & 0x8000:
+                    self.assertEqual((d, ptr), (0, sq.FC), 'flow control pointer 0x%02x of port %d written' % (ptr, d))
+                    self.assertIn(v, (0x9088, 0x908c), 'port 0\'s flow control written 0x%04x' % v)
+                    self.assertIn((d, ptr), read_fc, 'port 0\'s flow control written unread')
+                else:
+                    fc_pointer[d] = ptr
                 continue
             if (d <= 10 or d == 28) and r == 28:
                 ptr = (v >> 8) & 0x7f
@@ -526,6 +586,7 @@ class Chip(unittest.TestCase):
         self.assertIn('get-next after 2: 4, after 3: 4', before)
         self.assertIn('Port8 (switch port 8): scheduling 0 (weighted, all eight queues); egress limit none', before)
         self.assertIn('weights: 99 turns - queue 7: 33, 6: 25, 5: 17, 4: 12, 3: 6, 2: 3, 1: 2, 0: 1', before)
+        self.assertIn('port 0 (the coprocessor) pause: on (0x8c), as found', before)
         self.want(self.ONE)
         self.assertEqual(self.run_q('apply'), 0, self.err)
         page0, page2 = self.entry(3)
@@ -535,7 +596,10 @@ class Chip(unittest.TestCase):
         self.assertEqual(self.reg('r.0.13'), 0x0001)
         self.assertEqual(self.scheduling(), [1] * 10)
         self.assertEqual(self.reg('p.0.0'), 0)
+        # strict classes, no weights: port 0's pause left as found, and not kept
+        self.assertEqual((self.pause_writes(), self.fc(0)), ([], 0x8c))
         k = self.kept()
+        self.assertNotIn('pause', k)
         self.assertEqual(k['mode'], {'found': 0, 'set': 1})
         self.assertEqual(k['sched:8'], {'found': 0, 'set': 1})
         self.assertEqual(k['entry:3'], {'found': None, 'set': {'dscp': 46, 'mask': 63, 'queue': 7}})
@@ -606,10 +670,159 @@ class Chip(unittest.TestCase):
         self.assertEqual(self.weights(), seq)
         self.assertEqual(self.reg('p.28.65'), 0x01)
         self.assertEqual(self.kept()['weights']['found'], DEFAULT_WEIGHTS)
+        self.assertEqual(self.fc(0), 0x88)
         # the scheduling asked for is what the vendor left: nothing written for it
         self.assertEqual([w for w in self.changes() if w[1] == 28 and w[0] <= 10], [])
         self.assertEqual(self.run_q('clear'), 0, self.err)
         self.assertEqual(self.weights(), DEFAULT_WEIGHTS)
+        self.assertEqual(self.fc(0), 0x8c)
+
+    # ---- port 0's pause: off while the weights are written ----
+    def test_port0s_pause_off_after_the_weights_and_back_first(self):
+        seq = [7, 7, 7, 6, 6, 0, 0, 0, 0, 0, 1, 2, 3, 4, 5]
+        self.assertEqual(self.run_q('show'), 0, self.err)
+        before = self.out
+        self.want({'classes': [{'dscp': 46, 'queue': 7}, {'dscp': 34, 'queue': 6}], 'scheduling': {'*': 0},
+                   'weights': seq})
+        self.assertEqual(self.run_q('apply'), 0, self.err)
+        # the weights' words, then the pause's - the run's last write
+        self.assertEqual([w for w in self.changes() if w[:2] in ((28, 28), (0, 2))],
+                         [(28, 28, v) for v in sq.weight_words(seq)] + [(0, 2, 0x9088)])
+        self.assertEqual(self.changes()[-1], (0, 2, 0x9088))
+        self.assertEqual((self.fc(0), self.reg('r.0.2')), (0x88, 0x1088))
+        self.assertEqual([self.fc(p) for p in range(1, 11)], [0x08] * 10, 'a front port\'s flow control changed')
+        self.assertEqual(self.kept()['pause'], {'found': 0x8c, 'set': 0x88})
+        self.assertIn('switch-qos: port 0 pause off (no pause frames to the coprocessor) - port 0 register 0x02 '
+                      'pointer 0x10 0x8c -> 0x88 (0x9088) (apply)', self.syslog())
+        self.assertEqual(self.run_q('show'), 0, self.err)
+        self.assertIn('port 0 (the coprocessor) pause: off (0x88), by this tool; found 0x8c', self.out)
+        # put back: the pause first, before the weights and everything else
+        self.assertEqual(self.run_q('clear'), 0, self.err)
+        self.assertEqual(self.changes()[0], (0, 2, 0x908c))
+        self.assertEqual([w for w in self.changes() if w[:2] in ((28, 28), (0, 2))],
+                         [(0, 2, 0x908c)] + [(28, 28, v) for v in sq.weight_words(DEFAULT_WEIGHTS)])
+        self.assertEqual(self.reg('r.0.2'), 0x108c)
+        self.assertIn('switch-qos: port 0 pause on, as found - port 0 register 0x02 pointer 0x10 0x88 -> 0x8c '
+                      '(0x908c) (clear)', self.syslog())
+        self.all_as_found()
+        self.assertIsNone(self.kept())
+        self.assertEqual(self.run_q('show'), 0)
+        self.assertEqual(self.out, before)
+
+    def test_port0s_pause_not_as_the_coprocessor_leaves_it_refuses_the_run(self):
+        self.want({'classes': [{'dscp': 46, 'queue': 7}], 'scheduling': {'*': 1}, 'weights': list(range(8))})
+        for found in (0x88, 0x0c, 0x8d):
+            self.set_fc(0, found)
+            self.assertEqual(self.run_q('apply'), 1)
+            self.assertIn('port 0\'s pause: its flow control (0x02 pointer 0x10) reads 0x%02x, not 0x8c as the '
+                          'coprocessor leaves it: nothing written' % found, self.err)
+            self.assertEqual(self.changes(), [], 'written over 0x%02x' % found)
+            self.assertIsNone(self.kept())
+            self.assertEqual(self.fc(0), found)
+        # a read that is not pointer 0x10's: refused the same
+        self.set_fc(0, 0x8c)
+        self.flag('stuck.0.2')
+        self.set_reg('r.0.2', 0x008c)
+        self.assertEqual(self.run_q('apply'), 1)
+        self.assertIn('port 0\'s flow control (port register 0x02) read as 0x008c, not as pointer 0x10\'s', self.err)
+        self.assertEqual(self.changes(), [])
+        self.assertIsNone(self.kept())
+        self.unflag('stuck.0.2')
+        # strict classes ask nothing of it: set whatever port 0's flow control holds, and it left as it is
+        self.set_fc(0, 0x0c)
+        self.want(self.ONE)
+        self.assertEqual(self.run_q('apply'), 0, self.err)
+        self.assertEqual((self.pause_writes(), self.fc(0)), ([], 0x0c))
+        self.assertNotIn('pause', self.kept())
+
+    def test_strict_after_weights_puts_the_pause_back_first(self):
+        self.want({'classes': [{'dscp': 46, 'queue': 7}], 'scheduling': {'*': 0}, 'weights': list(range(8)) * 2})
+        self.assertEqual(self.run_q('apply'), 0, self.err)
+        self.assertEqual(self.fc(0), 0x88)
+        # minimums gone, the class strict: no weights, so the pause back as found before anything else
+        self.want({'classes': [{'dscp': 46, 'queue': 7}], 'scheduling': {'*': 1}})
+        self.assertEqual(self.run_q('apply'), 0, self.err)
+        self.assertEqual(self.changes()[0], (0, 2, 0x908c))
+        self.assertEqual(self.pause_writes(), [0x908c])
+        self.assertEqual((self.fc(0), self.weights(), self.scheduling()), (0x8c, DEFAULT_WEIGHTS, [1] * 10))
+        self.assertNotIn('pause', self.kept())
+        self.assertNotIn('weights', self.kept())
+        self.assertIn('switch-qos: port 0 pause on, as found - port 0 register 0x02 pointer 0x10 0x88 -> 0x8c '
+                      '(0x908c) (apply)', self.syslog())
+        self.assertEqual(self.run_q('clear'), 0, self.err)
+        self.all_as_found()
+
+    def test_the_pause_kept_in_the_state(self):
+        seq = list(range(8)) * 2
+        self.want({'weights': seq})
+        self.assertEqual(self.run_q('apply'), 0, self.err)
+        with open(self.state) as f:
+            self.assertEqual(json.load(f)['items']['pause'], {'found': 0x8c, 'set': 0x88})
+        # set already: nothing written twice
+        self.assertEqual(self.run_q('apply'), 0, self.err)
+        self.assertEqual(self.changes(), [])
+        self.assertEqual(self.kept()['pause'], {'found': 0x8c, 'set': 0x88})
+        self.assertEqual(self.run_q('clear'), 0, self.err)
+        self.all_as_found()
+        # a run cut after the weights, before the pause: what was found kept, the next run finishes
+        self.want({'weights': seq})             # clear took the settings file away
+        self.cut_after(2)
+        self.assertEqual(self.run_q('apply'), 1)
+        self.assertEqual((self.weights(), self.fc(0)), (seq, 0x8c))
+        self.assertEqual(self.kept()['pause'], {'found': 0x8c, 'set': 0x8c, 'pending': 0x88})
+        self.assertEqual(self.run_q('apply'), 0, self.err)
+        self.assertEqual(self.changes(), [(0, 2, 0x9088)])
+        self.assertEqual(self.kept()['pause'], {'found': 0x8c, 'set': 0x88})
+        # a value neither found nor set, kept: refused, not turned off over it
+        self.set_fc(0, 0x0c)
+        self.assertEqual(self.run_q('apply'), 1)
+        self.assertIn('reads 0x0c, not 0x8c', self.err)
+        self.assertEqual(self.changes(), [])
+        self.set_fc(0, 0x88)
+        self.assertEqual(self.run_q('clear'), 0, self.err)
+        self.all_as_found()
+        self.assertIsNone(self.kept())
+
+    def test_a_pause_that_does_not_read_back_puts_the_run_back(self):
+        self.flag('fcstuck.0.16')
+        self.want({'classes': [{'dscp': 46, 'queue': 7}], 'scheduling': {'*': 0}, 'weights': list(range(8))})
+        self.assertEqual(self.run_q('apply'), 1)
+        self.assertIn('not read back as written: port 0 pause off', self.err)
+        self.all_as_found()
+        self.assertIsNone(self.kept())
+        self.assertIn('was put back as found', self.syslog())
+        # a put-back of it that does not stick: the rest put back, the pause kept for the next run
+        self.unflag('fcstuck.0.16')
+        self.assertEqual(self.run_q('apply'), 0, self.err)
+        self.flag('fcstuck.0.16')
+        self.assertEqual(self.run_q('clear'), 1)
+        self.assertIn('not read back as written: port 0 pause on, as found', self.err)
+        self.assertEqual(self.kept(), {'pause': {'found': 0x8c, 'set': 0x88, 'pending': 0x8c}})
+        self.assertEqual((self.weights(), self.entry(3), self.fc(0)), (DEFAULT_WEIGHTS, ({}, {}), 0x88))
+        self.unflag('fcstuck.0.16')
+        # no settings file: a reapply only puts back
+        self.assertEqual(self.run_q('reapply'), 0, self.err)
+        self.assertEqual(self.pause_writes(), [0x908c])
+        self.all_as_found()
+        self.assertIsNone(self.kept())
+
+    def test_check_reads_the_pause_again(self):
+        self.want({'classes': [{'dscp': 46, 'queue': 7}], 'scheduling': {'*': 0}, 'weights': list(range(8))})
+        self.assertEqual(self.run_q('apply'), 0, self.err)
+        self.assertEqual(self.run_q('check', '--json'), 0, self.err)
+        self.assertEqual(json.loads(self.out), {'ok': True, 'changed': [], 'read': True})
+        # as a coprocessor boot leaves it, before the boot hook's reapply
+        self.set_fc(0, 0x8c)
+        self.assertEqual(self.run_q('check', '--json'), 1)
+        self.assertEqual(json.loads(self.out)['changed'], ['pause'])
+        self.assertEqual(self.changes(), [])
+        self.assertEqual(self.run_q('show'), 0, self.err)
+        self.assertIn('port 0 (the coprocessor) pause: on (0x8c), as found; this tool sets it off again at its '
+                      'next reapply', self.out)
+        self.assertEqual(self.run_q('reapply'), 0, self.err)
+        self.assertEqual(self.pause_writes(), [0x9088])
+        self.assertEqual(self.run_q('check'), 0, self.err)
+        self.assertIn('the switch holds what this tool set', self.out)
 
     def test_egress_limit_keeps_the_rest_of_0x09(self):
         self.set_reg('r.8.9', 0xff01)
@@ -876,13 +1089,18 @@ class Chip(unittest.TestCase):
                    'limits': {'Port8': 480000}})
         self.assertEqual(self.run_q('apply'), 0, self.err)
         kept = self.kept()
+        self.assertEqual(kept['pause'], {'found': 0x8c, 'set': 0x88})
         self.boot()
+        # the coprocessor's boot leaves port 0's pause on again
+        self.assertEqual(self.fc(0), 0x8c)
         self.assertEqual(self.run_q('reapply', '--boot'), 0, self.err)
         self.assertEqual(self.entry(3)[1], self.EF3)
         self.assertEqual(self.reg('r.0.13'), 0x0001)
         self.assertEqual(self.reg('p.8.0'), 1)
         self.assertEqual(self.weights(), list(range(8)))
         self.assertEqual(self.reg('r.8.10'), 0x8032)
+        # and the pause off again, after the weights: the run's last write
+        self.assertEqual((self.fc(0), self.changes()[-1]), (0x88, (0, 2, 0x9088)))
         self.assertIn('after a coprocessor boot', self.syslog())
         self.assertEqual(self.kept(), kept)
         # set already: a second reapply writes nothing
@@ -903,7 +1121,11 @@ class Chip(unittest.TestCase):
         self.assertEqual(got['entries']['3']['page0']['0x19'], '0xfcb8')
         self.assertEqual(got['sched'], {'8': '0x8007'})
         self.assertEqual(got['weights'][-1], '0xc008')
+        self.assertEqual(got['pause'], '0x9088')
         self.assertEqual(got['limits']['8'], {'edec': 90, 'n': 50, 'kbit': 900000, '0x0a': '0x8032'})
+        self.want(self.ONE)
+        self.assertEqual(self.run_q('words'), 0, self.err)
+        self.assertEqual((json.loads(self.out)['weights'], json.loads(self.out)['pause']), (None, None))
         self.assertEqual(self.run_q('can'), 0, self.err)
         can = json.loads(self.out)
         self.assertEqual((can['assembly'], can['family'], can['writes'], can['entries']),
@@ -924,6 +1146,7 @@ class Chip(unittest.TestCase):
         got = json.loads(self.out)
         self.assertEqual(got['entries']['3']['hits'], '120471')
         self.assertEqual(got['ports']['Port8'], {'sched': 1, 'limit_kbit': None})
+        self.assertEqual(got['pause'], {'value': 0x8c, 'on': True, 'what': 'on (0x8c), as found'})
         self.assertEqual(self.changes(), [])
 
 

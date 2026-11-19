@@ -9,16 +9,17 @@ traffic a priority or a share of a port - os-trafficpriority first. A sibling of
 a mirror and an egress limit by hand and writes no TCAM entry; this one writes what a caller asks for
 in a settings file, keeps what it found, puts it back, and sets it again after every coprocessor boot.
 
-    switch_qos.py show [--json]      read only: port 0's TCAM mode, entries 3 and 255 and their hits, the
-                                     vendor's entries around them, each front port's scheduling and
-                                     egress limit, the chip's weights, what the state keeps
+    switch_qos.py show [--json]      read only: port 0's TCAM mode and its pause, entries 3 and 255 and
+                                     their hits, the vendor's entries around them, each front port's
+                                     scheduling and egress limit, the chip's weights, what the state keeps
     switch_qos.py apply              the settings file into the chip; what is there read first and kept
     switch_qos.py reapply [--boot]   the same after a coprocessor boot (the start hook, recover.sh); with
                                      no settings file, what the state still holds put back
     switch_qos.py clear              the settings file removed first, then everything this tool set put
                                      back as found
-    switch_qos.py check [--json]     read only, a few reads: whether entries 3 and 255 and port 0's TCAM
-                                     mode still hold what this tool set (the caller's status page)
+    switch_qos.py check [--json]     read only, a few reads: whether entries 3 and 255, port 0's TCAM
+                                     mode and its pause still hold what this tool set (the caller's
+                                     status page)
     switch_qos.py can                no bus: whether this model takes writes, and its ports behind the
                                      switch with their devices, as JSON (for the caller's page)
     switch_qos.py words              no bus: the register words the settings file makes, as JSON
@@ -30,7 +31,8 @@ apply.py), read here and never written but by "clear", which removes it before i
      "classes": [{"dscp": 46, "mask": 63, "queue": 7}],     at most two: TCAM entries 3 and 255
      "scheduling": {"*": 1},                                "*" every front port behind the switch,
                                                             or a front port's name; UMSD's mode 0-7
-     "weights": [7, 0, 6, ...],                             the chip's WRR sequence, or none
+     "weights": [7, 0, 6, ...],                             the chip's WRR sequence, or none; with
+                                                            one, port 0's pause is turned off
      "limits": {"Port2": 100000}}                           a front port's egress limit, in kbit/s
 
 WHY A TCAM ENTRY ON PORT 0. Every frame the coprocessor sends into the switch waits in queue 0
@@ -82,12 +84,34 @@ uplink, is never set here.
 
 THE WEIGHTS, one sequence for the whole chip: Global2 register 0x1c, the QoS weight table - a
 sequence of up to 128 queue numbers, two to a pointer (pointer i << 8, data bits 2:0 and 6:4), its
-length at pointer 0x40 (UMSD gsysSetQoSWeight / gsysGetQoSWeight). A weighted port serves its queues
-in this order, each as often as it appears. On the second XGS 3300 (2026-11-17) the length read 99 -
-the sum of the default weights UMSD's source names, 33, 25, 17, 12, 6, 3, 2 and 1 for queues 7 to 0;
-the sequence itself was not read, and none has been written. Every port in weighted mode takes the
-same sequence, port 0 among them; a sequence here must name each of the eight queues at least once, so
-that none is ever shut out.
+length at pointer 0x40, written last (UMSD gsysSetQoSWeight / gsysGetQoSWeight). A weighted port
+serves its queues in this order, each as often as it appears, passing over a queue with no frame
+waiting. Every port in weighted mode takes the same sequence, port 0 among them; a sequence here must
+name each of the eight queues at least once, so that none is ever shut out. On the second XGS 3300
+(2026-11-19) the vendor's sequence read 99 turns, UMSD's default weights 33, 25, 17, 12, 6, 3, 2 and 1
+for queues 7 to 0, and one of 105 - queue 7 30 turns, 6 20, 0 50, 1 to 5 one each - was written, read
+back and put back. But into a front port the queues took the table's shares only with port 0's pause
+off: with it on, the queue a class fills first held all the backlog port 0's flow control lets in, and
+the other queue's frames were discarded as they arrived - empty at its turns. Into Port8, 30 against
+20 turns gave 87.2 against 9.6 Mbit/s by UDP with the pause on and 57.9 against 38.7 with it off; by
+TCP at line rate 913.6 against 17.7, then 534.5 against 370.5; 30 against queue 0's 50 gave 36.4
+against 60.3 and 352.4 against 568.9 with it off. The cost, the same day: 1 to 3 % of the line rate
+for two streams, 4 % for one alone, and more retransmissions (switch-weights-2026-11-19.md in
+docs/measurements).
+
+PORT 0'S PAUSE: port 0's flow control, port register 0x02 (Limit and Pause Control) pointer 0x10,
+written as 0x8000 | pointer << 8 | data and read by writing the pointer alone (UMSD
+Amethyst_msdPortCtrl.c, gprtSetFlowCtrl). The coprocessor leaves 0x8c there (read as 0x108c): forced
+(bit 3), on (bit 2), both ways (bits 1:0), and bit 7, the queue controller's path. With weights in the
+settings this tool writes 0x88 after them - the pause off, as gprtSetFlowCtrl has it with en false,
+bit 7 kept: 0x9088, read back 0x1088 - and only over a 0x8c read three times alike; any other value
+refuses the run. The switch then discards at port 0's input what the coprocessor sends beyond what a
+port takes, instead of pausing the coprocessor. Without weights - strict classes alone - the pause is
+left as found, and one this tool turned off is put back, 0x908c read back 0x108c: first, before
+anything else a run puts back. A coprocessor boot puts the switch's registers back as it leaves them,
+and reapply turns the pause off again with the rest. Not measured: the other front ports while one is
+full with the pause off; a coprocessor boot with it off; this tool writing it on an appliance (the
+runs above wrote it by hand).
 
 THE EGRESS LIMIT, per port, not per queue: port register 0x09 bits 6:0 (eDec) and 0x0a bits 15:14
 (count mode: 2, layer-2 bytes) and 13:0 (N). UMSD's scale (Amethyst_msdPortCtrl.c,
@@ -103,7 +127,8 @@ READS AND WRITES as switch.sh makes them, on the coprocessor through npu-run.sh 
 whose presence there is asked first: every value read three times in a row and used only when the
 three agree, in up to four rounds (the network agent polls the same bus); every register written was
 read in the same run; every write read back and compared, and logged with its words (tag xgs-switch).
-A run refused - an entry or a limit not this tool's, a value that never read the same - writes nothing.
+A run refused - an entry or a limit not this tool's, port 0's pause not as the coprocessor leaves it, a
+value that never read the same - writes nothing.
 A run that sets things and cannot write all it set out to puts back what it changed, reads again, and
 says so. A run that puts things back - clear, or a reapply with no settings file - never sets again
 what it has put back: what it could not put back stays in the state for the next run. One run at a
@@ -167,6 +192,8 @@ KEYS1 = 0xc740                         # frame type mask 11, source-port mask 0x
 KEYS2 = 0xff01                         # source-port mask 0xff, port 0
 OP_FLUSH, OP_LOAD, OP_NEXT, OP_READ = 2, 3, 4, 5
 WEIGHT_LEN = 0x40                      # the weight table's length pointer
+FC = 0x10                              # port 0's flow control: port register 0x02, this pointer
+PAUSE_ON, PAUSE_OFF = 0x8c, 0x88       # as the coprocessor leaves it; the pause off (bit 2), bit 7 kept
 MODES = {0: 'weighted, all eight queues', 1: 'queue 7 strict, the rest weighted',
          2: 'queues 7-6 strict, the rest weighted', 3: 'queues 7-5 strict, the rest weighted',
          4: 'queues 7-4 strict, the rest weighted', 5: 'queues 7-3 strict, the rest weighted',
@@ -233,6 +260,12 @@ def weight_words(sequence):
         out.append(0x8000 | ((len(sequence) // 2) << 8) | (sequence[-1] & 7))
     out.append(0x8000 | (WEIGHT_LEN << 8) | len(sequence))
     return out
+
+
+def pause_word(byte):
+    """Port 0's flow-control write, pointer 0x10 (UMSD gprtSetFlowCtrl): 0x9088 the pause off, 0x908c
+    on as the coprocessor leaves it."""
+    return 0x8000 | (FC << 8) | (byte & 0xff)
 
 
 def egress(kbit):
@@ -391,6 +424,7 @@ def log(message):
 #   t <reader> ...                  three reads that agree, up to four rounds; "bad" otherwise
 #   q dev ptr                       a pointer register (Queue Control, the weight table): the pointer
 #                                   written alone, then read
+#   f dev ptr                       a flow-control pointer (port register 0x02): the same
 #   o word                          a TCAM operation, waited for
 #   c port counter bank             an RMON counter (UMSD statsReadCounter), read once
 PRE = ('M=%s; ' % MVSW +
@@ -401,6 +435,7 @@ PRE = ('M=%s; ' % MVSW +
        't(){ _n=0; while [ $_n -lt 4 ]; do _a=$("$@"); _c=$("$@"); _d=$("$@"); h "$_a" && [ "$_a" = "$_c" ] && '
        '[ "$_c" = "$_d" ] && { echo $_a; return 0;}; _n=$((_n+1)); done; echo bad; return 1;}; '
        'q(){ b $1 0x1c || { echo busy; return;}; w $1 0x1c $(printf 0x%04x $(($2 << 8))); r $1 0x1c;}; '
+       'f(){ b $1 0x02 || { echo busy; return;}; w $1 0x02 $(printf 0x%04x $(($2 << 8))); r $1 0x02;}; '
        'o(){ b 0x1f 0x00 || return 1; w 0x1f 0x00 $1; b 0x1f 0x00;}; '
        'c(){ b 0x1b 0x1d || { echo busy; return;}; w 0x1b 0x1d $(printf 0x%04x $((0x8000 | (4 << 12) | '
        '(($1 + 1) << 5) | ($2 & 0x1f) | ($3 << 10)))); b 0x1b 0x1d || { echo busy; return;}; '
@@ -528,12 +563,14 @@ def read_cmds(keys):
             cmd += ' echo d%s=$(t r %s 0x09); echo l%s=$(t r %s 0x0a);' % (arg, arg, arg, arg)
     if 'weights' in keys:
         cmd += read_weights_cmds()
+    if 'pause' in keys:
+        cmd += ' echo p0=$(t f 0 %d);' % FC
     return cmd
 
 
 def current(key, res):
     """An item's value as read: an entry's compared words or None, port 0's 0x0d, a port's scheduling,
-    the weight sequence, a port's [0x09, 0x0a]."""
+    the weight sequence, a port's [0x09, 0x0a], port 0's flow-control byte."""
     kind, _, arg = key.partition(':')
     if kind == 'entry':
         return entry_from(res, int(arg))
@@ -545,6 +582,12 @@ def current(key, res):
         return weights_from(res)
     if kind == 'limit':
         return [value(res, 'd%s' % arg), value(res, 'l%s' % arg)]
+    if kind == 'pause':
+        word = value(res, 'p0')
+        if word >> 8 != FC:
+            raise Refused('port 0\'s flow control (port register 0x02) read as %s, not as pointer 0x%02x\'s: '
+                          'nothing written' % (x4(word), FC))
+        return word & 0xff
     raise ValueError(key)
 
 
@@ -609,7 +652,7 @@ def hand_limits():
 
 def wanted(want):
     """Each item the settings ask for, by key: an entry's class, port 0's mode ('on'), a port's
-    scheduling, the weights, a port's limit in kbit/s."""
+    scheduling, the weights and with them port 0's pause ('off'), a port's limit in kbit/s."""
     out = {}
     for i, (dscp, mask, queue) in enumerate(want['classes']):
         out['entry:%d' % ENTRIES[i]] = {'dscp': dscp, 'mask': mask, 'queue': queue}
@@ -619,6 +662,8 @@ def wanted(want):
         out['sched:%d' % p] = mode
     if want['weights'] is not None:
         out['weights'] = want['weights']
+        # the table's shares hold into a front port only while port 0 does not pause the coprocessor
+        out['pause'] = 'off'
     for p, kbit in want['limits'].items():
         out['limit:%d' % p] = kbit
     return out
@@ -643,6 +688,8 @@ def describe(key, target, ports):
         return '%s scheduling %d (%s)' % (port, target, MODES.get(target, '?'))
     if kind == 'weights':
         return 'the chip\'s weights, %d turns' % len(target)
+    if kind == 'pause':
+        return 'port 0 pause %s' % ('on, as found' if target & 0x04 else 'off (no pause frames to the coprocessor)')
     if kind == 'limit':
         rate = limit_kbit(target[0], target[1])
         return '%s egress limit %s' % (port, 'none' if rate is None else '%s kbit/s (eDec %d, N %d)' % (
@@ -676,6 +723,8 @@ def plan(want, state, res, ports):
         if kind == 'entry' and item is not None and cut and cur is not None and \
                 not same(key, cur, item.get('set')):
             known = False           # an entry reads free, as set, or as pending: anything else is not ours
+        if kind == 'pause' and cut and not (same(key, cur, item.get('set')) or same(key, cur, item.get('found'))):
+            known = False           # one word: as found, as set or as pending, nothing else
         if item is not None and known:
             base[key] = {'found': item['found'], 'set': recognised(key, cur, item)}
         if key in asked:
@@ -694,6 +743,15 @@ def plan(want, state, res, ports):
             elif kind == 'weights' and not cur:
                 refused.append('the weight table reads empty: nothing written')
                 continue
+            elif kind == 'pause':
+                # off only over what the coprocessor leaves there: as found now, or as this tool found it
+                was = item['found'] if item is not None and known else cur
+                if was != PAUSE_ON:
+                    refused.append('port 0\'s pause: its flow control (0x02 pointer 0x%02x) %s 0x%02x, not 0x%02x as '
+                                   'the coprocessor leaves it: nothing written' % (
+                                       FC, 'was found' if item is not None and known else 'reads', was, PAUSE_ON))
+                    continue
+                target = was & ~0x04 & 0xff
             if item is None:
                 if kind == 'entry' and cur is not None and not same(key, cur, target):
                     refused.append('TCAM entry %s is in use by something else (page 0 keys %s %s): nothing written'
@@ -752,10 +810,13 @@ def recognised(key, cur, item):
 
 
 def order(steps):
-    """Safe order: limits and scheduling first; then the entries taken away with port 0's TCAM mode
-    put back before them, or loaded with the mode set after them; the weights last."""
+    """Safe order: port 0's pause put back before anything else; limits and scheduling; then the
+    entries taken away with port 0's TCAM mode put back before them, or loaded with the mode set after
+    them; the weights; and port 0's pause turned off last, after the weights it is there for."""
     def rank(step):
         kind = step[0].partition(':')[0]
+        if kind == 'pause':
+            return -1 if step[2] & 0x04 else 7
         if kind == 'limit':
             return 0
         if kind == 'sched':
@@ -809,6 +870,8 @@ def step_cmds(step, value_):
         return 'b %s 0x1c && w %s 0x1c %s;' % (arg, arg, x4(sched_word(value_)))
     if kind == 'weights':
         return ' '.join('b 0x1c 0x1c && w 0x1c 0x1c %s;' % x4(v) for v in weight_words(value_))
+    if kind == 'pause':
+        return 'b 0 0x02 && w 0 0x02 %s;' % x4(pause_word(value_))
     if kind == 'limit':
         r09, r0a = value_
         # a limit is set with eDec first, then N; taken away with N first, then eDec
@@ -838,6 +901,9 @@ def change(step):
     if kind == 'weights':
         return 'Global2 0x1c, %d turns -> %d (%s)' % (len(before), len(after),
                                                     ' '.join(x4(w) for w in weight_words(after)))
+    if kind == 'pause':
+        return 'port 0 register 0x02 pointer 0x%02x 0x%02x -> 0x%02x (%s)' % (FC, before, after,
+                                                                          x4(pause_word(after)))
     if kind == 'limit':
         return '0x09 %s 0x0a %s -> 0x09 %s 0x0a %s' % (x4(before[0]), x4(before[1]), x4(after[0]), x4(after[1]))
     return ''
@@ -1069,7 +1135,7 @@ def cmd_words():
     except Refused as exc:
         print(json.dumps({'error': str(exc)}))
         return 1
-    out = {'entries': {}, 'sched': {}, 'weights': None, 'limits': {}}
+    out = {'entries': {}, 'sched': {}, 'weights': None, 'pause': None, 'limits': {}}
     for i, (dscp, mask, queue) in enumerate(want['classes']):
         e = ENTRIES[i]
         p0, p2 = tcam_words(dscp, mask, queue, COUNTER[e])
@@ -1079,6 +1145,7 @@ def cmd_words():
         out['sched'][str(p)] = x4(sched_word(mode))
     if want['weights'] is not None:
         out['weights'] = [x4(v) for v in weight_words(want['weights'])]
+        out['pause'] = x4(pause_word(PAUSE_OFF))
     for p, kbit in want['limits'].items():
         edec, n, got = egress(kbit)
         out['limits'][str(p)] = {'edec': edec, 'n': n, 'kbit': got, '0x0a': x4(0x8000 | n)}
@@ -1087,16 +1154,17 @@ def cmd_words():
 
 
 def cmd_check(as_json):
-    """Whether entries 3 and 255 and port 0's TCAM mode still hold what this tool set: a few reads,
-    for the caller's status. Nothing read when this tool keeps nothing, or on a model it does not write."""
+    """Whether entries 3 and 255, port 0's TCAM mode and its pause still hold what this tool set: a few
+    reads, for the caller's status. Nothing read when this tool keeps nothing, or on a model it does not
+    write."""
     state = load_state()
     items = state.get('items', {})
     out = {'ok': True, 'changed': [], 'read': False}
-    keys = [k for k in items if k.startswith('entry:') or k == 'mode']
+    keys = [k for k in items if k.startswith('entry:') or k in ('mode', 'pause')]
     assembly, family, ports = model() if keys else ('', '', {})
     if keys and not writable(assembly, family, ports):
         try:
-            res = ask(60, read_cmds(set()) + ' echo end=1')
+            res = ask(60, read_cmds({k for k in keys if k == 'pause'}) + ' echo end=1')
             out['read'] = True
             for key in sorted(keys):
                 item = items[key]
@@ -1126,7 +1194,7 @@ def cmd_show(as_json):
         # port registers alone: no TCAM operation at all - the engine is shared with the network agent
         cmd = 'echo p4=$(t r 0 0x04); echo p8=$(t r 0 0x08); echo m0=$(t r 0 0x0d); echo end=1'
     else:
-        cmd = 'echo m0=$(t r 0 0x0d);'
+        cmd = 'echo m0=$(t r 0 0x0d); echo p0=$(t f 0 %d);' % FC
         for e in ENTRIES:
             cmd += read_entry_cmds(e)
             cmd += ' echo h%d=$(c 0 %d 1);' % (e, 0x08 + COUNTER[e])
@@ -1146,6 +1214,16 @@ def cmd_show(as_json):
         for line in out['lines']:
             print(line)
     return 0 if not out['unreadable'] else 1
+
+
+def pause_said(byte, item):
+    """Port 0's pause as show says it: on or off, and as found or as this tool set it."""
+    said = '%s (0x%02x)' % ({0x0c: 'on', 0x08: 'off'}.get(byte & 0x0c, 'not forced'), byte)
+    if item and byte in (item.get('set'), item.get('pending')) and byte != item.get('found'):
+        return said + ', by this tool; found 0x%02x' % item['found']
+    if not item or byte == item.get('found'):
+        return said + ', as found' + ('; this tool sets it off again at its next reapply' if item else '')
+    return said + ', neither as found nor as this tool set it'
 
 
 def shown(assembly, family, ports, res):
@@ -1173,6 +1251,13 @@ def shown(assembly, family, ports, res):
         lines.append('the XGS 136 family: port registers alone - the TCAM is not read here, its engine being '
                      'shared with the network agent - and nothing is written')
     else:
+        p0 = get('p0')
+        if p0 is not None and p0 >> 8 != FC:
+            bad.append('p0')
+            p0 = None
+        out['pause'] = None if p0 is None else {'value': p0 & 0xff, 'on': (p0 & 0x0c) == 0x0c,
+                                                'what': pause_said(p0 & 0xff, items.get('pause'))}
+        lines.append('port 0 (the coprocessor) pause: %s' % ('unreadable' if p0 is None else out['pause']['what']))
         for e in ENTRIES:
             try:
                 cur = entry_from(res, e)
