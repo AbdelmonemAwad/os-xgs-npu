@@ -8,25 +8,35 @@
 The register words, as functions (any system):
   - THE TCAM ENTRY for a DSCP, a mask and a queue: the words measured on the XGS 3300 on 2026-11-11
     and 2026-11-17 for EF to queue 7, every other register of pages 0 and 2 zero, and the operation
-    words of the load the lab made (flush 0xa003, page 2 0xb803 ... page 0 0xb003);
+    words of the load the lab made (flush 0xa003, page 2 0xb803 ... page 0 0xb003); what a read-back
+    compares - the seven registers the lab read back after a load;
   - QUEUE CONTROL's scheduling words, the WEIGHT TABLE's pairs and length, and the EGRESS LIMIT's
     eDec and N for 100, 480, 900 and 1000 Mbit/s as UMSD's macro gives them, a rate between steps
     taken down, and 0x09's bits other than 6:0 kept;
   - the settings file's refusals: a third class, a weight sequence that leaves a queue out, a port
-    that is not behind the switch.
+    that is not behind the switch; the census of the vendor's entries, and what counts as moved.
 
 The runs, against a made-up chip (a POSIX shell): npu-run.sh is a stand-in that runs the command with
-/bin/sh, mvsw a stand-in that keeps each register in a file and acts as the chip's TCAM, queue-control,
-weight-table and counter engines do; models.py is the real one, told the model through
-XGS_PLANAR_SERIAL. Every run is held to: each register written read first in the same run, port 0's
-own scheduling and limit never written, no TCAM entry but 3 and 255 ever flushed or loaded. And:
+/bin/sh - and stops answering after a number of sessions, as a link that drops or a host stopped in
+the middle of a run; mvsw a stand-in that keeps each register in a file and acts as the chip's TCAM,
+queue-control, weight-table and counter engines do; models.py is the real one, told the model through
+XGS_PLANAR_SERIAL. Every run is held to: each register written read first in the same run, port 0's own
+scheduling and limit never written, no TCAM entry but 3 and 255 ever flushed or loaded. And:
   - apply sets what the settings file asks, keeps what it found, sets nothing twice, and clear puts it
     all back and reads it again - show the same before and after;
   - an entry or an egress limit that is not this tool's refuses the run before anything is written;
-  - a write that does not read back puts back everything the run changed;
-  - after a coprocessor boot, reapply sets it all again and keeps the new values to put back;
-  - the XGS 136: apply, reapply and clear refused before the coprocessor is asked; show reads port 0's
-    TCAM mode and the TCAM census only, and writes no register but the TCAM's read operations.
+  - a set that does not read back puts back everything the run changed;
+  - a run cut at each step - weights, a limit, an entry - leaves what was found kept, and the next run
+    finishes from there, the cut run's write taken as this tool's when it landed;
+  - clear removes the settings file first, never sets again what it has put back, and keeps in the
+    state what it could not; a boot with no settings file only puts back;
+  - a load that does not read back as written is flushed in its own session, and a run during which
+    the vendor's entries change is not kept;
+  - check reads entries 3 and 255 and port 0's mode again;
+  - after a coprocessor boot, reapply sets it all again and keeps the found values;
+  - writes on the XGS 3300 alone: the XGS 3100 and the XGS 136 refused before the coprocessor is asked;
+    on the XGS 136 show reads port registers alone, no TCAM operation; no switch tool on the
+    coprocessor, said, and nothing read.
 
 Nothing here comes from an appliance.
 
@@ -56,7 +66,10 @@ import switch_qos as sq  # noqa: E402
 # registers r.31.2 to r.31.27 by the operation register r.31.0; counters in ctr.<port>.<counter>.<bank>.
 # Every read and write goes to the log. "flicker" N: every Nth read answers 0x7bad; "stuck.<dev>.<reg>":
 # writes there go nowhere; "once.<dev>.<reg>": the first write with bit 15 there goes through, and the
-# register is stuck after it; "tstuck.<entry>": loads of that entry go nowhere.
+# register is stuck after it; "tstuck.<entry>": loads of that entry go nowhere; "tmix.<entry>": a load of
+# that entry's page 0 lands with another word in octet 19's register, as the agent's operation between
+# two of ours would leave it; "agent": every load also changes the vendor's entry 4, as the agent
+# arming a port would.
 FAKE_MVSW = r'''#!/bin/sh
 D=${FAKE_SW:?}
 [ "$1" = 0 ] && [ "$2" = 2 ] || { echo "usage"; exit 1; }
@@ -85,7 +98,11 @@ write)
 		o=$(( (val >> 12) & 7 )); pg=$(( (val >> 10) & 3 )); e=$(( val & 0xff ))
 		case $o in
 		2) rm -f "$D"/t.$e.* ;;
-		3) [ -f "$D/tstuck.$e" ] || for g in $(seq 2 27); do set_ t.$e.$pg.$g $(get r.31.$g); done ;;
+		3) if [ ! -f "$D/tstuck.$e" ]; then
+			for g in $(seq 2 27); do set_ t.$e.$pg.$g $(get r.31.$g); done
+			[ $pg -eq 0 ] && [ -f "$D/tmix.$e" ] && set_ t.$e.0.25 0xfc00
+			[ -f "$D/agent" ] && set_ t.4.0.3 0xff10
+		   fi ;;
 		4) nx=$(ls "$D" | sed -n 's/^t\.\([0-9]*\)\.0\.2$/\1/p' | sort -n | while read x; do
 			[ "$x" -gt $e ] && [ "$(get t.$x.0.2)" != 0x00ff ] && { echo $x; break; }; done)
 		   e=${nx:-255} ;;
@@ -105,9 +122,12 @@ write)
 esac
 '''
 
+# npu-run.sh: each session counted; with a file "cut" holding N, sessions after the Nth do not answer
 FAKE_NPU_RUN = r'''#!/bin/sh
 echo call >> "$FAKE_SW/npu-calls"
+n=$(wc -l < "$FAKE_SW/npu-calls")
 [ -f "$FAKE_SW/npu-down" ] && { echo "the coprocessor did not answer" >&2; exit 1; }
+[ -f "$FAKE_SW/cut" ] && [ $n -gt $(cat "$FAKE_SW/cut") ] && { echo "the link went down" >&2; exit 1; }
 exec /bin/sh -c "$2"
 '''
 
@@ -116,11 +136,12 @@ while [ $# -gt 1 ]; do shift; done
 echo "$1" >> "$FAKE_SW/syslog"
 '''
 
-SERIAL = {'3300': 'X AMDA0202-0004 Y', '136': 'X AMDA0201-0003 Y'}
+SERIAL = {'3300': 'X AMDA0202-0004 Y', '3100': 'X AMDA0202-0003 Y', '136': 'X AMDA0201-0003 Y'}
 
 
 def default_weights():
-    """UMSD's default weights, 33, 25, 17, 12, 6, 3, 2 and 1 for queues 7 to 0: 99 turns."""
+    """A sequence of UMSD's default weights, 33, 25, 17, 12, 6, 3, 2 and 1 for queues 7 to 0: 99 turns,
+    the length the XGS 3300 reads (its own order was not read)."""
     counts = {7: 33, 6: 25, 5: 17, 4: 12, 3: 6, 2: 3, 1: 2, 0: 1}
     cur = dict.fromkeys(counts, 0)
     seq = []
@@ -154,9 +175,12 @@ def chip_defaults(d):
         a = DEFAULT_WEIGHTS[i]
         b = DEFAULT_WEIGHTS[i + 1] if i + 1 < len(DEFAULT_WEIGHTS) else 0
         put('p.28.%d' % (i // 2), a | (b << 4))
-    # the vendor's entries around the two free ones: 2, 4 and its drop-all 254
-    for e, k1 in ((2, 0xc600), (4, 0xc700), (254, 0xc000)):
+    # the vendor's entries around the two free ones: 0, 1, 2, 4 and its drop-all 254
+    for e, k1 in ((0, 0xc000), (1, 0xc100), (2, 0xc600), (4, 0xc700), (254, 0xc000)):
         put('t.%d.0.2' % e, k1)
+    put('t.1.0.3', 0x4500)
+    put('t.2.0.3', 0xbb00)
+    put('t.4.0.3', 0xff02)
     put('t.254.2.6', 0xc000)
     put('t.254.2.27', 0x4000)
 
@@ -172,6 +196,16 @@ class Words(unittest.TestCase):
         self.assertEqual({r: v for r, v in page2.items() if v}, {0x03: 0x00f0, 0x1b: 0x5000})
         self.assertEqual(sorted(page0), list(range(0x02, 0x1c)))
         self.assertEqual(sorted(page2), [2, 3, 4, 5, 6, 7, 8, 0x1b])
+
+    def test_a_read_back_compares_what_the_lab_read_back(self):
+        # LOAD3 read back page 0's 0x02 0x03 0x16 0x17 0x19 and page 2's 0x03 0x1b after its load
+        self.assertEqual(sq.P0_CHECKED, (0x02, 0x03, 0x16, 0x17, 0x19))
+        self.assertEqual(sq.P2_CHECKED, (0x03, 0x1b))
+        self.assertEqual(sq.checked({'dscp': 46, 'mask': 63, 'queue': 7}, 3),
+                         {'p0': {'2': 0xc740, '3': 0xff01, '22': 0xff08, '23': 0xff00, '25': 0xfcb8},
+                          'p2': {'3': 0x00f0, '27': 0x5000}})
+        self.assertIsNone(sq.checked(None, 3))
+        self.assertEqual(sq.checked({'dscp': 34, 'mask': 63, 'queue': 6}, 255)['p2'], {'3': 0x00e0, '27': 0x6000})
 
     def test_tcam_entry_mask_queue_and_counter(self):
         # CS5 to EF, DSCP 40-47 under mask 0x38: TOS 0xa0 under 0xe0; queue 6, counter 2 (entry 255)
@@ -219,6 +253,7 @@ class Words(unittest.TestCase):
         self.assertEqual(sq.egress(640), (10, 7813, 639))
         # between the steps: taken down to one
         self.assertEqual(sq.egress(905000), (90, 50, 900000))
+        self.assertEqual(sq.egress(155000), (15, 50, 150000))
         self.assertEqual(sq.egress(1500), (1, 500, 1000))
         for bad in (0, 63, 10000001, -5, '100', None, True):
             self.assertIsNone(sq.egress(bad), bad)
@@ -233,6 +268,22 @@ class Words(unittest.TestCase):
         self.assertIsNone(sq.limit_kbit(0x0001, 0x8000))
         self.assertEqual(sq.limit_kbit(0x0001, 0x03e8), 'frames')
 
+    def test_the_census_and_what_moves_in_it(self):
+        before = {'0k1': '0xc000', '0k2': '0x0000', '4k1': '0xc700', '4k2': '0xff02', 'next2': '4', 'next3': '4'}
+        self.assertEqual(sq.census_moved(before, dict(before), False), [])
+        # this run's own entry 3 is what get-next after 2 finds
+        self.assertEqual(sq.census_moved(before, dict(before, next2='3'), True), [])
+        self.assertEqual(sq.census_moved(before, dict(before, next2='3'), False), ['get-next after 2 3, not 4'])
+        self.assertEqual(sq.census_moved(before, dict(before, **{'4k2': '0xff10'}), False), ['4k2 0xff02 -> 0xff10'])
+        self.assertTrue(sq.census_moved(before, dict(before, next3='5'), False))
+        self.assertTrue(sq.census_moved(before, dict(before, **{'0k1': 'bad'}), False))
+
+    def test_writes_on_the_xgs_3300_alone(self):
+        self.assertEqual(sq.writable('AMDA0202-0004', 'octeontx', {'Port1': 1}), '')
+        self.assertEqual(sq.writable('AMDA0202-0003', 'octeontx', {'Port1': 1}), 'untested-model')
+        self.assertEqual(sq.writable('AMDA0201-0003', 'armada', {'Port1': 1}), 'read-only')
+        self.assertEqual(sq.writable('', '', {}), 'no-switch')
+
 
 class Settings(unittest.TestCase):
     PORTS = {'Port%d' % n: n for n in range(1, 9)}
@@ -243,7 +294,7 @@ class Settings(unittest.TestCase):
 
     def test_a_whole_file(self):
         got = self.parse({'classes': [{'dscp': 46, 'mask': 63, 'queue': 7}, {'dscp': 34, 'queue': 6}],
-                          'scheduling': {'*': 1, 'Port8': 0}, 'weights': list(range(8)),
+                          'scheduling': {'Port8': 0, '*': 1}, 'weights': list(range(8)),
                           'limits': {'port2': 100000}})
         self.assertEqual(got['classes'], [(46, 63, 7), (34, 63, 6)])
         self.assertEqual(got['sched'], {n: (0 if n == 8 else 1) for n in range(1, 11)})
@@ -273,6 +324,7 @@ class Settings(unittest.TestCase):
 class Chip(unittest.TestCase):
     MODEL = '3300'
     ONE = {'owner': 'test', 'classes': [{'dscp': 46, 'mask': 63, 'queue': 7}], 'scheduling': {'*': 1}}
+    EF3 = {3: 0x00f0, 0x1b: 0x5000}
 
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
@@ -294,8 +346,8 @@ class Chip(unittest.TestCase):
         self.env = dict(os.environ, XGS_LIB=lib, XGS_PYTHON=sys.executable, XGS_SWITCH_MVSW=self.mvsw,
                         XGS_SWITCH_QOS_CONF=self.conf, XGS_SWITCH_QOS_STATE=self.state, XGS_SWITCH_STATE=self.hand,
                         XGS_SWITCH_LOCK=os.path.join(d, 'run', 'lock'), XGS_SWITCH_LOGGER=self.logger,
-                        XGS_SWITCH_QOS_BOOT_WAIT='0', XGS_SWITCH_QOS_BOOT_PAUSE='0', FAKE_SW=self.sw,
-                        XGS_PLANAR_SERIAL=SERIAL[self.MODEL], XGS_SYSTEM_VERSION='x')
+                        XGS_SWITCH_QOS_BOOT_WAIT='0', XGS_SWITCH_QOS_BOOT_PAUSE='0', XGS_SWITCH_QOS_BOOT_TRIES='1',
+                        FAKE_SW=self.sw, XGS_PLANAR_SERIAL=SERIAL[self.MODEL], XGS_SYSTEM_VERSION='x')
 
     def tearDown(self):
         self.tmp.cleanup()
@@ -310,15 +362,27 @@ class Chip(unittest.TestCase):
         with open(self.conf, 'w') as f:
             json.dump(conf, f)
 
-    def run_q(self, *args):
-        for f in ('log', 'npu-calls', 'nreads'):
+    def flag(self, name, text=''):
+        with open(os.path.join(self.sw, name), 'w') as f:
+            f.write(text)
+
+    def unflag(self, *names):
+        for name in names:
             try:
-                os.remove(os.path.join(self.sw, f))
+                os.remove(os.path.join(self.sw, name))
             except FileNotFoundError:
                 pass
+
+    def cut_after(self, sessions):
+        """The coprocessor answers this many sessions of the next run, and then no more."""
+        self.flag('cut', '%d\n' % sessions)
+
+    def run_q(self, *args):
+        self.unflag('log', 'npu-calls', 'nreads')
         p = subprocess.run([sys.executable, TOOL] + list(args), env=self.env, capture_output=True, text=True,
                            timeout=900)
         self.out, self.err, self.rc = p.stdout, p.stderr, p.returncode
+        self.unflag('cut')
         self.check_the_rules()
         return p.returncode
 
@@ -375,6 +439,9 @@ class Chip(unittest.TestCase):
             seq += [v & 7, (v >> 4) & 7]
         return seq[:n]
 
+    def scheduling(self):
+        return [self.reg('p.%d.0' % p) for p in range(1, 11)]
+
     def npu_calls(self):
         try:
             with open(os.path.join(self.sw, 'npu-calls')) as f:
@@ -383,9 +450,10 @@ class Chip(unittest.TestCase):
             return 0
 
     def kept(self):
+        """The state's items, or None when there is no state."""
         try:
             with open(self.state) as f:
-                return json.load(f)
+                return json.load(f)['items']
         except FileNotFoundError:
             return None
 
@@ -395,6 +463,20 @@ class Chip(unittest.TestCase):
                 return f.read()
         except FileNotFoundError:
             return ''
+
+    def boot(self):
+        """The coprocessor boots: the chip as it leaves it."""
+        for f in os.listdir(self.sw):
+            if f.split('.')[0] in ('r', 'p', 't'):
+                os.remove(os.path.join(self.sw, f))
+        chip_defaults(self.sw)
+
+    def all_as_found(self):
+        self.assertEqual(self.entry(3), ({}, {}))
+        self.assertEqual(self.entry(255), ({}, {}))
+        self.assertEqual(self.reg('r.0.13'), 0x0000)
+        self.assertEqual(self.scheduling(), [0] * 10)
+        self.assertEqual(self.weights(), DEFAULT_WEIGHTS)
 
     # ---- the rules every run is held to ----
     def check_the_rules(self):
@@ -440,25 +522,26 @@ class Chip(unittest.TestCase):
         before = self.out
         self.assertEqual(self.changes(), [], 'show changed the chip')
         self.assertIn('TCAM entry 3: free', before)
+        self.assertIn('the vendor\'s entries around them: 0 keys 0xc000 0x0000', before)
+        self.assertIn('get-next after 2: 4, after 3: 4', before)
         self.assertIn('Port8 (switch port 8): scheduling 0 (weighted, all eight queues); egress limit none', before)
         self.assertIn('weights: 99 turns - queue 7: 33, 6: 25, 5: 17, 4: 12, 3: 6, 2: 3, 1: 2, 0: 1', before)
         self.want(self.ONE)
         self.assertEqual(self.run_q('apply'), 0, self.err)
         page0, page2 = self.entry(3)
         self.assertEqual(page0, {2: 0xc740, 3: 0xff01, 0x16: 0xff08, 0x17: 0xff00, 0x19: 0xfcb8})
-        self.assertEqual(page2, {3: 0x00f0, 0x1b: 0x5000})
+        self.assertEqual(page2, self.EF3)
         self.assertEqual(self.entry(255), ({}, {}))
         self.assertEqual(self.reg('r.0.13'), 0x0001)
-        for p in range(1, 11):
-            self.assertEqual(self.reg('p.%d.0' % p), 1, p)
+        self.assertEqual(self.scheduling(), [1] * 10)
         self.assertEqual(self.reg('p.0.0'), 0)
         k = self.kept()
-        self.assertEqual(k['tcam_mode'], {'found': 0, 'set': 1})
-        self.assertEqual(k['sched']['8'], {'found': 0, 'set': 1})
-        self.assertEqual(k['owner'], 'test')
+        self.assertEqual(k['mode'], {'found': 0, 'set': 1})
+        self.assertEqual(k['sched:8'], {'found': 0, 'set': 1})
+        self.assertEqual(k['entry:3'], {'found': None, 'set': {'dscp': 46, 'mask': 63, 'queue': 7}})
         self.assertIn('switch-qos: entry 3: DSCP 46 mask 0x3f -> queue 7', self.syslog())
-        self.assertIn('switch-qos: port 0 TCAM mode 48 bytes - port 0 register 0xd 0x0000 -> 0x0001', self.syslog())
         # every write logged with its words
+        self.assertIn('switch-qos: port 0 TCAM mode 48 bytes - port 0 register 0xd 0x0000 -> 0x0001', self.syslog())
         self.assertIn('TCAM entry 3: free -> page 0 0x2 0xc740 0x3 0xff01 0x16 0xff08 0x17 0xff00 0x19 0xfcb8, '
                       'page 2 0x3 0x00f0 0x1b 0x5000', self.syslog())
         self.assertIn('Port8 (switch port 8) scheduling 1 (queue 7 strict, the rest weighted) - Queue Control '
@@ -473,12 +556,10 @@ class Chip(unittest.TestCase):
         self.assertEqual(self.changes(), [])
         self.assertEqual(self.run_q('show'), 0, self.err)
         self.assertIn('TCAM entry 3: this tool\'s: DSCP 46 mask 0x3f -> queue 7', self.out)
+        self.assertIn('get-next after 2: 3, after 3: 4', self.out)
         self.assertIn('Port8 (switch port 8): scheduling 1 (queue 7 strict, the rest weighted)', self.out)
         self.assertEqual(self.run_q('clear'), 0, self.err)
-        self.assertEqual(self.entry(3), ({}, {}))
-        self.assertEqual(self.reg('r.0.13'), 0x0000)
-        for p in range(1, 11):
-            self.assertEqual(self.reg('p.%d.0' % p), 0, p)
+        self.all_as_found()
         self.assertFalse(os.path.exists(self.conf) or os.path.exists(self.state))
         # taken away in the measured order: port 0's mode first, then the entry
         order = [w for w in self.changes() if w[:2] in ((31, 0), (0, 13))]
@@ -489,7 +570,7 @@ class Chip(unittest.TestCase):
     def test_two_classes_take_entries_3_and_255(self):
         self.want({'classes': [{'dscp': 46, 'mask': 63, 'queue': 7}, {'dscp': 34, 'mask': 63, 'queue': 6}]})
         self.assertEqual(self.run_q('apply'), 0, self.err)
-        self.assertEqual(self.entry(3)[1], {3: 0x00f0, 0x1b: 0x5000})
+        self.assertEqual(self.entry(3)[1], self.EF3)
         self.assertEqual(self.entry(255), ({2: 0xc740, 3: 0xff01, 0x16: 0xff08, 0x17: 0xff00, 0x19: 0xfc88},
                                            {3: 0x00e0, 0x1b: 0x6000}))
         self.assertEqual(self.entry(254)[0], {2: 0xc000})
@@ -497,7 +578,7 @@ class Chip(unittest.TestCase):
         self.want({'classes': [{'dscp': 46, 'mask': 63, 'queue': 7}]})
         self.assertEqual(self.run_q('apply'), 0, self.err)
         self.assertEqual(self.entry(255), ({}, {}))
-        self.assertEqual(self.entry(3)[1], {3: 0x00f0, 0x1b: 0x5000})
+        self.assertEqual(self.entry(3)[1], self.EF3)
         self.assertEqual([w for w in self.changes() if w[:2] == (31, 0)], [(31, 0, 0xa0ff)])
         self.assertEqual(self.reg('r.0.13'), 0x0001)
         self.assertEqual(self.run_q('clear'), 0, self.err)
@@ -525,7 +606,7 @@ class Chip(unittest.TestCase):
         self.assertEqual(self.weights(), seq)
         self.assertEqual(self.reg('p.28.65'), 0x01)
         self.assertEqual(self.kept()['weights']['found'], DEFAULT_WEIGHTS)
-        # the scheduling asked for is what the vendor left: nothing written for it, nothing kept to undo
+        # the scheduling asked for is what the vendor left: nothing written for it
         self.assertEqual([w for w in self.changes() if w[1] == 28 and w[0] <= 10], [])
         self.assertEqual(self.run_q('clear'), 0, self.err)
         self.assertEqual(self.weights(), DEFAULT_WEIGHTS)
@@ -545,7 +626,7 @@ class Chip(unittest.TestCase):
         self.want({'limits': {'Port8': 100000}})
         self.assertEqual(self.run_q('apply'), 0, self.err)
         self.assertEqual((self.reg('r.8.9'), self.reg('r.8.10')), (0xff64, 0x81f4))
-        self.assertEqual(self.kept()['limits']['8']['found09'], 0xff01)
+        self.assertEqual(self.kept()['limit:8']['found'], [0xff01, 0x8000])
         self.assertEqual(self.run_q('clear'), 0, self.err)
         self.assertEqual((self.reg('r.8.9'), self.reg('r.8.10')), (0xff01, 0x8000))
         # N first, then eDec
@@ -564,63 +645,202 @@ class Chip(unittest.TestCase):
         self.assertIn('switch.sh keeps', self.err)
         self.assertEqual(self.changes(), [])
 
-    def test_a_write_that_does_not_read_back_puts_the_run_back(self):
+    def test_a_set_that_does_not_read_back_puts_the_run_back(self):
         self.want({'classes': [{'dscp': 46, 'queue': 7}], 'scheduling': {'*': 1},
                    'weights': list(range(8)) * 4, 'limits': {'Port2': 480000}})
-        open(os.path.join(self.sw, 'stuck.8.28'), 'w').close()
+        self.flag('stuck.8.28')
         self.assertEqual(self.run_q('apply'), 1)
         self.assertIn('not read back as written: Port8 (switch port 8) scheduling 1', self.err)
-        self.assertEqual(self.entry(3), ({}, {}))
-        self.assertEqual(self.reg('r.0.13'), 0x0000)
-        self.assertEqual([self.reg('p.%d.0' % p) for p in range(1, 11)], [0] * 10)
-        self.assertEqual(self.weights(), DEFAULT_WEIGHTS)
+        self.all_as_found()
         self.assertEqual((self.reg('r.2.9'), self.reg('r.2.10')), (0x0001, 0x8000))
         self.assertIsNone(self.kept())
         self.assertIn('was put back as found', self.syslog())
         # an entry that does not load: the same
-        os.remove(os.path.join(self.sw, 'stuck.8.28'))
-        open(os.path.join(self.sw, 'tstuck.3'), 'w').close()
+        self.unflag('stuck.8.28')
+        self.flag('tstuck.3')
         self.assertEqual(self.run_q('apply'), 1)
         self.assertIn('not read back as written: entry 3', self.err)
-        self.assertEqual([self.reg('p.%d.0' % p) for p in range(1, 11)], [0] * 10)
-        self.assertEqual(self.reg('r.0.13'), 0x0000)
+        self.all_as_found()
 
-    def test_a_clear_that_cannot_put_back_sets_it_all_again(self):
-        self.want(self.ONE)
-        self.assertEqual(self.run_q('apply'), 0, self.err)
-        open(os.path.join(self.sw, 'stuck.5.28'), 'w').close()
-        self.assertEqual(self.run_q('clear'), 1)
-        self.assertIn('not read back as written: Port5 (switch port 5) scheduling as found', self.err)
-        # the run put back as it found it: this tool's settings, and what to put back kept
-        self.assertEqual(self.entry(3)[1], {3: 0x00f0, 0x1b: 0x5000})
-        self.assertEqual([self.reg('p.%d.0' % p) for p in range(1, 11)], [1] * 10)
-        self.assertEqual(self.kept()['sched']['5'], {'found': 0, 'set': 1})
-        self.assertTrue(os.path.exists(self.conf))
-        os.remove(os.path.join(self.sw, 'stuck.5.28'))
-        self.assertEqual(self.run_q('clear'), 0, self.err)
-        self.assertEqual([self.reg('p.%d.0' % p) for p in range(1, 11)], [0] * 10)
-        self.assertEqual(self.entry(3), ({}, {}))
-
-    def test_a_put_back_that_does_not_stick_keeps_the_state(self):
+    def test_a_put_back_that_does_not_stick_keeps_what_was_written(self):
         self.want(self.ONE)
         # port 5 takes this run's write and then no other; port 8 takes none
-        open(os.path.join(self.sw, 'once.5.28'), 'w').close()
-        open(os.path.join(self.sw, 'stuck.8.28'), 'w').close()
+        self.flag('once.5.28')
+        self.flag('stuck.8.28')
         self.assertEqual(self.run_q('apply'), 1)
-        self.assertIn('PUT BACK DIFFERS: Port5 (switch port 5) scheduling 1', self.err)
+        self.assertIn('PUT BACK DIFFERS: Port5 (switch port 5) scheduling 0', self.err)
         self.assertIn('could not put back', self.syslog())
-        self.assertEqual(self.kept()['sched']['5'], {'found': 0, 'set': 1})
-        self.assertEqual(self.kept()['tcam_mode']['found'], 0)
-        for f in ('stuck.5.28', 'stuck.8.28'):
-            os.remove(os.path.join(self.sw, f))
+        self.assertEqual(self.kept()['sched:5'], {'found': 0, 'set': 0, 'pending': 1})
+        self.assertEqual(self.kept()['mode']['found'], 0)
+        self.unflag('stuck.5.28', 'stuck.8.28')
+        # port 5 holds this tool's pending value: taken as this tool's, and put back
         self.assertEqual(self.run_q('clear'), 0, self.err)
-        self.assertEqual([self.reg('p.%d.0' % p) for p in range(1, 11)], [0] * 10)
+        self.all_as_found()
+
+    # ---- a run cut short (the link gone, the host stopped) ----
+    def test_a_run_cut_while_it_changes_the_weights(self):
+        a, b = list(range(8)) * 2, list(range(8)) * 3
+        self.want({'classes': [{'dscp': 46, 'queue': 7}], 'scheduling': {'*': 0}, 'weights': a})
+        self.assertEqual(self.run_q('apply'), 0, self.err)
+        self.want({'classes': [{'dscp': 46, 'queue': 7}], 'scheduling': {'*': 0}, 'weights': b})
+        self.cut_after(1)                       # the reads answer, nothing after them
+        self.assertEqual(self.run_q('apply'), 1)
+        self.assertEqual(self.weights(), a)
+        self.assertEqual(self.kept()['weights'], {'found': DEFAULT_WEIGHTS, 'set': a, 'pending': b})
+        self.assertEqual(self.run_q('apply'), 0, self.err)
+        self.assertEqual(self.weights(), b)
+        self.assertEqual(self.kept()['weights'], {'found': DEFAULT_WEIGHTS, 'set': b})
+        self.assertEqual(self.run_q('clear'), 0, self.err)
+        self.assertEqual(self.weights(), DEFAULT_WEIGHTS)
+
+    def test_a_run_cut_after_its_write_landed(self):
+        a, b = list(range(8)) * 2, list(range(8)) * 3
+        self.want({'weights': a})
+        self.assertEqual(self.run_q('apply'), 0, self.err)
+        self.want({'weights': b})
+        self.cut_after(2)                       # the reads and the write answer, the read back does not
+        self.assertEqual(self.run_q('apply'), 1)
+        self.assertEqual(self.weights(), b)
+        self.assertEqual(self.kept()['weights']['pending'], b)
+        # the next run finds the pending value there: this tool's, now set; nothing to write
+        self.assertEqual(self.run_q('apply'), 0, self.err)
+        self.assertEqual(self.changes(), [])
+        self.assertEqual(self.kept()['weights'], {'found': DEFAULT_WEIGHTS, 'set': b})
+        self.assertEqual(self.run_q('clear'), 0, self.err)
+        self.assertEqual(self.weights(), DEFAULT_WEIGHTS)
+
+    def test_a_run_cut_while_it_changes_a_limit(self):
+        self.want({'limits': {'Port8': 100000}})
+        self.assertEqual(self.run_q('apply'), 0, self.err)
+        self.want({'limits': {'Port8': 50000}})
+        self.cut_after(1)
+        self.assertEqual(self.run_q('apply'), 1)
+        self.assertEqual((self.reg('r.8.9'), self.reg('r.8.10')), (0x0064, 0x81f4))
+        # the next run takes the limit as this tool's - not "an egress limit already"
+        self.assertEqual(self.run_q('apply'), 0, self.err)
+        self.assertEqual((self.reg('r.8.9'), self.reg('r.8.10')), (0x0032, 0x81f4))
+        self.assertEqual(self.kept()['limit:8']['found'], [0x0001, 0x8000])
+        self.assertEqual(self.run_q('clear'), 0, self.err)
+        self.assertEqual((self.reg('r.8.9'), self.reg('r.8.10')), (0x0001, 0x8000))
+        self.assertIsNone(self.kept())
+
+    def test_a_run_cut_between_a_limits_two_words(self):
+        self.want({'limits': {'Port8': 100000}})
+        self.assertEqual(self.run_q('apply'), 0, self.err)
+        # as a run cut after eDec and before N would leave it
+        self.want({'limits': {'Port8': 200000}})
+        self.cut_after(1)
+        self.assertEqual(self.run_q('apply'), 1)
+        self.set_reg('r.8.9', 0x0014)
+        self.assertEqual(self.run_q('apply'), 0, self.err)
+        self.assertEqual((self.reg('r.8.9'), self.reg('r.8.10')), (0x0014, 0x8032))
+        self.assertEqual(self.run_q('clear'), 0, self.err)
+        self.assertEqual((self.reg('r.8.9'), self.reg('r.8.10')), (0x0001, 0x8000))
+
+    def test_a_run_cut_while_it_changes_an_entry(self):
+        self.want({'classes': [{'dscp': 46, 'queue': 7}]})
+        self.assertEqual(self.run_q('apply'), 0, self.err)
+        self.want({'classes': [{'dscp': 34, 'queue': 7}]})
+        self.cut_after(1)
+        self.assertEqual(self.run_q('apply'), 1)
+        self.assertEqual(self.entry(3)[0][0x19], 0xfcb8)
+        self.assertEqual(self.run_q('apply'), 0, self.err)
+        self.assertEqual(self.entry(3)[0][0x19], 0xfc88)
+        self.assertEqual(self.run_q('clear'), 0, self.err)
+        self.all_as_found()
+
+    def test_a_run_cut_after_an_entrys_flush(self):
+        self.want({'classes': [{'dscp': 46, 'queue': 7}]})
+        self.assertEqual(self.run_q('apply'), 0, self.err)
+        self.want({'classes': [{'dscp': 34, 'queue': 7}]})
+        self.cut_after(1)
+        self.assertEqual(self.run_q('apply'), 1)
+        # as a cut between the flush and the load leaves it: free
+        self.unflag(*[f for f in os.listdir(self.sw) if f.startswith('t.3.')])
+        self.assertEqual(self.run_q('apply'), 0, self.err)
+        self.assertEqual(self.entry(3)[0][0x19], 0xfc88)
+        self.assertEqual(self.run_q('clear'), 0, self.err)
+        self.all_as_found()
+
+    # ---- clear: the settings file first, and never set again ----
+    def test_a_clear_that_cannot_put_back_never_sets_again(self):
+        self.want(self.ONE)
+        self.assertEqual(self.run_q('apply'), 0, self.err)
+        self.flag('stuck.5.28')
+        self.assertEqual(self.run_q('clear'), 1)
+        self.assertIn('not read back as written: Port5 (switch port 5) scheduling 0', self.err)
+        self.assertFalse(os.path.exists(self.conf), 'the settings file left')
+        # what was put back stays put back; port 5 is kept to put back at the next run
         self.assertEqual(self.entry(3), ({}, {}))
         self.assertEqual(self.reg('r.0.13'), 0x0000)
+        self.assertEqual(self.scheduling(), [0, 0, 0, 0, 1, 0, 0, 0, 0, 0])
+        self.assertEqual(self.kept(), {'sched:5': {'found': 0, 'set': 1, 'pending': 0}})
+        self.assertIn('kept to put back at the next run', self.syslog())
+        # a coprocessor boot, no settings file: the hook only puts back - nothing is set
+        self.unflag('stuck.5.28')
+        self.boot()
+        self.assertEqual(self.run_q('reapply', '--boot'), 0, self.err)
+        self.all_as_found()
+        self.assertIsNone(self.kept())
+
+    def test_a_clear_cut_short_leaves_nothing_to_set_again(self):
+        self.want(self.ONE)
+        self.assertEqual(self.run_q('apply'), 0, self.err)
+        self.cut_after(1)
+        self.assertEqual(self.run_q('clear'), 1)
+        self.assertFalse(os.path.exists(self.conf), 'the settings file left')
+        self.boot()
+        self.assertEqual(self.run_q('reapply', '--boot'), 0, self.err)
+        self.all_as_found()
+        self.assertIsNone(self.kept())
+
+    def test_reapply_with_no_settings_file_puts_back(self):
+        self.want(self.ONE)
+        self.assertEqual(self.run_q('apply'), 0, self.err)
+        os.remove(self.conf)
+        self.assertEqual(self.run_q('reapply'), 0, self.err)
+        self.all_as_found()
+        self.assertIsNone(self.kept())
+
+    # ---- the TCAM engine shared with the agent ----
+    def test_a_load_that_does_not_read_as_written_is_flushed_at_once(self):
+        self.flag('tmix.3')
+        self.want(self.ONE)
+        self.assertEqual(self.run_q('apply'), 1)
+        # flushed in the load's own session, before anything else was asked
+        log = self.writes()
+        load = log.index((31, 0, 0xb003))
+        self.assertIn((31, 0, 0xa003), log[load:], 'not flushed after the load')
+        self.assertIn('not read back as written: entry 3', self.err)
+        self.all_as_found()
+        self.assertIsNone(self.kept())
+
+    def test_a_run_during_which_the_vendors_entries_change_is_not_kept(self):
+        self.flag('agent')
+        self.want(self.ONE)
+        self.assertEqual(self.run_q('apply'), 1)
+        self.assertIn('the vendor\'s TCAM entries changed while this ran (4k2 0xff02 -> 0xff10)', self.err)
+        self.assertIn('the vendor\'s TCAM entries changed during a run', self.syslog())
+        self.all_as_found()
+        self.assertIsNone(self.kept())
+
+    def test_check_reads_the_entries_and_the_mode_again(self):
+        self.assertEqual(self.run_q('check', '--json'), 0, self.err)
+        self.assertEqual(json.loads(self.out), {'ok': True, 'changed': [], 'read': False})
+        self.assertEqual(self.npu_calls(), 0, 'nothing kept: nothing read')
+        self.want(self.ONE)
+        self.assertEqual(self.run_q('apply'), 0, self.err)
+        self.assertEqual(self.run_q('check', '--json'), 0, self.err)
+        self.assertEqual(json.loads(self.out), {'ok': True, 'changed': [], 'read': True})
+        self.assertEqual(self.changes(), [])
+        self.set_reg('t.3.0.25', 0xfc88)
+        self.set_reg('r.0.13', 0x0000)
+        self.assertEqual(self.run_q('check', '--json'), 1)
+        self.assertEqual(json.loads(self.out)['changed'], ['entry:3', 'mode'])
+        self.assertEqual(self.changes(), [])
 
     def test_reads_that_never_agree_write_nothing(self):
-        with open(os.path.join(self.sw, 'flicker'), 'w') as f:
-            f.write('3\n')
+        self.flag('flicker', '3\n')
         self.want(self.ONE)
         self.assertEqual(self.run_q('apply'), 1)
         self.assertIn('did not read the same three times', self.err)
@@ -628,28 +848,29 @@ class Chip(unittest.TestCase):
         self.assertIsNone(self.kept())
 
     def test_a_flicker_now_and_then_is_read_again(self):
-        with open(os.path.join(self.sw, 'flicker'), 'w') as f:
-            f.write('11\n')
+        self.flag('flicker', '11\n')
         self.want(self.ONE)
         self.assertEqual(self.run_q('apply'), 0, self.err)
-        self.assertEqual(self.entry(3)[1], {3: 0x00f0, 0x1b: 0x5000})
+        self.assertEqual(self.entry(3)[1], self.EF3)
         self.assertEqual(self.run_q('clear'), 0, self.err)
         self.assertEqual(self.entry(3), ({}, {}))
 
     def test_coprocessor_not_answering(self):
-        open(os.path.join(self.sw, 'npu-down'), 'w').close()
+        self.flag('npu-down')
         self.want(self.ONE)
         self.assertEqual(self.run_q('apply'), 1)
         self.assertIn('did not answer', self.err)
         self.assertIsNone(self.kept())
 
-    # ---- after a coprocessor boot ----
-    def boot(self):
-        for f in os.listdir(self.sw):
-            if f.split('.')[0] in ('r', 'p', 't'):
-                os.remove(os.path.join(self.sw, f))
-        chip_defaults(self.sw)
+    def test_no_switch_tool_on_the_coprocessor(self):
+        self.env['XGS_SWITCH_MVSW'] = os.path.join(self.dir, 'nothing-here')
+        self.want(self.ONE)
+        self.assertEqual(self.run_q('apply'), 1)
+        self.assertIn('the switch tool is not on the coprocessor', self.err)
+        self.assertEqual(self.log(), [])
+        self.assertIsNone(self.kept())
 
+    # ---- after a coprocessor boot ----
     def test_reapply_after_a_boot(self):
         self.want({'classes': [{'dscp': 46, 'queue': 7}], 'scheduling': {'*': 1}, 'weights': list(range(8)),
                    'limits': {'Port8': 480000}})
@@ -657,31 +878,22 @@ class Chip(unittest.TestCase):
         kept = self.kept()
         self.boot()
         self.assertEqual(self.run_q('reapply', '--boot'), 0, self.err)
-        self.assertEqual(self.entry(3)[1], {3: 0x00f0, 0x1b: 0x5000})
+        self.assertEqual(self.entry(3)[1], self.EF3)
         self.assertEqual(self.reg('r.0.13'), 0x0001)
         self.assertEqual(self.reg('p.8.0'), 1)
         self.assertEqual(self.weights(), list(range(8)))
         self.assertEqual(self.reg('r.8.10'), 0x8032)
         self.assertIn('after a coprocessor boot', self.syslog())
-        for k in ('entries', 'tcam_mode', 'sched', 'weights', 'limits'):
-            self.assertEqual(self.kept()[k], kept[k], k)
+        self.assertEqual(self.kept(), kept)
         # set already: a second reapply writes nothing
         self.assertEqual(self.run_q('reapply'), 0, self.err)
         self.assertEqual(self.changes(), [])
         self.assertEqual(self.run_q('clear'), 0, self.err)
-        self.assertEqual(self.weights(), DEFAULT_WEIGHTS)
+        self.all_as_found()
         self.assertEqual(self.reg('r.8.10'), 0x8000)
         # nothing kept and no settings file: reapply asks the coprocessor nothing
         self.assertEqual(self.run_q('reapply', '--boot'), 0, self.err)
         self.assertEqual(self.npu_calls(), 0)
-
-    def test_settings_file_gone_puts_back(self):
-        self.want(self.ONE)
-        self.assertEqual(self.run_q('apply'), 0, self.err)
-        os.remove(self.conf)
-        self.assertEqual(self.run_q('apply'), 0, self.err)
-        self.assertEqual(self.entry(3), ({}, {}))
-        self.assertIsNone(self.kept())
 
     def test_words_and_can_ask_the_chip_nothing(self):
         self.want({'classes': [{'dscp': 46, 'queue': 7}], 'scheduling': {'Port8': 7}, 'weights': list(range(8)),
@@ -694,7 +906,8 @@ class Chip(unittest.TestCase):
         self.assertEqual(got['limits']['8'], {'edec': 90, 'n': 50, 'kbit': 900000, '0x0a': '0x8032'})
         self.assertEqual(self.run_q('can'), 0, self.err)
         can = json.loads(self.out)
-        self.assertEqual((can['family'], can['writes'], can['entries']), ('octeontx', True, 2))
+        self.assertEqual((can['assembly'], can['family'], can['writes'], can['entries']),
+                         ('AMDA0202-0004', 'octeontx', True, 2))
         self.assertEqual(can['ports'][0], 'Port1')
         self.assertNotIn('F1', can['ports'])
         # the devices as models.py names them: on the XGS 3300 F1 and F2 come first, oxp0 and oxp1
@@ -706,8 +919,7 @@ class Chip(unittest.TestCase):
     def test_show_counts_a_class_hits(self):
         self.want(self.ONE)
         self.assertEqual(self.run_q('apply'), 0, self.err)
-        with open(os.path.join(self.sw, 'ctr.0.9.1'), 'w') as f:
-            f.write('120471\n')
+        self.flag('ctr.0.9.1', '120471\n')
         self.assertEqual(self.run_q('show', '--json'), 0, self.err)
         got = json.loads(self.out)
         self.assertEqual(got['entries']['3']['hits'], '120471')
@@ -715,8 +927,24 @@ class Chip(unittest.TestCase):
         self.assertEqual(self.changes(), [])
 
 
+class Chip3100(Chip):
+    """The XGS 3100: the XGS 3300's family, nothing run on one - read only."""
+    MODEL = '3100'
+
+    def test_writes_refused_before_anything(self):
+        self.want(self.ONE)
+        for args in (['apply'], ['reapply'], ['reapply', '--boot']):
+            self.assertEqual(self.run_q(*args), 2, args)
+            self.assertIn('only the XGS 3300 (AMDA0202-0004) takes writes', self.err)
+            self.assertEqual((self.npu_calls(), self.log()), (0, []), args)
+        self.assertEqual(self.run_q('can'), 0)
+        self.assertEqual((json.loads(self.out)['writes'], json.loads(self.out)['why']), (False, 'untested-model'))
+        self.assertEqual(self.run_q('show'), 0, self.err)
+        self.assertEqual(self.changes(), [])
+
+
 class Chip136(Chip):
-    """The XGS 136: read only."""
+    """The XGS 136: read only, and no TCAM operation at all."""
     MODEL = '136'
 
     def test_writes_refused_before_anything(self):
@@ -733,33 +961,19 @@ class Chip136(Chip):
         self.assertEqual(json.loads(self.out)['writes'], False)
         self.assertEqual(json.loads(self.out)['why'], 'read-only')
 
-    def test_show_reads_the_census_only(self):
+    def test_show_reads_port_registers_alone(self):
         self.assertEqual(self.run_q('show'), 0, self.err)
-        self.assertIn('TCAM entry 3: free', self.out)
-        self.assertIn('TCAM entry 254: in use (keys 0xc000 0x0000)', self.out)
-        self.assertIn('TCAM get-next after 2: 0x4004', self.out)
-        self.assertEqual(self.changes(), [])
-        regs = {(int(d), int(r)) for op, d, r, v in self.log()}
-        self.assertEqual(regs - {(31, 0), (31, 2), (31, 3), (0, 13)}, set())
-        self.assertNotIn('weights', self.out)
+        self.assertIn('port 0: 0x04 0x017f, 0x08 0x2080, 0x0d 0x0000', self.out)
+        self.assertIn('the TCAM is not read here', self.out)
+        self.assertEqual(self.writes(), [], 'show wrote a register - a TCAM operation among them')
+        self.assertEqual({(int(d), int(r)) for op, d, r, v in self.log()}, {(0, 4), (0, 8), (0, 13)})
 
-    # what the XGS 3300 tests write is refused here: each is its own test above
-    test_apply_then_clear_puts_everything_back = None
-    test_two_classes_take_entries_3_and_255 = None
-    test_an_entry_in_use_refuses_the_run = None
-    test_weights_set_and_put_back = None
-    test_egress_limit_keeps_the_rest_of_0x09 = None
-    test_a_limit_not_this_tools_refuses_the_run = None
-    test_a_write_that_does_not_read_back_puts_the_run_back = None
-    test_a_put_back_that_does_not_stick_keeps_the_state = None
-    test_a_clear_that_cannot_put_back_sets_it_all_again = None
-    test_reads_that_never_agree_write_nothing = None
-    test_a_flicker_now_and_then_is_read_again = None
-    test_coprocessor_not_answering = None
-    test_reapply_after_a_boot = None
-    test_settings_file_gone_puts_back = None
-    test_words_and_can_ask_the_chip_nothing = None
-    test_show_counts_a_class_hits = None
+
+for name in [n for n in dir(Chip) if n.startswith('test_')]:
+    # what the XGS 3300 tests write is refused on the others: each has its own test above
+    for cls in (Chip3100, Chip136):
+        if name not in cls.__dict__:
+            setattr(cls, name, None)
 
 
 if __name__ == '__main__':
