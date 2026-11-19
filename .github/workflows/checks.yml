@@ -189,14 +189,17 @@ jobs:
 
       # switch_qos.py, the switch's queues for the plugins (os-trafficpriority): the register words - the
       # TCAM entry measured on the XGS 3300 for a DSCP to a queue, Queue Control's scheduling, the weight
-      # table, the egress limit's eDec and N as UMSD gives them - and, against a made-up chip that acts
-      # as its TCAM, queue-control, weight-table and counter engines, every register written read first,
-      # port 0's own scheduling and limit and every TCAM entry but 3 and 255 never written, an entry or
-      # a limit not its own refusing the run before any write, a set that does not read back putting the
-      # run back, a run cut at each step finished from what was found, a put-back that fails never setting
-      # again, a load the agent mixed flushed at once and a run during which the vendor's entries changed
-      # not kept, clear putting all back as found, reapply after a coprocessor boot, writes on the XGS
-      # 3300 alone and on the XGS 136 no TCAM operation at all. tools/test-switch-qos.py.
+      # table, port 0's flow control, the egress limit's eDec and N as UMSD gives them - and, against a
+      # made-up chip that acts as its TCAM, queue-control, weight-table, flow-control and counter engines,
+      # every register written read first, port 0's own scheduling and limit, every flow control but port
+      # 0's and every TCAM entry but 3 and 255 never written, an entry or a limit not its own refusing the
+      # run before any write, port 0's pause turned off after the weights and only over the value the
+      # coprocessor leaves, put back first when they go and left as found by strict classes, a set that
+      # does not read back putting the run back, a run cut at each step finished from what was found, a
+      # put-back that fails never setting again, a load the agent mixed flushed at once and a run during
+      # which the vendor's entries changed not kept, clear putting all back as found, reapply after a
+      # coprocessor boot, writes on the XGS 3300 alone and on the XGS 136 no TCAM operation at all.
+      # tools/test-switch-qos.py.
       - name: The switch's queues, set and put back
         run: python3 tools/test-switch-qos.py
 

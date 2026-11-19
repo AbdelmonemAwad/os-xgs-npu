@@ -4,7 +4,8 @@
 # Copyright (c) 2026 Abdelmonem Awad <eg2@live.com>
 #
 # The switch's queues a plugin asked for - its TCAM entries on port 0, the ports' scheduling, the
-# chip's weights, egress limits - set again at every boot: scripts/xgs/switch_qos.py.
+# chip's weights and with them port 0's pause off, egress limits - set again at every boot:
+# scripts/xgs/switch_qos.py.
 #
 # The coprocessor's boot erases the switch's registers, and the host's boot boots the coprocessor. So
 # when a plugin has left its settings file, they are set again here, once the boot is done; detached,
