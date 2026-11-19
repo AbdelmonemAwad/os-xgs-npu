@@ -348,6 +348,13 @@ if hb_alive 120; then
 	sleep 1
 	daemon -f /bin/sh ${LIB}/xgs/switch-jumbo.sh
 	say "the switch ports' frame limit is set again in the background (switch-jumbo.sh)"
+	# And the switch's queues a plugin asked for, which the coprocessor's boot erased with the rest of
+	# the switch's registers: set again after the frame limit, as the start hook does at boot
+	# (11-xgs-switch-qos), when a plugin has left its settings file.
+	if [ -f /var/db/os-xgs-npu/switch-qos.json ] && [ -f ${LIB}/xgs/switch_qos.py ]; then
+		daemon -f /usr/local/bin/python3 ${LIB}/xgs/switch_qos.py reapply --boot
+		say "the switch's queues are set again in the background (switch_qos.py)"
+	fi
 	exit 0
 fi
 say "the fast path did not answer within 120 s of the driver coming up"

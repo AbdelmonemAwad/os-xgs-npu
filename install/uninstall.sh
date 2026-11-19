@@ -36,6 +36,13 @@ if [ -f "${PREFIX}/opnsense/scripts/xgs/npu-log.sh" ]; then
     /bin/sh "${PREFIX}/opnsense/scripts/xgs/npu-log.sh" stop > /dev/null 2>&1 || true
 fi
 
+# The switch's queues a plugin asked for (switch_qos.py), put back as found while the runner, the
+# model table and the link to the coprocessor are still here - two minutes at most. What it cannot
+# put back stays in the chip until the coprocessor next boots, which erases the switch's registers.
+if [ -f /var/db/os-xgs-npu/switch-qos.state ] && [ -f "${PREFIX}/opnsense/scripts/xgs/switch_qos.py" ]; then
+    timeout 120 "${PREFIX}/bin/python3" "${PREFIX}/opnsense/scripts/xgs/switch_qos.py" clear > /dev/null 2>&1 || true
+fi
+
 # The boot, upgrade and cron hooks.
 rm -f "${PREFIX}/etc/rc.syshook.d/early/06-npuctl"
 rm -f "${PREFIX}/etc/rc.syshook.d/early/07-npuep"
@@ -154,6 +161,10 @@ rm -f "${PREFIX}/etc/rc.syshook.d/carp/20-xgs-flows"
 # The hand-set switch tool and its state. What it set stays in the chip until the coprocessor next
 # boots, which erases the switch's registers; nothing is left to set it again.
 rm -f "${PREFIX}/opnsense/scripts/xgs/switch.sh" /var/db/os-xgs-npu/switch.state
+# The switch's queues the plugins asked for (put back above), its start hook, the plugin's settings
+# file and the state.
+rm -f "${PREFIX}/opnsense/scripts/xgs/switch_qos.py" "${PREFIX}/etc/rc.syshook.d/start/11-xgs-switch-qos" \
+    /var/db/os-xgs-npu/switch-qos.json /var/db/os-xgs-npu/switch-qos.state /var/db/os-xgs-npu/switch-qos.state.new
 # The dashboard widgets. A dashboard that still lists one shows an empty panel until it is removed.
 rm -f "${PREFIX}/opnsense/www/js/widgets/XGSCoprocessor.js" "${PREFIX}/opnsense/www/js/widgets/XGSPorts.js" \
     "${PREFIX}/opnsense/www/js/widgets/XGSIpsec.js" "${PREFIX}/opnsense/www/js/widgets/XGSFlows.js" \

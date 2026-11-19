@@ -1,0 +1,17 @@
+#!/bin/sh
+#-
+# SPDX-License-Identifier: BSD-2-Clause
+# Copyright (c) 2026 Abdelmonem Awad <eg2@live.com>
+#
+# The switch's queues a plugin asked for - its TCAM entries on port 0, the ports' scheduling, the
+# chip's weights, egress limits - set again at every boot: scripts/xgs/switch_qos.py.
+#
+# The coprocessor's boot erases the switch's registers, and the host's boot boots the coprocessor. So
+# when a plugin has left its settings file, they are set again here, once the boot is done; detached,
+# because the script waits for the coprocessor's link to be given its address and for the switch's
+# frame limit (09-xgs-switch-jumbo) first, and a boot must not wait for either. Nothing to do without
+# the file. The script logs what it set (tag xgs-switch) and never fails the boot.
+SCRIPT=/usr/local/opnsense/scripts/xgs/switch_qos.py
+[ -f "${SCRIPT}" ] && [ -f /var/db/os-xgs-npu/switch-qos.json ] || exit 0
+/usr/sbin/daemon -f /usr/local/bin/python3 "${SCRIPT}" reapply --boot
+exit 0
