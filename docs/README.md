@@ -36,10 +36,12 @@ withdrawn stays on the page, struck through, with what replaced it after.
 | [measurements/](measurements/) | **The numbers, one page per appliance**, with how each was taken and what it does not mean - and two for the three-appliance bench of 2026-10-17: [clear text and IPsec](measurements/bench-2026-10-17.md), [the MTU from 576 to 9000](measurements/mtu-2026-10-17.md), [IPv6 and the transmit queues](measurements/ipv6-and-queues-2026-10-18.md) of the next night, and [the XGS 136 forwarding by its coprocessor](measurements/xgs136-hardware-2026-10-18.md) the day after |
 | [images/](images/) | The photographs and diagrams, one folder per appliance, and [readme/](images/readme/) for the README's banner and status board (`tools/readme-art.py` draws them) |
 
-Five pages stay at the top: [the-road.md](the-road.md), how it was found, drawn;
+Seven pages stay at the top: [the-road.md](the-road.md), how it was found, drawn;
 [provenance.md](provenance.md), what was read for the ARMADA work and from where;
-[INDEX.md](INDEX.md), every page and when it is read again; [REVIEW.md](REVIEW.md), how that
-schedule works; and this one.
+[problem-reports.md](problem-reports.md), what the problem reporter sends and what it removes;
+[advisories.md](advisories.md), vulnerabilities in other people's code checked against the
+appliances; [INDEX.md](INDEX.md), every page and when it is read again; [REVIEW.md](REVIEW.md), how
+that schedule works; and this one.
 [octeontx/](octeontx/) holds the OCTEON TX provenance, kept apart because it is a different
 upstream, and the plan for capturing the XGS 3300 under its own firmware.
 
