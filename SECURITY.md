@@ -58,3 +58,10 @@ release and `main` are what is supported. An appliance follows releases through 
   as well. What it looks at and what it removes: [docs/problem-reports.md](docs/problem-reports.md).
 - **Never send a configuration backup.** It holds keys and passwords. The support bundle on XGS
   Coprocessor: Problem Reports is made without it and cleaned before it is written.
+
+## Advisories in other people's code
+
+A published vulnerability in code these appliances run but this project does not write - OPNsense, its
+FreeBSD, the coprocessor's own Linux - is checked against the appliances when it names a part they
+have, and the result is written down in [docs/advisories.md](docs/advisories.md): which part runs the
+code, whether anything can reach it, and what was tried on the lab appliances.
