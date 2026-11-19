@@ -116,18 +116,27 @@ With the pause as found, during the UDP run of A against B:
 - So with minimums the switch keeps each class's share by discarding what the coprocessor sends
   beyond what a port takes, instead of holding the coprocessor back.
 
+## The switch tool writing it, through the plugin's own Apply (22:20-22:35 UTC)
+
+The same appliance and set-up, os-trafficpriority's classes saved through its model and applied as its
+page applies them, the switch tool of this branch doing every write:
+
+| step | port 0's pointer 0x10 after | what the tool says, and what was measured |
+|---|---|---|
+| Apply, minimums 30 and 20, Port8 at 100 Mbit/s | 0x1088 | "pause: off (0x88), by this tool; found 0x8c"; check holds. UDP 100 + 100: 58.0 against 38.8 Mbit/s for 30:20, 36.4 against 60.5 for 30:50; port 8 discarded 30 frames in both runs, port 0's input 184,028 |
+| Apply, minimums, no limit | 0x1088 | TCP at line rate: 552.0 against 373.6 (60 %, sum 925.6, the slowest second 883.0) and 350.6 against 569.0 (38 %, sum 919.6); one stream alone 913.0 |
+| Apply, strict classes only | 0x108c | "pause: on (0x8c), as found", the table back to the coprocessor's 99 turns, no pause kept in the state |
+| Apply, minimums, then a full reboot | 0x1088 | the coprocessor's start put the switch back to its own values; the tool's first run after it was refused while the coprocessor's own entries still changed, and put back what it had written; its second run, about 80 s after the host was up, set the entries, the table and the pause off again; TCP then 555.5 against 374.0 (60 %, sum 929.5) |
+| Off (the plugin's files gone, the tool's clear) | 0x108c | the pause put back first, then port 0's TCAM mode, the entries and the table: "nothing of this tool's is left in the switch"; the switch read as before the lab |
+
+On the XGS 136, with a settings file in its place, apply and the boot's reapply both said the switch
+is only read there and wrote nothing; its links stayed as they were.
+
 ## What it does not show
 
-- **The build itself on an appliance.** The pause was written by hand here. The switch tool writing it
-  is to be measured in the lab: the plugin's Apply with minimums 30 and 20, and with a strict class
-  only, port 0's pointer 0x10 read after each; the shares by UDP at a 100 Mbit/s Port8 and by TCP at
-  line rate; a full reboot, with the boot hook turning the pause off again; and the plugin off, with
-  0x108c read and nothing of the tool's left.
 - **Other front ports while Port8 is congested with the pause off.** With the pause on, one full port
   holds back the coprocessor's whole uplink; with it off, the excess is discarded at port 0's input.
   Whether traffic for a port that is not full loses frames there was not measured.
-- **A coprocessor reboot with the pause off**: whether its start leaves 0x8c there again, as it read on
-  2026-11-17 and 2026-11-19.
 - **The XGS 136**: os-xgs-npu only reads its switch, and writes no table there.
 - **Frames or bytes**: every frame here was full-size, so whether a turn counts a frame or its bytes
   was not measured.

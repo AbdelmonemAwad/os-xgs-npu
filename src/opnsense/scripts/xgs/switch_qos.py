@@ -109,9 +109,11 @@ refuses the run. The switch then discards at port 0's input what the coprocessor
 port takes, instead of pausing the coprocessor. Without weights - strict classes alone - the pause is
 left as found, and one this tool turned off is put back, 0x908c read back 0x108c: first, before
 anything else a run puts back. A coprocessor boot puts the switch's registers back as it leaves them,
-and reapply turns the pause off again with the rest. Not measured: the other front ports while one is
-full with the pause off; a coprocessor boot with it off; this tool writing it on an appliance (the
-runs above wrote it by hand).
+and reapply turns the pause off again with the rest. Measured with this tool on the second XGS 3300 on
+2026-11-19, through os-trafficpriority's Apply: 0x1088 with minimums and the shares as above, 0x108c
+with strict classes alone, the pause off again after a full reboot (the coprocessor's start had left
+0x8c), 0x108c and nothing left once off. Not measured: the other front ports while one is full with
+the pause off.
 
 THE EGRESS LIMIT, per port, not per queue: port register 0x09 bits 6:0 (eDec) and 0x0a bits 15:14
 (count mode: 2, layer-2 bytes) and 13:0 (N). UMSD's scale (Amethyst_msdPortCtrl.c,
