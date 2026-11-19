@@ -182,10 +182,21 @@ jobs:
       # value that never reads the same three times stopping the command before any write, off writing
       # the kept value back and comparing it, the ingress rate limiter (PIRL) and the VLAN table (both
       # held) read and never written, and a front-port name it does not know refused before the
-      # coprocessor is asked.
+      # coprocessor is asked. And show giving a limit whose eDec is not the vendor's 1 by UMSD's scale.
       # tools/test-switch.py.
       - name: The switch tool's reads, writes and put-backs
         run: python3 tools/test-switch.py
+
+      # switch_qos.py, the switch's queues for the plugins (os-trafficpriority): the register words - the
+      # TCAM entry measured on the XGS 3300 for a DSCP to a queue, Queue Control's scheduling, the weight
+      # table, the egress limit's eDec and N as UMSD gives them - and, against a made-up chip that acts
+      # as its TCAM, queue-control, weight-table and counter engines, every register written read first,
+      # port 0's own scheduling and limit and every TCAM entry but 3 and 255 never written, an entry or
+      # a limit not its own refusing the run before any write, a write that does not read back putting
+      # the run back, clear putting all back as found, reapply after a coprocessor boot, and the XGS 136
+      # read only. tools/test-switch-qos.py.
+      - name: The switch's queues, set and put back
+        run: python3 tools/test-switch-qos.py
 
       # Which connections a block list cuts is decided from pf's own text: a state matched wrongly
       # is a connection cut for nothing, one missed stays open to a listed address.
