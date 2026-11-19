@@ -37,11 +37,16 @@ if [ -f "${PREFIX}/opnsense/scripts/xgs/npu-log.sh" ]; then
 fi
 
 # The switch's queues a plugin asked for (switch_qos.py), put back as found while the runner, the
-# model table and the link to the coprocessor are still here - two minutes at most. What it cannot
+# model table and the link to the coprocessor are still here - two minutes at most. The settings file
+# goes first, and below with the state whatever this does, so nothing sets them again. What cannot be
 # put back stays in the chip until the coprocessor next boots, which erases the switch's registers.
 if [ -f /var/db/os-xgs-npu/switch-qos.state ] && [ -f "${PREFIX}/opnsense/scripts/xgs/switch_qos.py" ]; then
-    timeout 120 "${PREFIX}/bin/python3" "${PREFIX}/opnsense/scripts/xgs/switch_qos.py" clear > /dev/null 2>&1 || true
+    if ! timeout 120 "${PREFIX}/bin/python3" "${PREFIX}/opnsense/scripts/xgs/switch_qos.py" clear > /dev/null 2>&1; then
+        echo "== the switch's queues a plugin asked for were not all put back: they stay in the switch until"
+        echo "   the coprocessor next boots; its settings file and state are removed all the same =="
+    fi
 fi
+rm -f /var/db/os-xgs-npu/switch-qos.json
 
 # The boot, upgrade and cron hooks.
 rm -f "${PREFIX}/etc/rc.syshook.d/early/06-npuctl"

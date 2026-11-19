@@ -148,6 +148,7 @@ class Appliance(unittest.TestCase):
                 ('LOCK=/var/run/xgs-recover.lock', 'LOCK=%s' % os.path.join(d, 'recover.lock')),
                 ('/var/db/os-xgs-npu/switch-jumbo.state', os.path.join(d, 'switch-jumbo.state')),
                 ('/var/db/os-xgs-npu/switch-qos.json', os.path.join(d, 'switch-qos.json')),
+                ('/var/db/os-xgs-npu/switch-qos.state', os.path.join(d, 'switch-qos.state')),
                 ('/var/run/xgs-npuep-boot', os.path.join(d, 'xgs-npuep-boot')),
                 ('/usr/local/etc/rc.syshook.d/early/07-npuep', os.path.join(d, '07-npuep')),
                 ('/usr/local/etc/rc.reload_all', os.path.join(d, 'rc.reload_all')),
@@ -243,6 +244,12 @@ class Reload(object):
         self.assertIn('switch-jumbo.sh', daemons[-2])
         self.assertTrue(daemons[-1].endswith('switch_qos.py reapply --boot'), daemons)
         self.assertIn("the switch's queues are set again in the background", done.stdout)
+        # no settings file, a state left by a put-back that did not finish: begun too, to put it back
+        os.remove(os.path.join(self.dir, 'switch-qos.json'))
+        self.write('switch-qos.state', '{"items": {}}')
+        os.remove(os.path.join(self.dir, 'calls'))
+        done = self.recover()
+        self.assertTrue(self.calls('daemon')[-1].endswith('switch_qos.py reapply --boot'), self.calls('daemon'))
 
     def test_nothing_from_the_intrusion_detection_says_nothing(self):
         done = self.recover()
