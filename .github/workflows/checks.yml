@@ -192,9 +192,11 @@ jobs:
       # table, the egress limit's eDec and N as UMSD gives them - and, against a made-up chip that acts
       # as its TCAM, queue-control, weight-table and counter engines, every register written read first,
       # port 0's own scheduling and limit and every TCAM entry but 3 and 255 never written, an entry or
-      # a limit not its own refusing the run before any write, a write that does not read back putting
-      # the run back, clear putting all back as found, reapply after a coprocessor boot, and the XGS 136
-      # read only. tools/test-switch-qos.py.
+      # a limit not its own refusing the run before any write, a set that does not read back putting the
+      # run back, a run cut at each step finished from what was found, a put-back that fails never setting
+      # again, a load the agent mixed flushed at once and a run during which the vendor's entries changed
+      # not kept, clear putting all back as found, reapply after a coprocessor boot, writes on the XGS
+      # 3300 alone and on the XGS 136 no TCAM operation at all. tools/test-switch-qos.py.
       - name: The switch's queues, set and put back
         run: python3 tools/test-switch-qos.py
 
