@@ -1,0 +1,21 @@
+#!/bin/sh
+#-
+# SPDX-License-Identifier: BSD-2-Clause
+# Copyright (c) 2026 Abdelmonem Awad <eg2@live.com>
+#
+# The switch's queues a plugin asked for - its TCAM entries on port 0, the ports' scheduling, the
+# chip's weights and with them port 0's pause off, egress limits - set again at every boot:
+# scripts/xgs/switch_qos.py.
+#
+# The coprocessor's boot erases the switch's registers, and the host's boot boots the coprocessor. So
+# when a plugin has left its settings file, they are set again here, once the boot is done; detached,
+# because the script waits for the coprocessor's link to be given its address and for the switch's
+# frame limit (09-xgs-switch-jumbo) first, and a boot must not wait for either. With no settings file
+# - the plugin switched off or removed - and a state that still holds what a put-back could not finish,
+# only that is put back: nothing is set. Nothing to do without either. The script logs what it did (tag
+# xgs-switch) and never fails the boot.
+SCRIPT=/usr/local/opnsense/scripts/xgs/switch_qos.py
+[ -f "${SCRIPT}" ] || exit 0
+[ -f /var/db/os-xgs-npu/switch-qos.json ] || [ -f /var/db/os-xgs-npu/switch-qos.state ] || exit 0
+/usr/sbin/daemon -f /usr/local/bin/python3 "${SCRIPT}" reapply --boot
+exit 0

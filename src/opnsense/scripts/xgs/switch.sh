@@ -34,11 +34,17 @@
 #           speed (TCP x4 946 Mbit/s without, 948 with). The destination must not lead to a learning
 #           switch: it learns the source's addresses on the wrong port.
 #   limit   Port register 0x0a, Egress Rate Control 2: bits 15:14 the count mode (10 = layer-2 bytes),
-#           bits 11:0 the rate field N, 0 = no limit. No open source gives its scale; on a 1 Gbit/s port
-#           it is about 480/N Mbit/s (asked 100, got 96.2; 50, 48.0; 10, 9.95), on both families. So the
-#           steps are 480, 240, 160, 120, 96 ... and nothing between 480 and the line rate here. (Frame
-#           mode, bits 15:14 = 00, about 60 million / N frames a second, fills that gap but limits small
-#           packets harder; not offered.) The rate asked is rounded down to a step.
+#           bits 13:0 the rate field N, 0 = no limit. ~~No open source gives its scale~~: Marvell's open
+#           UMSD driver gives it (Amethyst_msdPortCtrl.c, grcSetEgressRate): 500 * eDec / N Mbit/s at
+#           layer 2, eDec in port register 0x09 bits 6:0, which the vendor's firmware leaves at 1. This
+#           tool writes N alone, with eDec as it finds it: on a 1 Gbit/s port that measured about 480/N
+#           Mbit/s of TCP (asked 100, got 96.2; 50, 48.0; 10, 9.95), on both families - UMSD's 500/N
+#           less the TCP and IP headers. So the steps are 480, 240, 160, 120, 96 ... and nothing between
+#           480 and the line rate here. (Frame mode, bits 15:14 = 00, about 60 million / N frames a
+#           second, fills that gap but limits small packets harder; not offered.) The rate asked is
+#           rounded down to a step. switch_qos.py sets eDec too, in UMSD's 10 Mbit/s steps above 100,
+#           for the plugins; "show" reads 0x09 and gives such a limit by UMSD's scale, and a port with a
+#           limit that is not this tool's is refused here as before.
 #   pirl    HELD: not set by this tool. The ingress rate limiter, resource 0 of the port, as Marvell's
 #           open UMSD driver (BSD-3, Amethyst_msdPIRL.c) sets one, held UDP near the rate (96.8 Mbit/s
 #           asked 100, then 86.3), but four TCP streams fell to 5 to 13 Mbit/s at that limit whatever the
@@ -389,7 +395,7 @@ tcam_name() {
 # ---- show ----
 show() { # [<sw>]
 	_list=${1:-$(swports | tr '\n' ' ')}
-	_q="echo g=\$(t r 0x1c 0x05); for _p in ${_list}; do echo c\$_p=\$(t r \$_p 0x08); echo e\$_p=\$(t r \$_p 0x0a); echo m\$_p=\$(t r \$_p 0x0d); echo o\$_p=\$(t q \$_p 0x30); echo x\$_p=\$(t p \$_p 0 2); echo y\$_p=\$(t p \$_p 0 3); done; ${WALK}"
+	_q="echo g=\$(t r 0x1c 0x05); for _p in ${_list}; do echo c\$_p=\$(t r \$_p 0x08); echo e\$_p=\$(t r \$_p 0x0a); echo d\$_p=\$(t r \$_p 0x09); echo m\$_p=\$(t r \$_p 0x0d); echo o\$_p=\$(t q \$_p 0x30); echo x\$_p=\$(t p \$_p 0 2); echo y\$_p=\$(t p \$_p 0 3); done; ${WALK}"
 	ask 120 "${_q}" || return 1
 	_g=$(val g)
 	if hex4 "${_g}"; then
@@ -411,9 +417,13 @@ show() { # [<sw>]
 			[ $(( _c & 0x10 )) -eq 0 ] || _mi="ingress to $(name $(( _o & 0x1f )))"
 			[ $(( _c & 0x20 )) -eq 0 ] || _mi="${_mi}${_mi:+, }egress to $(name $(( _g & 0x1f )))"
 		fi
-		_n=$(( _e & 0xfff ))
+		_n=$(( _e & 0x3fff ))
+		_d=$(val d${_p})
 		if [ ${_n} -eq 0 ]; then
 			_li="none"
+		elif hex4 "${_d}" && [ $(( _d & 0x7f )) -ne 1 ] && [ $(( (_e >> 14) & 3 )) -ne 0 ]; then
+			# eDec not as the vendor leaves it: switch_qos.py's, given by UMSD's scale
+			_li="$(( 500000 * (_d & 0x7f) / _n )) kbit/s at layer 2 by UMSD's scale (eDec $(( _d & 0x7f )), N ${_n})"
 		elif [ $(( (_e >> 14) & 3 )) -eq 2 ]; then
 			_li="about $(awk -v n=${_n} 'BEGIN { printf "%.1f", 480 / n }') Mbit/s (N ${_n}, measured at 1 Gbit/s)"
 		elif [ $(( (_e >> 14) & 3 )) -eq 0 ]; then

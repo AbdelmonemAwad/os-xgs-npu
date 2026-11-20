@@ -161,8 +161,14 @@ install -m 0755 "${SRC}/src/opnsense/scripts/xgs/switch-jumbo.sh" "${PREFIX}/opn
 # each read before it is written and put back as found (switch.sh; its state in
 # /var/db/os-xgs-npu/switch.state).
 install -m 0755 "${SRC}/src/opnsense/scripts/xgs/switch.sh" "${PREFIX}/opnsense/scripts/xgs/switch.sh"
+# The switch's queues for the plugins that ask for them (os-trafficpriority): TCAM entries on port 0,
+# the ports' scheduling, the chip's weights and egress limits, from the settings file a plugin writes,
+# put back as found, and set again at every boot by its start hook (switch_qos.py; its state in
+# /var/db/os-xgs-npu/switch-qos.state).
+install -m 0755 "${SRC}/src/opnsense/scripts/xgs/switch_qos.py" "${PREFIX}/opnsense/scripts/xgs/switch_qos.py"
 install -d -m 0755 "${PREFIX}/etc/rc.syshook.d/start" "${PREFIX}/share/os-xgs-npu"
 install -m 0755 "${SRC}/src/etc/rc.syshook.d/start/09-xgs-switch-jumbo" "${PREFIX}/etc/rc.syshook.d/start/09-xgs-switch-jumbo"
+install -m 0755 "${SRC}/src/etc/rc.syshook.d/start/11-xgs-switch-qos" "${PREFIX}/etc/rc.syshook.d/start/11-xgs-switch-qos"
 # The host's hardware watchdog: armed at the end of every boot when the setting says so, and
 # disarmed at shutdown once the kernel follower's rebuild is over (scripts/xgs/watchdog.sh); armed
 # by this install as well, right after these hooks, below. The hook was 05-xgs-watchdog until 2026-11-06, first of

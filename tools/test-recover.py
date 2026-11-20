@@ -147,6 +147,8 @@ class Appliance(unittest.TestCase):
                 ('CON=/var/log/xgs/npu-console.log', 'CON=%s' % os.path.join(d, 'npu-console.log')),
                 ('LOCK=/var/run/xgs-recover.lock', 'LOCK=%s' % os.path.join(d, 'recover.lock')),
                 ('/var/db/os-xgs-npu/switch-jumbo.state', os.path.join(d, 'switch-jumbo.state')),
+                ('/var/db/os-xgs-npu/switch-qos.json', os.path.join(d, 'switch-qos.json')),
+                ('/var/db/os-xgs-npu/switch-qos.state', os.path.join(d, 'switch-qos.state')),
                 ('/var/run/xgs-npuep-boot', os.path.join(d, 'xgs-npuep-boot')),
                 ('/usr/local/etc/rc.syshook.d/early/07-npuep', os.path.join(d, '07-npuep')),
                 ('/usr/local/etc/rc.reload_all', os.path.join(d, 'rc.reload_all')),
@@ -225,6 +227,29 @@ class Reload(object):
         with open(os.path.join(self.dir, 'calls'), encoding='utf-8') as f:
             order = [l.split(' ', 1)[0] for l in f]
         self.assertLess(order.index('rc.reload_all'), order.index('ids-ports.sh'))
+
+    # The switch's queues a plugin asked for (switch_qos.py): the coprocessor's boot erased them with the
+    # rest of the switch's registers, so they are set again in the background after the frame limit, and
+    # only when a plugin left its settings file.
+    def test_the_switch_queues_set_again_after_the_frame_limit(self):
+        self.script(os.path.join(self.dir, 'scripts', 'xgs', 'switch_qos.py'), 'exit 0')
+        done = self.recover()
+        self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+        self.assertFalse([c for c in self.calls('daemon') if 'switch_qos.py' in c], 'set again with no settings file')
+        self.write('switch-qos.json', '{"classes": []}')
+        os.remove(os.path.join(self.dir, 'calls'))
+        done = self.recover()
+        self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+        daemons = self.calls('daemon')
+        self.assertIn('switch-jumbo.sh', daemons[-2])
+        self.assertTrue(daemons[-1].endswith('switch_qos.py reapply --boot'), daemons)
+        self.assertIn("the switch's queues are set again in the background", done.stdout)
+        # no settings file, a state left by a put-back that did not finish: begun too, to put it back
+        os.remove(os.path.join(self.dir, 'switch-qos.json'))
+        self.write('switch-qos.state', '{"items": {}}')
+        os.remove(os.path.join(self.dir, 'calls'))
+        done = self.recover()
+        self.assertTrue(self.calls('daemon')[-1].endswith('switch_qos.py reapply --boot'), self.calls('daemon'))
 
     def test_nothing_from_the_intrusion_detection_says_nothing(self):
         done = self.recover()
