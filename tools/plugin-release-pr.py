@@ -128,9 +128,22 @@ def body(repo, tag, next_version, subjects):
     return '\n'.join(lines) + '\n'
 
 
+# What gh says when it fails reaches the run's log. Until 2026-11-20 it stayed inside the exception: when a
+# repository did not let its workflows open pull requests, the log named the gh call that failed but not why
+# (os-trafficpriority, the push of its phase 2).
+REFUSED = 'not permitted to create or approve pull requests'
+
+
 def gh(*args):
-    return subprocess.run(['gh'] + list(args), capture_output=True, text=True, encoding='utf-8',
-                          errors='replace', check=True).stdout
+    out = subprocess.run(['gh'] + list(args), capture_output=True, text=True, encoding='utf-8', errors='replace')
+    if out.returncode:
+        sys.stderr.write(out.stderr)
+        if REFUSED in out.stderr:
+            print('this repository does not let its workflows open pull requests: Settings > Actions > General > '
+                  'Workflow permissions, "Allow GitHub Actions to create and approve pull requests"',
+                  file=sys.stderr)
+        raise subprocess.CalledProcessError(out.returncode, out.args, out.stdout, out.stderr)
+    return out.stdout
 
 
 def origin_tip(cwd='.'):
