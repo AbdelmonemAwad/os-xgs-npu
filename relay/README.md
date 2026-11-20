@@ -4,7 +4,7 @@ The appliances' problem reports ([docs/problem-reports.md](../docs/problem-repor
 issues through this relay: a Cloudflare Worker that files them as the project's GitHub App. GitHub
 opens an issue only for an account, and a key shipped inside the plugin would be anybody's key; so the
 appliance posts to the relay, and the relay alone holds a key, which can do one thing: write issues in
-the project's ten repositories. The owner of an appliance needs no GitHub account.
+the project's fifteen repositories. The owner of an appliance needs no GitHub account.
 
 | file | what it is |
 |---|---|
@@ -17,9 +17,10 @@ the project's ten repositories. The owner of an appliance needs no GitHub accoun
 - Accepts `POST /v1/report` with the JSON the appliance builds (`scripts/xgs/reporter.py`, `payload()`),
   at most 64 KiB, naming one of `os-xgs-npu`, `os-fanctl`, `os-frontpanel`, `os-linkhealth`,
   `os-netreport`, `os-watchdog`, `os-kernelfollow`, `os-blocklists`, `os-portguard`,
-  `os-fallbackcrypto` and, since 2026-11-17, `os-trafficpriority` - a repository for each part the
-  reporter knows. Anything else is refused with a 400 before any allowance is looked at, so a
-  refusal spends none of the relay's; since 2026-11-06
+  `os-fallbackcrypto`, since 2026-11-17 `os-trafficpriority` and, since 2026-11-20, `os-appcontrol`,
+  `os-useridentity`, `os-quota` and `os-modsecurity` - a repository for each part the reporter knows.
+  Anything else is refused with a 400 before any allowance is looked at, so a refusal spends none of
+  the relay's; since 2026-11-06
   it spends none of the appliance's either, which keeps the report and sends it again only when its
   owner presses Send. The last five were refused until 2026-11-06, though the reporter had filed for
   them since 2026-10-25 (#794).
@@ -73,11 +74,12 @@ Done once, by the owner of the project; nothing here is done by the plugin.
 1. **The GitHub App.** GitHub, Settings, Developer settings, GitHub Apps, New GitHub App. Name it, give
    it any homepage, turn the webhook off. Repository permissions: **Issues: Read and write** (Metadata:
    Read is added by itself). Nothing else. Create it, note its **App ID**, and generate a **private key**.
-2. **Install it** on the eleven repositories only (Install App, Only select repositories). The
+2. **Install it** on the fifteen repositories only (Install App, Only select repositories). The
    installation's number is the last part of the address of its settings page:
    `.../settings/installations/<number>`. An installation made before 2026-11-06 has the first five;
    the other five are added to it on that page, under Repository access, **before** a Worker that
-   takes them is deployed - and os-trafficpriority, since 2026-11-17, the same way. Until they are,
+   takes them is deployed - and os-trafficpriority, since 2026-11-17, and os-appcontrol,
+   os-useridentity, os-quota and os-modsecurity, since 2026-11-20, the same way. Until they are,
    GitHub refuses their issues and the relay answers 502, after each such report has taken its place
    in the day's allowances, the appliance's and the relay's.
 3. **The key as PKCS#8.** GitHub hands out PKCS#1; Cloudflare's crypto reads PKCS#8:

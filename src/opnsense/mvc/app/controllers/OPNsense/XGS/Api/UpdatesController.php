@@ -110,9 +110,10 @@ class UpdatesController extends ApiControllerBase
     /**
      * The appliance plugins - Arabic, right-to-left, fan control, the front panel, link health, the
      * network report, since 2026-10-25 the hardware watchdog, the kernel follower, block lists, port
-     * guard and fallback crypto, and since 2026-11-17 traffic priority - each updated by its own
-     * self-update.py, which scripts/xgs/plugins.py
-     * calls: their releases are taken here, by hand, since 2026-10-20, and no longer by a daily cron.
+     * guard and fallback crypto, since 2026-11-17 traffic priority, and since 2026-11-20 application
+     * control, user identity, quotas and the web application firewall - each updated by its own
+     * self-update.py, which scripts/xgs/plugins.py calls: their releases are taken here, by hand, since
+     * 2026-10-20, and no longer by a daily cron.
      */
     public function pluginsAction()
     {
