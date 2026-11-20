@@ -374,7 +374,7 @@ const OWNER = "AbdelmonemAwad";
 const CLONED = ["os-xgs-npu", "xgs-image-builder", "os-fanctl", "os-frontpanel", "os-linkhealth", "os-netreport",
   "os-theme-xgs", "opnsense-arabic", "opnsense-rtl",
   "os-watchdog", "os-kernelfollow", "os-blocklists", "os-portguard", "os-fallbackcrypto",
-  "os-trafficpriority"];
+  "os-trafficpriority", "os-appcontrol", "os-useridentity", "os-quota", "os-modsecurity"];
 const BUILDER = "xgs-image-builder";
 const COUNTERS_TTL = 300;
 
@@ -936,6 +936,7 @@ async function notices(env) {
 const MIRRORED = new Set(["os-xgs-npu", "opnsense-arabic", "opnsense-rtl", "os-fanctl", "os-frontpanel",
   "os-linkhealth", "os-netreport", "os-theme-xgs",
   "os-watchdog", "os-kernelfollow", "os-blocklists", "os-portguard", "os-fallbackcrypto", "os-trafficpriority",
+  "os-appcontrol", "os-useridentity", "os-quota", "os-modsecurity",
   // its releases are the ready images the image builder's page offers
   "xgs-image-builder"]);
 const MIRROR_TTL = 120;

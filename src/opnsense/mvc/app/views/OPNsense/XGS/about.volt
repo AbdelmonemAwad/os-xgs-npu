@@ -120,6 +120,10 @@
                     <a href="https://github.com/AbdelmonemAwad/os-portguard" target="_blank" rel="noopener noreferrer">os-portguard</a> &middot;
                     <a href="https://github.com/AbdelmonemAwad/os-fallbackcrypto" target="_blank" rel="noopener noreferrer">os-fallbackcrypto</a> &middot;
                     <a href="https://github.com/AbdelmonemAwad/os-trafficpriority" target="_blank" rel="noopener noreferrer">os-trafficpriority</a> &middot;
+                    <a href="https://github.com/AbdelmonemAwad/os-appcontrol" target="_blank" rel="noopener noreferrer">os-appcontrol</a> &middot;
+                    <a href="https://github.com/AbdelmonemAwad/os-useridentity" target="_blank" rel="noopener noreferrer">os-useridentity</a> &middot;
+                    <a href="https://github.com/AbdelmonemAwad/os-quota" target="_blank" rel="noopener noreferrer">os-quota</a> &middot;
+                    <a href="https://github.com/AbdelmonemAwad/os-modsecurity" target="_blank" rel="noopener noreferrer">os-modsecurity</a> &middot;
                     <a href="https://github.com/AbdelmonemAwad/os-theme-xgs" target="_blank" rel="noopener noreferrer">os-theme-xgs</a></td></tr>
             </tbody>
         </table>

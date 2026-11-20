@@ -40,7 +40,7 @@ const OWNER = 'AbdelmonemAwad';
 // The repositories worker.js files in (REPOS there), so the App is installed on each of them.
 export const REPOS = ['os-xgs-npu', 'os-fanctl', 'os-frontpanel', 'os-linkhealth', 'os-netreport',
     'os-watchdog', 'os-kernelfollow', 'os-blocklists', 'os-portguard', 'os-fallbackcrypto',
-    'os-trafficpriority'];
+    'os-trafficpriority', 'os-appcontrol', 'os-useridentity', 'os-quota', 'os-modsecurity'];
 const RELAY = 'https://reports.npuforge.org/';
 const KV_TITLE = 'os-xgs-npu-report-relay-REPORTS';
 

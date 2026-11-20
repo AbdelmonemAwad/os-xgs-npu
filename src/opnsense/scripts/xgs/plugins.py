@@ -52,7 +52,7 @@ The installers restart configd and the web GUI, so the runner is detached from b
 keeps asking while the web GUI is away.
 
 THE CHECK ASKS NPUFORGE.ORG FIRST, for the reason update.py gives: three requests of GitHub's API a
-plugin, twelve plugins since 2026-11-17 (eleven from 2026-10-25, six before), sixty requests an hour from one address. Every plugin's self-update.py takes the
+plugin, sixteen plugins since 2026-11-20 (twelve from 2026-11-17, eleven from 2026-10-25, six before), sixty requests an hour from one address. Every plugin's self-update.py takes the
 API's address from SELF_UPDATE_API, so the check hands it npuforge.org's copy of the API and nothing
 of a plugin changes; when the copy cannot answer, the check is asked again of GitHub itself. A
 self-update.py that checks signatures (each plugin's releases after 2026-11-07) asks neither: it reads
@@ -146,6 +146,10 @@ PLUGINS = [
     ('os-portguard', '/usr/local/opnsense/scripts/portguard/self-update.py', 'port guard'),
     ('os-fallbackcrypto', '/usr/local/opnsense/scripts/fallbackcrypto/self-update.py', 'fallback crypto'),
     ('os-trafficpriority', '/usr/local/opnsense/scripts/trafficpriority/self-update.py', 'traffic priority'),
+    ('os-appcontrol', '/usr/local/opnsense/scripts/appcontrol/self-update.py', 'application control'),
+    ('os-useridentity', '/usr/local/opnsense/scripts/useridentity/self-update.py', 'user identity'),
+    ('os-quota', '/usr/local/opnsense/scripts/quota/self-update.py', 'quotas'),
+    ('os-modsecurity', '/usr/local/opnsense/scripts/modsecurity/self-update.py', 'the web application firewall'),
 ]
 OWNER = 'AbdelmonemAwad'
 GITHUB = 'https://api.github.com'

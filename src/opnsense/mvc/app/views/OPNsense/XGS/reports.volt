@@ -268,7 +268,7 @@
         $('#manualAct').click(function () {
             const parts = ['os-xgs-npu', 'os-fanctl', 'os-frontpanel', 'os-linkhealth', 'os-netreport',
                 'os-watchdog', 'os-kernelfollow', 'os-blocklists', 'os-portguard', 'os-fallbackcrypto',
-                'os-trafficpriority'];
+                'os-trafficpriority', 'os-appcontrol', 'os-useridentity', 'os-quota', 'os-modsecurity'];
             const $part = $('<select class="form-control"/>');
             parts.forEach(function (name) {
                 $part.append($('<option/>').val(name).text(name));

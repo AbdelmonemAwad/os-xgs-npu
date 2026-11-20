@@ -357,10 +357,11 @@ const setup = await import('./setup.mjs');
 await test('every part the reporter knows is filed, and setup installs the App on each (#794)', async () => {
     // The reporter's parts (scripts/xgs/reporter.py, PARTS; tools/test-reporter.py holds the lists
     // together). The last five of 2026-10-25 were refused here until 2026-11-06, every report of theirs
-    // for good; os-trafficpriority joined on 2026-11-17.
-    assert.equal(setup.REPOS.length, 11);
+    // for good; os-trafficpriority joined on 2026-11-17, os-appcontrol, os-useridentity, os-quota and
+    // os-modsecurity on 2026-11-20.
+    assert.equal(setup.REPOS.length, 15);
     for (const repo of setup.REPOS) assert.equal(validate(report({repo})), null, repo);
-    assert.match(validate(report({repo: 'os-appcontrol'})), /repositories/);
+    assert.match(validate(report({repo: 'os-theme-xgs'})), /repositories/);
     const env = environment();
     const {status, data} = await post(env, report({repo: 'os-watchdog', fingerprint: '0000000000000794'}));
     assert.equal(status, 200);

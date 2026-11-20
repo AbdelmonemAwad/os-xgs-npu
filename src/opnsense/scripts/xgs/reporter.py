@@ -168,6 +168,46 @@ PARTS = [
         'kernel': None,
         'paths': ('/OPNsense/TrafficPriority/', '/scripts/trafficpriority/', '/plugins.inc.d/trafficpriority.inc'),
     },
+    {
+        'name': 'os-appcontrol',
+        'present': '/usr/local/opnsense/scripts/appcontrol',
+        # its classifier and its cut (classify.py, cut.py). Not ndpiReader, of OPNsense's package ndpi:
+        # the classifier runs it over each window's capture and reads what it prints (ndpi.py), and it
+        # logs nothing of its own. Nor suricata, OPNsense's own Intrusion Detection, which carries the
+        # Rules tab's rules among every other rule of its: its lines are not this part's alone
+        'tags': ('appcontrol',),
+        'kernel': None,
+        'paths': ('/OPNsense/AppControl/', '/scripts/appcontrol/', '/plugins.inc.d/appcontrol.inc'),
+    },
+    {
+        'name': 'os-useridentity',
+        'present': '/usr/local/opnsense/scripts/useridentity',
+        # its collector, the minute's expiry and its alerts (collector.py, expire.py, outbox.py); its
+        # firewall hook logs under OPNsense's own name, "opnsense", as traffic priority's does: those
+        # lines are not taken by program, its PHP errors and configd's lines by path
+        'tags': ('useridentity',),
+        'kernel': None,
+        'paths': ('/OPNsense/UserIdentity/', '/scripts/useridentity/', '/plugins.inc.d/useridentity.inc'),
+    },
+    {
+        'name': 'os-quota',
+        'present': '/usr/local/opnsense/scripts/quota',
+        # its minute's accounting (account.py); its block rules hook logs under OPNsense's own name,
+        # "opnsense", as traffic priority's does: those lines are not taken by program
+        'tags': ('quota',),
+        'kernel': None,
+        'paths': ('/OPNsense/Quota/', '/scripts/quota/', '/plugins.inc.d/quota.inc'),
+    },
+    {
+        'name': 'os-modsecurity',
+        'present': '/usr/local/opnsense/scripts/modsecurity',
+        # its scripts log nothing of their own but the update, taken by its name in the message. Apache's
+        # httpd, of the package apache24 it runs with ModSecurity, writes its errors and the audit log
+        # to files of its own (httpd.conf, through rotatelogs), not to the system log: no program here
+        'tags': (),
+        'kernel': None,
+        'paths': ('/OPNsense/ModSecurity/', '/scripts/modsecurity/', '/plugins.inc.d/modsecurity.inc'),
+    },
 ]
 
 # A driver line is a problem when it says something failed. device_printf carries no severity, so

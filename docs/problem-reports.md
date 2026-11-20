@@ -76,6 +76,10 @@ Only the parts that are installed, each one's reports going to its own repositor
 | os-portguard | `portguard` | `OPNsense/PortGuard`, `scripts/portguard` |
 | os-fallbackcrypto | `fallbackcrypto` | `OPNsense/FallbackCrypto`, `scripts/fallbackcrypto` |
 | os-trafficpriority | none of its own: its rules hook logs as `opnsense`, OPNsense's own name, so its lines are not taken by program | `OPNsense/TrafficPriority`, `scripts/trafficpriority`, `plugins.inc.d/trafficpriority.inc` |
+| os-appcontrol | `appcontrol`; not `ndpiReader`, of OPNsense's package ndpi, which its classifier runs over each window's capture and reads what it prints, nor `suricata`, OPNsense's own, which carries its Rules tab's rules among every other | `OPNsense/AppControl`, `scripts/appcontrol`, `plugins.inc.d/appcontrol.inc` |
+| os-useridentity | `useridentity`; its firewall hook logs as `opnsense`, OPNsense's own name, so those lines are not taken by program | `OPNsense/UserIdentity`, `scripts/useridentity`, `plugins.inc.d/useridentity.inc` |
+| os-quota | `quota`; its block rules hook logs as `opnsense`, OPNsense's own name, so those lines are not taken by program | `OPNsense/Quota`, `scripts/quota`, `plugins.inc.d/quota.inc` |
+| os-modsecurity | none of its own: Apache's `httpd`, which it runs, writes its errors and ModSecurity's audit log to files of its own, not to the system log | `OPNsense/ModSecurity`, `scripts/modsecurity`, `plugins.inc.d/modsecurity.inc` |
 
 | kind | found in | is a problem when |
 |---|---|---|
