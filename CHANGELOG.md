@@ -13,6 +13,64 @@ release on an appliance you can reach before you trust it with a network you dep
 
 Nothing yet.
 
+## 0.2.0-alpha.1 - 2026-11-20
+
+The first batch of the project's improvement plan, a stage: what the plan has finished so far, 30 of its 62
+phases ([issue 1166](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/1166) follows them, phase by phase).
+Another batch follows in a later release, with the plan's phases still open. In this one: the recommended
+settings in a new install, and Apply recommended for one installed before; PPPoE named; pfsync and a CARP change of
+master with connections in hardware; speed and duplex chosen on both families' sockets; the Intrusion
+Detection's inspection threads per port; phase 3's additions to XGS: Settings, a certificate import page and
+TACACS+; the host's hardware watchdog armed at install; the switch's queues for the plugins. Beside it, the
+plugins' releases of the same batch: os-netreport 1.0.8, os-blocklists 1.0.4, os-trafficpriority 1.0.1, and
+the first releases of four new plugins - os-appcontrol, os-useridentity, os-quota and os-modsecurity 1.0.0 -
+which XGS: Updates' Plugins tab, Problem Reports and About list from this release on. What each change ran on
+before its merge is in its pull request. On 2026-11-20 verify.sh passed on the second XGS 3300 and on the XGS
+136 with main at 743c45a9, this release's code but for two later changes: a workflow's message (#1203), and
+the plugin lists of the four new plugins (#1206), whose list and check ran on the second XGS 3300 before the
+release.
+
+### Fixes
+
+- Four faults the lab appliances' problem reports showed: the flows page's runs at once, the relay's reason, a port's lost link, a panic reported twice ([#1199](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1199))
+
+### Improvements and additions
+
+- npuep: the receive queue as the flow id (giu.rx_flowid, off by default) ([#1151](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1151))
+- XGS: Overview says when no connection runs in hardware ([#1152](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1152))
+- npuep: a native netmap adapter for each front port (hw.npuep.netmap, off by default) ([#1154](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1154))
+- Inspect path: no automatic flow through a port in netmap mode, and Suricata's own bypass for the inspected part ([#1156](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1156))
+- The first batch of the improvement plan: capture copies, the console by address, the fail-to-wire relay, the coprocessor gone at 50 s, link speed, and the switch chip by hand ([#1157](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1157))
+- Phase 1 of the improvement plan: the recommended settings in a new install, Apply recommended for one installed before, and the new views ([#1158](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1158))
+- Phase 2, first part: PPPoE named, pfsync told of hardware states, an XGS 3300 socket's speed and duplex, a lagg over front ports ([#1163](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1163))
+- Phase 2, second part: a lost link's connections back to the host, a lagg's destination on the XGS 136, its UDP states kept ([#1164](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1164))
+- The XGS 136's switch sockets: speed and duplex can be chosen, half duplex read and said ([#1165](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1165))
+- pfsync to a peer: a TCP connection's numbers written for its copy, and a gigabyte of room at the make ([#1167](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1167))
+- The XGS 3300 says half duplex of a negotiated link that runs half ([#1168](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1168))
+- A CARP change of master, and the coprocessor's hardware following it when XGS: Settings asks ([#1169](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1169))
+- XGS: Settings, "Inspection threads per port": netmap rings for the Intrusion Detection's ports, and each frame's receive queue as its flow id ([#1171](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1171))
+- Phase 3, packages 3.2 to 3.9: a rule's tag kept out of hardware, router advertisements from listed senders, IPsec rekey margin and IPComp, a certificate import page, service aliases, a daily PPPoE reconnect, gateway alerts, read-only privileges ([#1174](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1174))
+- Phase 3, package 3.10: TACACS+ as a server type of System: Access: Servers, through FreeBSD's own libtacplus ([#1175](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1175))
+- OPNsense 26.7.9 on the XGS 136 and the second XGS 3300: badges, compat.json, the machine pages ([#1180](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1180))
+- install.sh arms the host's hardware watchdog before the first reboot; os-watchdog's watchdogd taken over ([#1183](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1183))
+- A connection a rule sends by a gateway (route-to, reply-to) keeps that gateway in hardware ([#1184](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1184))
+- XGS: Updates: a Driver row for the kernel the next boot takes; the follower lets go of a fall-back it armed ([#1185](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1185))
+- hwdrop.py: a connection dropped by a cut handed back to the host by address once the cut is over ([#1186](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1186))
+- os-trafficpriority joins XGS: Updates, Problem Reports and About ([#1187](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1187))
+- octep, npuep: a connection taken out of hardware gives pf its last counts, with the tail from the reclaim's answer (#1189) ([#1191](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1191))
+- Advisories checked against the appliances: CVE-2026-98432 ([#1200](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1200))
+- The switch's queues for the plugins, and port 0's pause off while there are minimums ([#1201](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1201))
+- lists_cut.py: a list taken out of the watch and put back cuts what it names again ([#1202](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1202))
+- plugin-release-pr.py: gh's own words in the run's log when it fails ([#1203](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1203))
+- The plan's new plugins join XGS: Updates, Problem Reports and About: os-appcontrol, os-useridentity, os-quota and os-modsecurity ([#1206](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1206))
+
+### Documentation
+
+- Measurements: the check before 0.1.0-alpha.15.2, 2026-11-07 ([#1146](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1146))
+- Pages guide: every XGS page photographed again, in English and Arabic ([#1149](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1149))
+- Site: the pictures inside a page's folded sections are shown ([#1150](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1150))
+- Docs: the measurements of 2026-11-10 and 2026-11-11, and the pages they correct ([#1155](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1155))
+
 ## 0.1.0-alpha.15.2 - 2026-11-08
 
 The problem reporter and verify.sh. Two owners' XGS 126s reported "they agree" - their port table confirmed - from
