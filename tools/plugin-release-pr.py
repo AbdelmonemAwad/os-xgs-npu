@@ -128,9 +128,9 @@ def body(repo, tag, next_version, subjects):
     return '\n'.join(lines) + '\n'
 
 
-# What gh says when it fails reaches the run's log. Until 2026-11-20 it stayed inside the exception, and a
-# release pull request that a repository did not let its workflows open showed in the log as "exit code 1"
-# alone (os-trafficpriority, the push of its phase 2).
+# What gh says when it fails reaches the run's log. Until 2026-11-20 it stayed inside the exception: when a
+# repository did not let its workflows open pull requests, the log named the gh call that failed but not why
+# (os-trafficpriority, the push of its phase 2).
 REFUSED = 'not permitted to create or approve pull requests'
 
 

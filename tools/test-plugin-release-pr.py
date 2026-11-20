@@ -305,6 +305,40 @@ with tempfile.TemporaryDirectory() as d:
            ['left release-next as it is: it moved on origin after this read it, and the next push to main '
             'decides again']))
 
+# gh() itself, with subprocess.run stood in for gh: what gh says when it fails reaches the run's log before
+# the same exception as before, with a line naming the repository setting when the refusal is that GitHub
+# Actions may not open pull requests there (2026-11-20, os-trafficpriority's push of its phase 2).
+def gh_with(code, stdout, stderr):
+    real_run = subprocess.run
+
+    def stand_in(cmd, **kwargs):
+        return subprocess.CompletedProcess(cmd, code, stdout, stderr)
+
+    subprocess.run = stand_in
+    err = io.StringIO()
+    try:
+        with contextlib.redirect_stderr(err):
+            try:
+                return real_gh('pr', 'create', '--base', 'main'), None, err.getvalue()
+            except subprocess.CalledProcessError as e:
+                return None, (e.returncode, e.cmd[:3], e.stdout, e.stderr), err.getvalue()
+    finally:
+        subprocess.run = real_run
+
+
+REFUSAL = ('pull request create failed: GraphQL: GitHub Actions is not permitted to create or approve pull '
+           'requests (createPullRequest)\n')
+got, raised, said = gh_with(1, '', REFUSAL)
+check("gh refused: its words in the log, then the setting named, then the same exception",
+      (got, raised, said.startswith(REFUSAL), 'Allow GitHub Actions to create and approve pull requests' in said),
+      (None, (1, ['gh', 'pr', 'create'], '', REFUSAL), True, True))
+OTHER = 'GraphQL: Could not resolve to a Repository with the name x (repository)\n'
+got, raised, said = gh_with(1, '', OTHER)
+check("gh failing otherwise: its words alone in the log, and the exception", (got, raised, said),
+      (None, (1, ['gh', 'pr', 'create'], '', OTHER), OTHER))
+got, raised, said = gh_with(0, URL + '\n', '')
+check('gh answering: its output given back, nothing in the log', (got, raised, said), (URL + '\n', None, ''))
+
 # One run at a time for each plugin: with the push refused once the branch moved since a run read it,
 # two runs side by side would have the later one refused and the newer change left out.
 with open(os.path.join(os.path.dirname(here), '.github', 'workflows', 'plugin-release-pr.yml'),
