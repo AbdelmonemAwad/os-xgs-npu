@@ -17,7 +17,8 @@ sweep, measured in docs/measurements/lists-cut-2026-10-19.md.
     lists_cut.py --status   print the last run's record
 
 The first run for a list takes everything in it as new, so turning the watch on cuts what the list
-already names.
+already names. A list no longer watched loses its record at the next run - XGS: Settings's apply runs
+this as well - so watching it again is a first run too.
 
 FLOOD CUT (XGS: Settings, "Cut floods by the firewall's own limits", general.flood_cut, on unless
 turned off). A rule with "Max new connections" puts a source that passes it in a pf table -
@@ -194,12 +195,39 @@ def snapshot_path(name):
     return os.path.join(STATE_DIR, re.sub(r'[^A-Za-z0-9_.-]', '_', name) + '.json')
 
 
+def forget_unwatched(names):
+    """Drop the record of every list not watched now, so that watching it again is a first run.
+
+    A record kept through a pause compared the list with what it held before the pause: an address
+    it held then and holds again was not new, and its connections were never cut - however it had
+    come and gone meanwhile (found 2026-11-20: os-quota's quota_over taken out of the cut list and
+    put back, its blocked host kept its open connections)."""
+    keep = {os.path.basename(snapshot_path(n)) for n in names} | {os.path.basename(STATUS)}
+    gone = []
+    try:
+        files = sorted(os.listdir(STATE_DIR))
+    except OSError:
+        return gone
+    for f in files:
+        if f.endswith('.json') and f not in keep:
+            try:
+                os.remove(os.path.join(STATE_DIR, f))
+            except OSError:
+                continue
+            gone.append(f[:-len('.json')])
+            log(f"{f[:-len('.json')]}: no longer watched - its record dropped, so watching it again cuts all it names then")
+    return gone
+
+
 def run():
     os.makedirs(STATE_DIR, exist_ok=True)
     status = load(STATUS, {})
     lists = watched_lists()
     floods = [t for t in flood_tables() if t not in lists]
     summary = {'lists': {}, 'cut': 0, 'run': int(time.time()), 'watched': lists, 'flood': floods}
+    forgotten = forget_unwatched(lists + floods)
+    if forgotten:
+        summary['forgotten'] = forgotten
     added, current = {}, {}
     for name in lists + floods:
         now = table_entries(name)
