@@ -87,6 +87,34 @@ with tempfile.TemporaryDirectory() as work:
         ss_fails.clear()
         lc.run()
         check('the next run looks at the new entry and cuts its connection', killed, [st[1][0]])
+
+        # a list taken out of the watch and put back: its record goes while it is out, so the run that
+        # watches it again is a first run and cuts what it names then (until 2026-11-20 the old record
+        # stayed, and an address it held before and after the pause kept its connections)
+        flood_tables, lc.flood_tables = lc.flood_tables, lambda path=None: ['virusprot']
+        tables = {'blocked': {'203.0.113.7/32'}, 'virusprot': set()}
+        lc.table_entries = lambda name: tables[name]
+        killed.clear()
+        lc.run()
+        check('watched, the same entry again: not new, nothing cut', killed, [])
+        check('the flood table has a record of its own', os.path.exists(lc.snapshot_path('virusprot')), True)
+        lc.watched_lists = lambda path=None: []
+        out = lc.run()
+        check('out of the watch: its record dropped, and the run says so',
+              (os.path.exists(lc.snapshot_path('blocked')), out.get('forgotten')), (False, ['blocked']))
+        check('the flood table, still watched, keeps its record', os.path.exists(lc.snapshot_path('virusprot')), True)
+        check('the run\'s own record is never taken for a list\'s', os.path.exists(lc.STATUS), True)
+        check('the drop is in the log', any('blocked: no longer watched' in s for s in said), True)
+        lc.watched_lists = lambda path=None: ['blocked']
+        out = lc.run()
+        check('watched again: a first run - the entry new, its connection cut',
+              (out['lists']['blocked']['added'], killed), (1, [st[1][0]]))
+        check('and nothing dropped this time', 'forgotten' in out, False)
+        lc.flood_tables = lambda path=None: []
+        out = lc.run()
+        check('the flood cut turned off: its table\'s record dropped too',
+              (os.path.exists(lc.snapshot_path('virusprot')), out.get('forgotten')), (False, ['virusprot']))
+        lc.flood_tables = flood_tables
     finally:
         lc.subprocess.run = real_run
 
