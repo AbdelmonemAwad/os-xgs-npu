@@ -61,6 +61,19 @@ jobs:
           python3 -m venv .venv
           .venv/bin/pip install --quiet -r website/requirements.txt
 
+      - name: The badges' fresh copy, or the last good one (website/test-badges.py)
+        run: .venv/bin/python website/test-badges.py
+
+      # The badges' copies, kept from build to build: when img.shields.io does not answer, the last
+      # good copy is used with a note instead of failing the build (#1147). A key of its own each run,
+      # so every build saves what it fetched; the newest one is restored.
+      - name: The badges' last good copies
+        uses: actions/cache@v6
+        with:
+          path: website/.build/badges
+          key: site-badges-${{ github.run_id }}
+          restore-keys: site-badges-
+
       - name: Build, every warning fatal
         env:
           GITHUB_TOKEN: ${{ github.token }}     # the compatibility reports, read from the issues
