@@ -256,8 +256,6 @@ fi
 # since the last boot is in /boot/loader.conf only from the boot after (issue 669).
 SET=$(/bin/sh /usr/local/opnsense/scripts/xgs/tunables-kenv.sh hw.npuep. 2>/dev/null | /usr/bin/tr '\n' ' ')
 if [ -n "${SET}" ]; then
-    # On the console as well: this runs before syslog does, and a logger line here is lost.
-    echo "npuep: taken from the configuration for this load, not yet in the loader's: ${SET% }"
     log "taken from the configuration for this load, not yet in the loader's: ${SET% }"
 fi
 

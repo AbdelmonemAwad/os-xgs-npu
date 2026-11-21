@@ -429,6 +429,14 @@
                 <MinimumValue>0</MinimumValue>
                 <MaximumValue>1000000</MaximumValue>
             </ecc_alert>
+            <!-- NPUMGMT, the management link's interface (#1072, since 2026-11-21): what
+                 scripts/npuctl/mgmt-link.sh last saw of it - "assigned <key>" once it assigned the link or
+                 found it assigned, "removed <when>" once an assignment it had seen was gone, and then no
+                 boot, install or recovery assigns it again. In config.xml, not beside it, so a factory
+                 reset or a restored configuration brings its own answer. No page shows or sets it. -->
+            <npumgmt type="TextField">
+                <Required>N</Required>
+            </npumgmt>
         </general>
         <!--
             Problem reports (scripts/xgs/reporter.py, docs/problem-reports.md): what goes wrong on

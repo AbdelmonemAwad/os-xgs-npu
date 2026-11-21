@@ -151,7 +151,7 @@ class Early(unittest.TestCase):
         open(self.calls, 'w').close()
         # what the stand-in configuration carries for the link: the line `show` prints, or no file
         self.config = os.path.join(self.dir, 'assigned')
-        # what the script last saw of NPUMGMT (THE OWNER'S CHOICE KEPT, #1072)
+        # what the script last saw of NPUMGMT (THE OWNER'S CHOICE KEPT, #1072): config.xml's, here a file
         self.state = os.path.join(self.dir, 'npumgmt.state')
 
     def tearDown(self):
@@ -169,7 +169,10 @@ class Early(unittest.TestCase):
         stand-in mgmt-link.php's answer to each, in place of reading and writing its file."""
         show = show or '[ -f "%s" ] && cat "%s" || echo none' % (self.config, self.config)
         assign = assign or 'echo "opt15 NPUMGMT $3/$4" > "%s"; echo opt15' % self.config
-        php = self.stub('php', 'case "$2" in\nshow) %s ;;\nassign) %s ;;\nesac' % (show, assign))
+        state = '[ -f "%s" ] && cat "%s" || echo none' % (self.state, self.state)
+        mark = 'shift 2; echo "$*" > "%s"' % self.state
+        php = self.stub('php', 'case "$2" in\nshow) %s ;;\nassign) %s ;;\nstate) %s ;;\nmark) %s ;;\nesac'
+                        % (show, assign, state, mark))
         stubs = {'/usr/local/opnsense/scripts/xgs/board.sh': self.stub('board', 'echo "%s"' % board),
                  '/usr/bin/logger': self.stub('logger', 'exit 0'),
                  '/sbin/ifconfig': self.stub('ifconfig', 'exit %d' % (0 if link else 1)),
@@ -182,7 +185,7 @@ class Early(unittest.TestCase):
         script = os.path.join(self.dir, 'mgmt-link.sh')
         with open(script, 'w', encoding='utf-8', newline='\n') as f:
             f.write(text)
-        env = dict(os.environ, PHP=php, CONSOLE='/dev/null', STATE=self.state)
+        env = dict(os.environ, PHP=php, CONSOLE='/dev/null')
         done = subprocess.run(['/bin/sh', script, 'early'], env=env, capture_output=True, text=True,
                               timeout=60)
         with open(self.calls) as f:
@@ -192,7 +195,9 @@ class Early(unittest.TestCase):
 
     @staticmethod
     def of(calls, name):
-        return [c for c in calls if c.split()[0] == name]
+        # the record's own state and mark calls are not counted where a test counts the assignment's
+        return [c for c in calls if c.split()[0] == name and not (name == 'php' and len(c.split()) > 2
+                                                                    and c.split()[2] in ('state', 'mark'))]
 
     def test_a_link_with_no_assignment_is_assigned_and_nothing_else_is_done(self):
         done, calls = self.run_early()
@@ -249,16 +254,30 @@ class Early(unittest.TestCase):
         self.assertEqual(done.stdout, '')
         self.assertTrue(self.read_state().startswith('removed '))
 
-    def test_an_owner_who_assigns_it_again_has_it_back(self):
+    def test_an_owner_who_assigns_it_again_has_it_back_as_this_makes_it(self):
+        # Interfaces: Assignments adds it disabled and without an address: made right once, and said
         with open(self.state, 'w', newline='\n') as f:
             f.write('removed 2026-11-21 12:00 UTC\n')
         with open(self.config, 'w', newline='\n') as f:
-            f.write('opt15 NPUMGMT 169.254.254.1/30\n')
+            f.write('opt15 OPT15 /\n')
         done, calls = self.run_early()
         self.assertEqual(done.returncode, 0, done.stderr)
-        self.assertEqual(self.of(calls, 'php'), [SHOW])
+        php = [c for c in self.of(calls, 'php') if ' state' not in c and ' mark ' not in c]
+        self.assertEqual(php, [SHOW, WRITE])
         self.assertEqual(self.read_state(), 'assigned opt15')
+        self.assertIn('assigned again by its owner', done.stdout)
+        done, calls = self.run_early()
+        php = [c for c in self.of(calls, 'php') if ' state' not in c and ' mark ' not in c]
+        self.assertEqual(php, [SHOW])
         self.assertEqual(done.stdout, '')
+
+    def test_a_removal_holds_when_the_assignment_cannot_be_read(self):
+        with open(self.state, 'w', newline='\n') as f:
+            f.write('removed 2026-11-21 12:00 UTC\n')
+        done, calls = self.run_early(show='echo "PHP Fatal error" >&2; exit 255')
+        self.assertEqual(done.returncode, 0, done.stderr)
+        self.assertNotIn(WRITE, self.of(calls, 'php'))
+        self.assertTrue(self.read_state().startswith('removed '))
 
     def test_a_boot_without_the_link_reads_and_writes_nothing(self):
         done, calls = self.run_early(link=False)

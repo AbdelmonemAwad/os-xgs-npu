@@ -27,6 +27,7 @@ import base64
 import io
 import json
 import os
+import re
 import subprocess
 import sys
 import tarfile
@@ -98,6 +99,9 @@ def our_log_lines(limit=3000):
 
 
 EARLY_TAGS = ('npuctl:', 'npuep:', 'octep:', 'xgs-assign:', 'mgmt-link:')
+# OPNsense stamps each line of the message buffer with the seconds since boot, "[8] npuctl: ..."
+# (kern.msgbuf_show_timestamp); a tag is read after it
+STAMP = re.compile(r'^\[[0-9.]+\] ')
 EARLY_FILES = ('/var/log/octep-bringup.log', '/var/log/xgs-assign.log')
 
 
@@ -108,8 +112,14 @@ def early_boot(limit=400):
     30-xgs-assign write, their last lines."""
     out = ["== the early hooks' lines of this boot, from the console (dmesg -a)\n"]
     boot = command(['/sbin/dmesg', '-a']).split('---<<BOOT>>---')[-1]
-    lines = [line + '\n' for line in boot.splitlines() if line.startswith(EARLY_TAGS)]
-    out += lines[-limit:] or ['[none in this boot]\n']
+    lines = [line + '\n' for line in boot.splitlines() if STAMP.sub('', line).startswith(EARLY_TAGS)]
+    if lines:
+        out += lines[-limit:]
+    elif 'Copyright (c) 1992-' not in boot:
+        # a box up long enough has its message buffer past this boot's start, hooks and all
+        out.append('[the message buffer no longer holds the start of this boot]\n')
+    else:
+        out.append('[none in this boot]\n')
     for name in EARLY_FILES:
         out.append('\n== %s, its last %d lines\n' % (name, limit // 4))
         try:
