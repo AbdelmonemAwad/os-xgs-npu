@@ -1174,9 +1174,17 @@ def from_driver():
             'summary': 'The board has a coprocessor and its driver is not attached: the module did not '
                        'load, or declined to attach.',
             # this boot's lines alone: the message buffer outlives a reboot, and until 2026-11-06 a
-            # driver that attached in the boot before could stand as evidence for one that did not
-            'evidence': ([line for line in run(['/sbin/dmesg']).split('---<<BOOT>>---')[-1].splitlines()
-                          if re.search(r'octep|npuep|KLD', line)][-(EVIDENCE_LINES - BUILD_LOG_LINES - 4):]
+            # driver that attached in the boot before could stand as evidence for one that did not.
+            # dmesg -a, not dmesg: the early boot hooks decide whether the module loads, and what they
+            # say is on the console alone, before syslog-ng runs - npuctl's, 07-npuep's, 08-octep's
+            # (#1045, since 2026-11-21)
+            # Only this family's: its unit's kernel lines, the kernel linker's, and what its own early
+            # hooks said - not rc.syshook's ">>> Invoking" lines, nor the other family's hook saying it
+            # has no endpoint here, which would push the kernel's own lines out.
+            'evidence': ([line for line in run(['/sbin/dmesg', '-a']).split('---<<BOOT>>---')[-1].splitlines()
+                          if '>>> Invoking' not in line and re.search(
+                              r'KLD|\b%s0: |(^|\] )(npuctl|%s): ' % ((node.split('.')[1],) * 2), line)]
+                         [-(EVIDENCE_LINES - BUILD_LOG_LINES - 4):]
                          + module_state(node.split('.')[1])),
             'signature': 'driver absent ' + family,
             # one occurrence a boot at most: each boot loads the driver again (remember())

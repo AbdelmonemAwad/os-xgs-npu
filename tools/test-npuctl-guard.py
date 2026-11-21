@@ -58,8 +58,13 @@ class ResetGuard(unittest.TestCase):
                      TEST_PCI=pci, TEST_LOG=str(self.log)), timeout=5)
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(result.stderr, '')
-        self.assertIn(result.stdout, ('', 'guard-accepted\n'))
-        return result.stdout == 'guard-accepted\n'
+        # What a guard decides is on the console as well as in the log, the same words (#1045): the
+        # hook runs before syslog-ng, and the console's lines stay in the message buffer.
+        lines = result.stdout.splitlines()
+        said = [line for line in lines if line != 'guard-accepted']
+        self.assertTrue(all(line.startswith('npuctl: ') for line in said), result.stdout)
+        self.assertEqual([line[len('npuctl: '):] for line in said], self.logged().splitlines())
+        return lines[-1:] == ['guard-accepted']
 
     def logged(self):
         return self.log.read_text()

@@ -44,6 +44,11 @@
 : ${BOARDSH:=/usr/local/opnsense/scripts/xgs/board.sh}
 
 log() { /usr/bin/logger -t npuctl -p daemon.notice "$1"; }
+# What this hook decides, on the console as well as to the logger: it runs before syslog-ng, and its
+# logger lines reach no log (#1045), so a pulse that failed left nothing but missing ports, and a board
+# it leaves alone said so nowhere until 2026-11-21. The console's lines stay in the kernel's message
+# buffer (dmesg -a), which the support bundle and the problem reports read.
+say() { log "$1"; echo "npuctl: $1"; }
 
 # ONLY ON AN ARMADA BOARD, decided from the board's own assembly number before anything is loaded or
 # opened. Every guard below this one decides by elimination, and the one that matters most - "is there
@@ -65,11 +70,11 @@ case "${board}" in
 "201 armada"|"201 armada rnd"|"208 armada"|"208 armada rnd")
 	;;
 "200 armada"*|"224 armada"*)
-	log "board '${board}': its reset values have run at no boot yet; the coprocessor is left as power-on left it (#1047)"
+	say "board '${board}': its reset values have run at no boot yet; the coprocessor is left as power-on left it (#1047)"
 	exit 0
 	;;
 *)
-	log "board '${board:-unreadable}' is not an ARMADA board; its MCP2210 is left alone"
+	say "board '${board:-unreadable}' is not an ARMADA board; its MCP2210 is left alone"
 	exit 0
 	;;
 esac
@@ -84,7 +89,7 @@ esac
 # copy an older version of it already did.
 if /usr/sbin/pciconf -l 2>/dev/null |
     grep -qE 'chip=0xa300177d|vendor=0x177d[[:space:]]+device=0xa300'; then
-    log "OCTEON TX appliance - its MCP2210 reaches the coprocessor's boot flash, not an NPU reset line; nothing to do"
+    say "OCTEON TX appliance - its MCP2210 reaches the coprocessor's boot flash, not an NPU reset line; nothing to do"
     exit 0
 fi
 
@@ -94,9 +99,6 @@ if ! /sbin/kldstat -q -m hidraw; then
     /sbin/kldload hidraw 2>/dev/null
 fi
 
-# What this hook did, on the console as well as to the logger: it runs before syslog-ng, and its
-# logger lines reach no log (#1045), so a pulse that failed left nothing but missing ports.
-say() { log "$1"; echo "npuctl: $1"; }
 
 if [ ! -f "${NPUCTL}" ]; then
     say "missing ${NPUCTL}"

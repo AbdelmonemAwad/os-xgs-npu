@@ -896,6 +896,24 @@ class ReporterTest(unittest.TestCase):
         self.assertTrue(any('KLD octep.ko' in line for line in evidence))
         self.assertFalse(any('the boot before' in line for line in evidence))
 
+    def test_driver_absent_evidence_carries_the_early_hooks_console_lines(self):
+        # The early boot hooks decide before syslog-ng runs, so what they said is on the console alone:
+        # dmesg -a has it, plain dmesg does not (#1045).
+        self.machine.dmesg = '---<<BOOT>>---\n[12] KLD octep.ko: depends on kernel - not available\n'
+        # Stamped as OPNsense stamps the message buffer; rc.syshook's own lines and the other family's
+        # hook are not evidence.
+        self.machine.console = ('---<<BOOT>>---\n[12] KLD octep.ko: depends on kernel - not available\n'
+                                ">>> Invoking early script 'npuctl'\n"
+                                "[3] npuctl: OCTEON TX appliance - its MCP2210 reaches the coprocessor's boot flash, "
+                                'not an NPU reset line; nothing to do\n'
+                                '[4] npuep: no npuep.ko, nothing to load\n'
+                                '[5] octep: no module at /boot/modules/octep.ko\n')
+        evidence = self.driver_absent()
+        self.assertTrue(any(line.startswith('[3] npuctl: OCTEON TX appliance') for line in evidence))
+        self.assertTrue(any(line.startswith('[5] octep: no module') for line in evidence))
+        self.assertTrue(any('KLD octep.ko' in line for line in evidence))
+        self.assertFalse(any('Invoking' in line or 'npuep:' in line for line in evidence))
+
     def test_a_module_installed_in_this_boot_for_another_kernel_is_reported(self):
         self.install_this_boot('FreeBSD 15.1-RELEASE-p6 stable/26.7-n284176-c962f76493b6 SMP')
         self.collect()

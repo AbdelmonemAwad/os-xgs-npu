@@ -27,6 +27,8 @@ LOG=/var/log/xgs-assign.log
 log() {
     /usr/bin/logger -t xgs-assign -p daemon.notice "$1"
     echo "$(/bin/date '+%Y-%m-%dT%H:%M:%S') $1" >> "${LOG}" 2>/dev/null
+    # and on the console, kept in the message buffer the support bundle reads (#1045)
+    echo "xgs-assign: $1"
 }
 
 [ -f "${MARK}" ] && exit 0

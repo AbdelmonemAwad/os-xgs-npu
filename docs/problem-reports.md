@@ -290,6 +290,7 @@ straight to the browser - kept nowhere on the appliance and sent nowhere.
 | `coprocessor.json` | the coprocessor as XGS: Overview last read it: its software, its boot firmware and when that was built, its chips and its flash - since 2026-10-27 |
 | `watchdog.txt`, `sysctl-driver.txt`, `kldstat.txt` | the hardware watchdog, the driver's sysctl tree and tunables, the loaded modules |
 | `dmesg.txt`, `ifconfig.txt`, `log-plugin-lines.txt` | the boot messages, the interfaces, and the plugins' own lines from the system log |
+| `early-boot.txt` | what the early boot hooks decided this boot - `06-npuctl`, `07-npuep`, `08-octep`, `30-xgs-assign`, `31-xgs-mgmt-link` - as they said it on the console, read from `dmesg -a`, with the last lines of `/var/log/octep-bringup.log` and `/var/log/xgs-assign.log`: they run before syslog-ng, so the system log has none of it - since 2026-11-21 (#1045) |
 | `subnets.json` | interfaces sharing a subnet: which one holds each shared subnet's route and which answers nothing from it ([subnets-check-2026-10-31](measurements/subnets-check-2026-10-31.md)) - since 2026-10-31 |
 | `netstat-interfaces.txt`, `switch-jumbo.txt` | each interface's packets, bytes, errors and drops both ways, and what the switch's frame limit was set to at this boot - since 2026-10-24 |
 | `coprocessor-console.txt` | the last 256 KB of what the coprocessor printed on its console, kept by its logger ([console-logger-2026-10-25](measurements/console-logger-2026-10-25.md)) - since 2026-10-25 |

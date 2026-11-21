@@ -59,6 +59,51 @@ say() { /usr/bin/logger -t npuctl -p daemon.notice "mgmt-link: $*"; echo "mgmt-l
 
 have_link() { /sbin/ifconfig "${LINK}" > /dev/null 2>&1; }
 
+# THE OWNER'S CHOICE KEPT (#1072, since 2026-11-21). NPUMGMT is assigned once; an owner who then
+# removes it in Interfaces: Assignments has it removed, and no boot, install or recovery assigns it
+# again. What this script last saw is in config.xml (`mgmt-link.php state` and `mark`): "assigned
+# <key>" once it assigned the link or found it assigned, "removed <when>" once an assignment it had
+# seen was gone - in config.xml so that a factory reset or a restored configuration brings its own
+# answer and is not taken for a removal. An owner who assigns the link again in Interfaces:
+# Assignments has it back as this script makes it - enabled, with its address - since the page adds
+# an interface disabled and without one. Until 2026-11-21 nothing was recorded, so an assignment
+# removed before then is made once more, and kept track of from then on.
+state_now() { "${PHP}" "${ASSIGN}" state 2>/dev/null || echo unreadable; }
+record() { "${PHP}" "${ASSIGN}" mark "$1" > /dev/null 2>&1 || true; }
+# 0 when its owner removed NPUMGMT; $1 is what `mgmt-link.php show` printed
+owner_removed() {
+	_st=$(state_now)
+	case "$1" in
+	[a-z]*" "*)
+		case "${_st}" in
+		removed*)
+			# assigned again by its owner: made as this script makes it, once
+			"${PHP}" "${ASSIGN}" assign "${HOST_ADDR}" "${PREFIX_LEN}" "${LINK}" > /dev/null 2>&1 || true
+			say "NPUMGMT assigned again by its owner: ${LINK} is interface ${1%% *}, enabled, ${HOST_ADDR}/${PREFIX_LEN}"
+			;;
+		esac
+		[ "${_st}" = "assigned ${1%% *}" ] || record "assigned ${1%% *}"
+		return 1
+		;;
+	none)
+		;;
+	*)
+		# `show` could not be read: a removal recorded still holds, and nothing is recorded
+		case "${_st}" in removed*) return 0 ;; esac
+		return 1
+		;;
+	esac
+	case "${_st}" in
+	removed*) return 0 ;;
+	assigned*)
+		record "removed $(/bin/date -u '+%Y-%m-%d %H:%M UTC')"
+		say "NPUMGMT, the interface of ${LINK}, was removed by its owner: it is not assigned again, and the coprocessor is reached over its console; assigning ${LINK} in Interfaces: Assignments brings it back"
+		return 0
+		;;
+	esac
+	return 1
+}
+
 # The coprocessor's console, for the two commands that tell the coprocessor something over it: the
 # host's UART at I/O port 0x3e8 as scripts/xgs/console-dev.sh finds it - /dev/cuau2 on the XGS 136 r1
 # and the XGS 3300, another unit where the chipset's own UARTs are numbered first (#601) - unless
@@ -133,12 +178,20 @@ start_link() {
 
 # The assignment, made if there is none, and its address put on the link: on the XGS 3300 the link
 # comes up after OPNsense has configured its interfaces at boot, so it is configured again once up.
+# 2 when its owner removed NPUMGMT (THE OWNER'S CHOICE KEPT): nothing assigned, nothing reconfigured.
 assign_link() {
 	[ -x "${PHP}" ] || { log "no php - cannot write the assignment"; return 1; }
-	KEYNAME=$("${PHP}" "${ASSIGN}" show "${LINK}" | /usr/bin/awk '{print $1}')
+	SHOWN=$("${PHP}" "${ASSIGN}" show "${LINK}" 2>/dev/null) || SHOWN=
+	owner_removed "${SHOWN}" && return 2
+	case "${SHOWN}" in
+	none|[a-z]*" "*) ;;
+	*) log "the assignment of ${LINK} could not be read - nothing written"; return 1 ;;
+	esac
+	KEYNAME=${SHOWN%% *}
 	if [ "${KEYNAME}" = none ] || [ -z "${KEYNAME}" ]; then
 		KEYNAME=$("${PHP}" "${ASSIGN}" assign "${HOST_ADDR}" "${PREFIX_LEN}" "${LINK}") ||
 		    { log "the assignment failed: ${KEYNAME}"; return 1; }
+		record "assigned ${KEYNAME}"
 		log "${LINK} is interface ${KEYNAME} (NPUMGMT), ${HOST_ADDR}/${PREFIX_LEN}"
 		/usr/local/sbin/configctl filter reload > /dev/null 2>&1 || true
 	fi
@@ -151,7 +204,14 @@ case "${1:-status}" in
 assign)
 	have_link || { log "no ${LINK} on this machine - nothing to assign"; exit 0; }
 	[ -x "${PHP}" ] || { log "no php - cannot write the assignment"; exit 1; }
+	SHOWN=$("${PHP}" "${ASSIGN}" show "${LINK}" 2>/dev/null) || SHOWN=
+	owner_removed "${SHOWN}" && exit 0
+	case "${SHOWN}" in
+	none|[a-z]*" "*) ;;
+	*) log "the assignment of ${LINK} could not be read - nothing written"; exit 1 ;;
+	esac
 	KEYNAME=$("${PHP}" "${ASSIGN}" assign "${HOST_ADDR}" "${PREFIX_LEN}" "${LINK}") || { log "the assignment failed: ${KEYNAME}"; exit 1; }
+	record "assigned ${KEYNAME}"
 	log "${LINK} is interface ${KEYNAME} (NPUMGMT), ${HOST_ADDR}/${PREFIX_LEN}"
 	/usr/local/sbin/configctl interface reconfigure "${KEYNAME}" > /dev/null 2>&1 || true
 	/usr/local/sbin/configctl filter reload > /dev/null 2>&1 || true
@@ -171,6 +231,7 @@ early)
 	have_link || exit 0
 	[ -x "${PHP}" ] || exit 0
 	SHOWN=$("${PHP}" "${ASSIGN}" show "${LINK}" 2>/dev/null) || SHOWN=
+	owner_removed "${SHOWN}" && exit 0
 	case "${SHOWN}" in
 	none)
 		;;
@@ -186,6 +247,7 @@ early)
 	SHOWN=$("${PHP}" "${ASSIGN}" show "${LINK}" 2>/dev/null) || SHOWN=
 	case "${SHOWN}" in
 	[a-z]*" "*)
+		record "assigned ${SHOWN%% *}"
 		say "${LINK} is interface ${SHOWN%% *} (NPUMGMT), ${HOST_ADDR}/${PREFIX_LEN}, assigned before OPNsense configures its interfaces"
 		;;
 	*)
@@ -208,8 +270,16 @@ coprocessor)
 	console_dev || exit 0
 	[ -c "${CONSOLE}" ] || { log "no ${CONSOLE} - the coprocessor cannot be told its address"; exit 0; }
 	if [ "${FAMILY}" = octeontx ]; then
-		assign_link || true
+		assign_link
+		[ $? -eq 2 ] && exit 0
 	else
+		if [ -x "${PHP}" ]; then
+			SHOWN=$("${PHP}" "${ASSIGN}" show "${LINK}" 2>/dev/null) || SHOWN=
+			if owner_removed "${SHOWN}"; then
+				log "NPUMGMT was removed by its owner: the coprocessor is not given its address over ${LINK}"
+				exit 0
+			fi
+		fi
 		/sbin/ifconfig "${LINK}" up 2>/dev/null || true
 	fi
 	# Told, then asked over the link; told again while it does not answer there, for about START_WAIT
