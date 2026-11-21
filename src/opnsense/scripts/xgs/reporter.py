@@ -338,8 +338,14 @@ IPV6 = re.compile(r'(?<![\w.])(?:[0-9A-Fa-f]{0,4}:){2,7}[0-9A-Fa-f]{0,4}(?:%[\w.
 # dmesg.txt carried them).
 SERIAL_NUMBER = re.compile(r'(?i)\b(serial number|s/n)(\s*[:=]?\s*)[\w-]{4,}')
 # The vendor's coprocessor build is a version of four parts that can read as an address -
-# 21.0.0.169 - and the appliance table names it so: the table's own words keep it.
-VENDOR_BUILD = 'vendor build '
+# 21.0.0.169 - and the appliance table names it so: the table's own words keep it, and the support
+# bundle's keys for it too (until 2026-11-22 its system.json and coprocessor.json had <ipv4> there).
+VENDOR_BUILD = re.compile(r'(?:vendor build |\bsfversion |"(?:vendor_build|sfversion)":\s*")$')
+# An OpenSSH public key on one line - its type, then base64 that starts with AAAA - and the same
+# base64 alone, as a command that looks for the key in authorized_keys quotes it. Until 2026-11-22
+# both went out whole in an XGS 87's support bundle.
+SSH_KEY = re.compile(r'\b((?:ssh|ecdsa|sk)-[\w@.-]+)\s+AAAA[A-Za-z0-9+/]+={0,3}')
+BARE_KEY = re.compile(r'(?<![A-Za-z0-9+/])AAAA[A-Za-z0-9+/]{40,}={0,2}')
 # A key's fingerprint as the boot banner prints it - "SHA256" and sixteen hex pairs for the GUI's
 # certificate, "SHA256" and base64 for an SSH host key - and the second line of pairs it runs onto.
 FINGERPRINT = re.compile(r'\b(SHA256|SHA1|MD5)[: ]+(?:(?:[0-9A-Fa-f]{2}[ :]?){8,}|[A-Za-z0-9+/=]{16,})')
@@ -402,6 +408,8 @@ class Scrubber:
         text = str(text)
         # Whole things first: an address whose domain went first would leave its local part behind.
         text = KEY_BLOCK.sub('<key withheld>', text)
+        text = SSH_KEY.sub(lambda m: m.group(1) + ' <key withheld>', text)
+        text = BARE_KEY.sub('<key withheld>', text)
         text = EMAIL.sub('<e-mail>', text)
         for word in self.words:
             text = re.sub(re.escape(word), '<withheld>', text, flags=re.IGNORECASE)
@@ -412,7 +420,7 @@ class Scrubber:
         text = HEX_PAIRS.sub('<withheld>', text)
         text = SERIAL_NUMBER.sub(lambda m: m.group(1) + m.group(2) + '<withheld>', text)
         text = IPV6.sub(lambda m: address(m, '<ipv6>'), text)
-        text = IPV4.sub(lambda m: m.group(0) if m.string[:m.start()].endswith(VENDOR_BUILD)
+        text = IPV4.sub(lambda m: m.group(0) if VENDOR_BUILD.search(m.string, max(0, m.start() - 24), m.start())
                         else address(m, '<ipv4>'), text)
         text = LONG_HEX.sub('<hex>', text)
         return text
@@ -1308,7 +1316,8 @@ def from_untested_model():
     # report keeps reaching the issue it reached before
     unread = {'no_answer': 'the coprocessor did not answer',
               'no_table': 'the coprocessor answered, but without its list of ports',
-              'empty_table': "the coprocessor answered, and its list of ports was empty"}
+              'empty_table': "the coprocessor answered, and its list of ports was empty",
+              'cut_short': 'the coprocessor answered, but its answer was cut short'}
     said['unread'] = unread.get(result.get('why'), 'the coprocessor could not be read')
     return [{
         'part': 'os-xgs-npu', 'kind': 'untested-model',

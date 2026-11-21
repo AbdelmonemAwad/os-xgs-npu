@@ -287,13 +287,19 @@ straight to the browser - kept nowhere on the appliance and sent nowhere.
 | `versions.txt` | OPNsense's version, the kernel, the plugin's installed record |
 | `system.json` | the same machine description every report carries (names and versions, no serials) |
 | `status.json`, `ports.json`, `transceivers.json`, `ipsec.json`, `updates.json`, `reports.json` | what the coprocessor's pages read, as they read it |
+| `README.txt` | when the bundle was made, and what the cleaner replaced |
 | `coprocessor.json` | the coprocessor as XGS: Overview last read it: its software, its boot firmware and when that was built, its chips and its flash - since 2026-10-27 |
-| `watchdog.txt`, `sysctl-driver.txt`, `kldstat.txt` | the hardware watchdog, the driver's sysctl tree and tunables, the loaded modules |
+| `coprocessor-health.json`, `coprocessor-ecc-alert.json` | the coprocessor's own Linux as the Overview last read it - its uptime, its load, its memory and its memory's error counters - and the last memory alert, or that none is recorded - since 2026-11-15 |
+| `reset-reason.json` | what the host's chipset recorded of the last reset (above) - since 2026-10-18 |
+| `feeder.json` | the feeder watcher's record: the coprocessor's uptime and its feeder's state as last asked, and each correction made - since 2026-10-28 |
+| `watchdog.txt`, `kldstat.txt` | the hardware watchdog, the loaded modules |
+| `sysctl-driver.txt` | the running family's driver: its sysctl tree (`dev.npuep` or `dev.octep`), and its loader tunables (`hw.npuep.*` or `hw.octep.*`) as `kenv` has them - they are read at the driver's load and are no sysctl; until 2026-11-22 this asked sysctl for them and for the other family's tree, and had none of them |
 | `dmesg.txt`, `ifconfig.txt`, `log-plugin-lines.txt` | the boot messages, the interfaces, and the plugins' own lines from the system log |
 | `early-boot.txt` | what the early boot hooks decided this boot - `06-npuctl`, `07-npuep`, `08-octep`, `30-xgs-assign`, `31-xgs-mgmt-link` - as they said it on the console, read from `dmesg -a`, with the last lines of `/var/log/octep-bringup.log` and `/var/log/xgs-assign.log`: they run before syslog-ng, so the system log has none of it - since 2026-11-21 (#1045) |
 | `subnets.json` | interfaces sharing a subnet: which one holds each shared subnet's route and which answers nothing from it ([subnets-check-2026-10-31](measurements/subnets-check-2026-10-31.md)) - since 2026-10-31 |
 | `netstat-interfaces.txt`, `switch-jumbo.txt` | each interface's packets, bytes, errors and drops both ways, and what the switch's frame limit was set to at this boot - since 2026-10-24 |
 | `coprocessor-console.txt` | the last 256 KB of what the coprocessor printed on its console, kept by its logger ([console-logger-2026-10-25](measurements/console-logger-2026-10-25.md)) - since 2026-10-25 |
+| `coprocessor-log.txt` | the last 256 KB of the coprocessor's own log as it reaches this host over the management link, today's file and the day before's - since 2026-10-28 |
 | `sensors.txt` | on the XGS 3300, its sensor bank as `xgs3300-sensors` decodes it: the temperatures, the fans, the power supplies and the reset flags - since 2026-10-27 |
 
 Every file goes through the same cleaner as a report before it is written: addresses, MACs, serial

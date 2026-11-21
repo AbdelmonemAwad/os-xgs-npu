@@ -133,17 +133,31 @@
          * host's CPU on its own and the coprocessor's ports only through the coprocessor, so in their
          * bridge or in a subnet they use the host has two ways into one network and keeps one route.
          */
-        function mgmtWarning(mixed) {
+        function mgmtWarning(all) {
             const $box = $('#xgs_mgmt').empty();
-            if (!mixed || !mixed.length) {
+            const label = function (m) {
+                return m.descr ? m.descr + ' (' + m.device + ')' : m.device;
+            };
+            /* the coprocessor's management link in a bridge (scripts/xgs/subnets.py, how "link") */
+            const links = $.grep(all || [], function (m) { return m.how === 'link'; });
+            const mixed = $.grep(all || [], function (m) { return m.how !== 'link'; });
+            if (links.length) {
+                const $link = $('<div class="alert alert-danger" role="alert"/>');
+                $link.append($('<strong/>').text("{{ lang._('The management link to the coprocessor is in a bridge') }}"));
+                $link.append($('<p/>').text("{{ lang._('NPUMGMT is a link between the host and the coprocessor alone, with addresses of its own. Never put it in a bridge: the bridge carries it into another network. Take it out of the bridge in Interfaces: Devices: Bridge.') }}"));
+                const $items = $('<ul/>');
+                $.each(links, function (_, m) {
+                    $items.append($('<li/>').text(plain("{{ lang._('%s is in a bridge: %s') }}".replace('%s', label(m))
+                        .replace('%s', $.map(m.others || [], label).join(', ')))));
+                });
+                $box.append($link.append($items));
+            }
+            if (!mixed.length) {
                 return;
             }
             const $alert = $('<div class="alert alert-danger" role="alert"/>');
             $alert.append($('<strong/>').text("{{ lang._('The management port mixed with the ports of the coprocessor') }}"));
             $alert.append($('<p/>').text("{{ lang._('MGMT is a port of the host itself, not of the coprocessor. Never give it an address in a subnet the ports of the coprocessor use, and never put it in a bridge with them: the host then has two ways into one network, keeps one route for it, and one of the two answers nothing. Give MGMT a subnet of its own, such as its default 192.168.100.1/24.') }}"));
-            const label = function (m) {
-                return m.descr ? m.descr + ' (' + m.device + ')' : m.device;
-            };
             const $list = $('<ul/>');
             $.each(mixed, function (_, m) {
                 const text = m.how === 'bridge' ?

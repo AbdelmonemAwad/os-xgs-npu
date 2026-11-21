@@ -93,9 +93,16 @@ if (!filter_var($address, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4) || !ctype_digit(
 }
 
 if ($found === null) {
-    /* The first free optN, the way the assignment page picks one. */
+    /* The first free optN, the way the assignment page picks one - and named nowhere else in the
+     * configuration. A key left behind by an interface removed by hand, still a bridge's member, a
+     * group's or a rule's, would give the link that bridge, group or rule; until 2026-11-22 the first
+     * key without an interface was taken, whatever still named it (an XGS 87's support bundle had
+     * mvmgmt0 in a bridge with its WAN port; whether by this or by hand, the bundle does not say). */
+    $rest = $config;
+    unset($rest['interfaces']);
+    $named = json_encode($rest, JSON_INVALID_UTF8_SUBSTITUTE) ?: '';
     for ($n = 1; $n < 256; $n++) {
-        if (!isset($interfaces['opt' . $n])) {
+        if (!isset($interfaces['opt' . $n]) && !preg_match('/(?<![A-Za-z0-9_])opt' . $n . '(?![A-Za-z0-9_])/', $named)) {
             $found = 'opt' . $n;
             break;
         }

@@ -47,6 +47,7 @@ BOARD = '/usr/local/opnsense/scripts/xgs/board.sh'
 # On the coprocessor: its own ports as the agent lists them, and each label's board-file address.
 # "answered" first, and "no-table" with what /sys/kernel has of the agent when its list is not there,
 # so that a coprocessor that answers without the list is not taken for one that did not answer (#657).
+# And "finished" last, so that an answer cut short is not read as the whole list.
 NWA = '/sys/kernel/nwa_ports_info'
 ARMADA_READ = r'''
 echo answered
@@ -72,6 +73,7 @@ while [ $p -lt 40 ]; do
   fi
   p=$((p + 1))
 done
+echo finished
 '''
 
 
@@ -142,6 +144,12 @@ def check_armada(assembly):
         w = l.split()
         if w[:1] == ['board'] and len(w) >= 3:
             addrs[w[2]] = label_of(w[1])
+    if 'answered' in said and 'finished' not in said:
+        # An XGS 87's console, until 2026-11-22, ran the read but not npu-run.sh's end marker after it:
+        # what came was read as the whole list, and a check that compared no front port "agreed".
+        return {'verdict': 'unread', 'why': 'cut_short', 'ports': [], 'board_labels': len(addrs),
+                'lines': ['the coprocessor answered, but its answer was cut short: %s'
+                          % (reason or 'it did not say it had finished')]}
     if not soc:
         # until 2026-10-26 all three read "the coprocessor did not answer over the management link"
         missing = next((l for l in said if l.startswith('no-table')), None)

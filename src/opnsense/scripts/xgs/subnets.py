@@ -9,7 +9,8 @@ Interfaces whose IPv4 subnets overlap - for the Ports page, verify.sh and the su
                          with the route the system keeps for each subnet
     subnets.py --text    the same as lines for verify.sh; nothing when there is no overlap
     subnets.py --mgmt    the host's own ports (MGMT) mixed with the coprocessor's - in their bridge or in a
-                         subnet they use - as lines for verify.sh; nothing when MGMT is apart
+                         subnet they use - as lines for verify.sh; nothing when MGMT is apart. And the
+                         coprocessor's management link (NPUMGMT) in a bridge, which it never is
 
 WHY IT IS WORTH A WARNING. Two interfaces in one subnet share one route, and FreeBSD keeps it on one of
 them: the one whose address was there first. The other's address is up and answers nothing from that
@@ -40,6 +41,8 @@ COPROCESSOR = re.compile(r'^(oxp|npup)[0-9]+$')
 # inspector's interface, and the virtual ones. MGMT on an XGS 3300 (igb0) is what is left.
 NOT_HOST = re.compile(r'^(oxp|npup|oxips|mvmgmt|oxmgmt|bridge|vlan|lagg|lo|enc|pflog|pfsync|tun|tap|ovpn|'
                       r'wg|gif|gre|ipsec|stf|carp)')
+# The coprocessor's management link, this host's end: never bridged (docs/npuep/mvmgmt-in-opnsense.md).
+MGMT_LINK = re.compile(r'^(mvmgmt|oxmgmt)[0-9]+$')
 
 
 def run(argv):
@@ -171,7 +174,12 @@ def mgmt_mixed(groups=None, members=None, names=None, lower=None):
     911). `lower` is under()'s answer, read from the same `ifconfig -a` as the bridges when this reads
     them; a caller that gives the bridges alone gets the bridges alone. Until 2026-11-06 a VLAN or a LAGG
     over the coprocessor's ports was taken for a device of its own, and MGMT in a subnet with one, or in
-    a bridge with one, was not said."""
+    a bridge with one, was not said.
+
+    And the coprocessor's management link in any bridge (how "link"): the link is a wire to the
+    coprocessor's own Linux, with its fixed link-local pair, and a bridge carries it to a network that
+    is not its own. An XGS 87's support bundle had its WAN bridged with mvmgmt0 (2026-11-21), and
+    nothing here said it until 2026-11-22: the link is no port of the host itself."""
     if members is None:
         text = run(['/sbin/ifconfig', '-a'])
         members = bridges(text)
@@ -194,6 +202,9 @@ def mgmt_mixed(groups=None, members=None, names=None, lower=None):
     out = []
     for bridge in sorted(members):
         ports = members[bridge]
+        for dev in ports:
+            if MGMT_LINK.match(dev):
+                out.append(dict(name(dev), how='link', others=[name(bridge)]))
         if any(coprocessor_side(m) for m in ports):
             for dev in ports:
                 if not NOT_HOST.match(dev):
@@ -210,7 +221,11 @@ def mgmt_mixed(groups=None, members=None, names=None, lower=None):
 def mgmt_lines(mixed):
     lines = []
     for m in mixed:
-        what = 'is in a bridge with ports of the coprocessor' if m['how'] == 'bridge' else \
+        if m['how'] == 'link':
+            lines.append('%s is the management link to the coprocessor, and is in a bridge, which it never is: %s'
+                         % (describe(m), ', '.join(describe(o) for o in m['others'])))
+            continue
+        what ='is in a bridge with ports of the coprocessor' if m['how'] == 'bridge' else \
             'shares a subnet with ports of the coprocessor'
         lines.append('%s %s: %s' % (describe(m), what, ', '.join(describe(o) for o in m['others'])))
     return lines

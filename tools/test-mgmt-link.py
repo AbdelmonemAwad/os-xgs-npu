@@ -15,7 +15,9 @@ keeps the assignment in a file, so that a second run is the boot after.
 
     python3 tools/test-mgmt-link.py
 """
+import json
 import os
+import shutil
 import subprocess
 import tempfile
 import unittest
@@ -394,6 +396,103 @@ class Ping(unittest.TestCase):
             done, sent = self.ping(*bad)
             self.assertEqual(done.returncode, 2, bad)
             self.assertEqual(sent, [], bad)
+
+
+class Status(unittest.TestCase):
+    """mgmt-link.sh status says a bridge the link is a member of: an XGS 87's support bundle had mvmgmt0
+    in a bridge with its WAN port (2026-11-21), and nothing said so. ifconfig, ping and ssh are
+    stand-ins; nothing is sent anywhere."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.dir = self.tmp.name
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def stub(self, name, body):
+        path = os.path.join(self.dir, name)
+        with open(path, 'w', newline='\n') as f:
+            f.write('#!/bin/sh\n%s\n' % body)
+        os.chmod(path, 0o755)
+        return path
+
+    def status(self, bridge0):
+        ifconfig = self.stub('ifconfig', 'case "$1" in\n'
+                                         '-g) echo bridge0; echo bridge1 ;;\n'
+                                         'bridge0) printf "%%s\\n" %s ;;\n'
+                                         'bridge1) echo "member: npup3 flags=143<LEARNING>" ;;\n'
+                                         'esac\nexit 0' % bridge0)
+        stubs = {'/usr/local/opnsense/scripts/xgs/board.sh': self.stub('board', 'echo "201 armada"'),
+                 '/sbin/ifconfig': ifconfig,
+                 '/sbin/ping': self.stub('ping', 'exit 1')}
+        self.stub('ssh', 'exit 255')
+        with open(SCRIPT, encoding='utf-8') as f:
+            text = f.read()
+        for real, fake in stubs.items():
+            text = text.replace(real, fake)
+        script = os.path.join(self.dir, 'mgmt-link.sh')
+        with open(script, 'w', encoding='utf-8', newline='\n') as f:
+            f.write(text)
+        env = dict(os.environ, PATH=self.dir + os.pathsep + os.environ.get('PATH', ''), CONSOLE='/dev/null')
+        done = subprocess.run(['/bin/sh', script, 'status'], env=env, capture_output=True, text=True, timeout=60)
+        return [l for l in done.stdout.splitlines() if l.startswith('bridge: ')]
+
+    def test_a_bridged_link_is_said(self):
+        self.assertEqual(self.status('"member: mvmgmt0 flags=143<LEARNING>" "member: npup2 flags=143<LEARNING>"'),
+                         ['bridge: mvmgmt0 is a member of bridge0 - it is never bridged; take it out in '
+                          'Interfaces: Devices: Bridge'])
+
+    def test_a_link_in_no_bridge_is_said_too(self):
+        self.assertEqual(self.status('"member: npup2 flags=143<LEARNING>" "member: mvmgmt01 flags=143<LEARNING>"'),
+                         ['bridge: none'])
+
+
+# config.inc and util.inc for mgmt-link.php's own PHP: the configuration a JSON file of the test's,
+# written back as it is at write_config().
+CONFIG_INC = '''<?php
+$config = json_decode(file_get_contents(getenv('FAKE_CONFIG')), true);
+function config_read_array($key) { global $config; return $config[$key] ?? []; }
+function write_config($why) { global $config; file_put_contents(getenv('FAKE_CONFIG'), json_encode($config)); }
+'''
+
+
+@unittest.skipUnless(shutil.which('php'), 'php is not installed: mgmt-link.php is not run here')
+class AssignKey(unittest.TestCase):
+    """mgmt-link.php assign: the first optN that has no interface and that nothing else in the
+    configuration names. A key left behind - still a bridge's member, or a rule's interface - gave the
+    link that bridge or that rule until 2026-11-22."""
+
+    PHP_SCRIPT = os.path.join(HERE, '..', 'src', 'opnsense', 'scripts', 'npuctl', 'mgmt-link.php')
+
+    def assign(self, config):
+        with tempfile.TemporaryDirectory() as d:
+            for name, text in (('config.inc', CONFIG_INC), ('util.inc', '<?php\n')):
+                with open(os.path.join(d, name), 'w', newline='\n') as f:
+                    f.write(text)
+            path = os.path.join(d, 'config.json')
+            with open(path, 'w') as f:
+                json.dump(config, f)
+            done = subprocess.run([shutil.which('php'), '-d', 'include_path=' + d, self.PHP_SCRIPT, 'assign',
+                                   '169.254.254.1', '30', 'mvmgmt0'], env=dict(os.environ, FAKE_CONFIG=path),
+                                  capture_output=True, text=True, timeout=60)
+            with open(path) as f:
+                return done, json.load(f)
+
+    INTERFACES = {'lan': {'if': 'npup1'}, 'opt1': {'if': 'npup2', 'descr': 'WAN'}}
+
+    def test_a_key_still_named_elsewhere_is_not_taken(self):
+        done, config = self.assign({'interfaces': self.INTERFACES,
+                                    'bridges': {'bridged': [{'bridgeif': 'bridge0', 'members': 'opt1,opt2'}]},
+                                    'filter': {'rule': [{'interface': 'opt3', 'descr': 'opt10 kept'}]}})
+        self.assertEqual((done.returncode, done.stdout, done.stderr), (0, 'opt4\n', ''))
+        self.assertEqual(config['interfaces']['opt4']['if'], 'mvmgmt0')
+        self.assertNotIn('opt2', config['interfaces'])
+
+    def test_with_nothing_left_behind_the_first_free_key_as_before(self):
+        done, config = self.assign({'interfaces': self.INTERFACES, 'filter': {'rule': [{'interface': 'opt12'}]}})
+        self.assertEqual((done.returncode, done.stdout), (0, 'opt2\n'))
+        self.assertEqual(config['interfaces']['opt2']['descr'], 'NPUMGMT')
 
 
 if __name__ == '__main__':
