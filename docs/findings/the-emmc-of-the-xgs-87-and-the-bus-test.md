@@ -5,6 +5,8 @@
 [#1205](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/1205) (and
 [#1204](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/1204)). There is no XGS 87 in the lab:
 everything below about the hardware is that owner's reading, and nothing here has run on one yet.
+Two things come of it: a patch for FreeBSD's own drivers, to offer upstream, and a driver of the
+plugin's own, `fchemmc`, that reaches an XGS 87 with no new kernel.
 
 ## The fault
 
@@ -107,47 +109,139 @@ same order as before. Change by change:
 What the reset cannot do: bring back a card already left silent by a boot of the unpatched driver,
 which only a power-off brings back - a warm reboot from such a boot is not a test of the patch.
 
-The patch is meant to be offered to FreeBSD as it stands.
+The patch is meant to be offered to FreeBSD as it stands, once it has been read and has run on an
+XGS 87. Nothing has been sent.
 
-## How it reaches an XGS 87 - not as modules of their own
+## Why a driver of its own, not the patched drivers
 
-The plan was to build `mmc.ko`, `sdhci.ko` and `sdhci_pci.ko` from the patched sources for the running
-kernel, as the plugin builds its own drivers (`install/kernel-follow.sh`), and have the loader take
-them instead of `/boot/kernel`'s. That cannot work on this kernel: OPNsense 26.7's `/boot/kernel/kernel`
-has these drivers compiled in. `kldstat -v` on OPNsense 26.7 appliances - 15.1-RELEASE-p1 and -p6,
-the kernel of #1205 - lists `pci/sdhci_pci`, `sdhci_pci/mmc`, `acpi/sdhci_acpi`, `sdhci_acpi/mmc` and
-`mmc/mmcsd` among the modules of `/boot/kernel/kernel` itself. A module that declares `mmc` or `sdhci` again is
-refused by the kernel's linker as already present; the `.ko` files in `/boot/kernel` are built
-whether the kernel uses them or not.
+The first plan was to build `mmc.ko`, `sdhci.ko` and `sdhci_pci.ko` from the patched sources for the
+running kernel, as the plugin builds its own drivers (`install/kernel-follow.sh`), and have the loader
+take them instead of `/boot/kernel`'s. That cannot work on this kernel: OPNsense 26.7's
+`/boot/kernel/kernel` has these drivers compiled in. `kldstat -v` on OPNsense 26.7 appliances -
+15.1-RELEASE-p1 and -p6, the kernel of #1205 - lists `pci/sdhci_pci`, `sdhci_pci/mmc`,
+`acpi/sdhci_acpi`, `sdhci_acpi/mmc` and `mmc/mmcsd` among the modules of `/boot/kernel/kernel`
+itself. A module that declares `mmc` or `sdhci` again is refused by the kernel's linker as already
+present; the `.ko` files in `/boot/kernel` are built whether the kernel uses them or not.
 
-So the patch reaches an appliance only in a kernel built with it, or through a driver of the plugin's
-own that takes 1022:7906 before the generic match does. Which, is not decided yet; nothing of either
-is in this tree.
+What a module can do is take the controller before `sdhci_pci` does. `sdhci_pci_probe()` has no entry
+for 1022:7906 and takes it by its class alone, at `BUS_PROBE_GENERIC`. A driver that matches the id
+and returns `BUS_PROBE_DEFAULT` wins that probe, if it is there when the PCI bus is probed - loaded by
+the loader. Such a driver needs nothing the kernel does not already have: `sdhci_init_slot()`,
+`sdhci_start_slot()` and the `sdhci_generic_*` methods are the kernel's own sdhci core, which
+`sdhci_pci` is built on too, and `mmc_switch()` and `mmc_send_ext_csd()` are mmc(4)'s own. It declares
+nothing the kernel has: its modules are `pci/fchemmc` and `fchemmc/mmc`. So what the patch changes in
+`mmc.c` and `sdhci.c` - the bus test and Transfer Mode - the driver does in the front end, where a
+front end can.
+
+## The driver: contrib/fchemmc
+
+[contrib/fchemmc/fchemmc.c](../../contrib/fchemmc/fchemmc.c), BSD-licensed, adapted from FreeBSD's
+`sdhci_pci.c` with that file's copyright notice kept. It is `sdhci_pci` for one controller, and
+differs from it in these:
+
+1. Probe: 1022:7906 alone, by its id, at `BUS_PROBE_DEFAULT`, as "AMD FCH SD/eMMC Controller". Every
+   other controller is left to `sdhci_pci` as before.
+2. The bus test (`fchemmc_request()`, `fchemmc_bus_test()`). Every request of mmc(4) passes through
+   the driver's own `mmcbr_request` method. mmc(4) still runs `mmc_test_bus_width()`, which nothing
+   can tell it not to, but CMD19 never reaches the controller: the driver completes it at once,
+   without an error, and `mmc_test_bus_width()` does not look at its result. CMD14 is answered the
+   way Linux checks a width: the card is switched to 4 bits with CMD6 (`mmc_switch()`, polled with
+   CMD13 until the card is back in transfer state), EXT_CSD is read again (`mmc_send_ext_csd()`), and
+   the seventeen bytes Linux compares are compared with the copy mmc(4) read over 1 bit just before.
+   Then the card is switched back to 1 bit, as the bus test leaves it, whatever the result. Only when
+   they match does CMD14 return 0xA5 0x00 0x00 0x00, the pattern `mmc_test_bus_width()` takes for a
+   working 4-bit bus; otherwise it fails, and mmc(4) stays at 1 bit. The 1-bit copy is taken on its
+   way back from the controller - the 512-byte CMD8 read while the host is at 1 bit - and the card's
+   address from CMD7; CMD0 forgets both. These requests go through mmc(4) and back into the same
+   method, from mmc(4)'s CMD14, where mmc(4) holds no lock and may sleep. mmc(4) then sets
+   ERASE_GROUP_DEF and picks the width and the clock as it always does, now with a card that answers.
+3. Transfer Mode (`fchemmc_write_2()`): when the command register is written for a command without
+   data (no `SDHCI_CMD_DATA`), Transfer Mode is written 0 first - where a Hudson-2 SMBus (1022:780b)
+   is present, or a 1022:790b SMBus below revision 0x51 (`fchemmc_needs_clear_tm()`, read as Linux's
+   `amd_probe()` reads it). This XGS 87's is 0x4a. Tuning commands carry data, so they never come
+   there. `dev.fchemmc.0.clear_transfer_mode` says whether it is on.
+4. The reset (`fchemmc_reset()`): a full reset goes through D3 and back to D0 before the generic
+   reset, as change 7 of the patch above; the partial resets get the generic reset alone.
+5. The slot (`fchemmc_limit_slot()`): 4 bits and never 8, no DDR52, HS200, HS400 or UHS modes, no
+   1.8 V or 1.2 V signaling, and 50 MHz at most, set after `sdhci_init_slot()` has read the
+   capabilities and before the slot is started. That is how Linux runs this card: 4 bits, 50 MHz,
+   high speed. An SDHCI 2.00 host offers none of the faster modes anyway.
+6. `hw.fchemmc.disable=1`, a loader tunable, leaves the controller to `sdhci_pci` with no rebuild: in
+   `/boot/loader.conf.local`, or at the loader prompt as `set hw.fchemmc.disable=1`. And
+   `fchemmc_load="NO"` in `/boot/loader.conf.local`, which the loader reads after
+   `/boot/loader.conf.d`, keeps it from being loaded at all.
+7. The kernel it is for. The loader loads the module before any script can compare its stamp with the
+   kernel, and a module built for another kernel of the same branch loads without a complaint. So the
+   module carries the version line of the kernel it was built for (`fchemmc_kernel.h`, which its
+   Makefile writes from `FCHEMMC_KERNEL`) and does not probe on any other kernel: it prints why and
+   leaves the controller to `sdhci_pci`.
+
+`dev.fchemmc.0.bus_test` says what the bus test found: 4 when EXT_CSD read back the same over 4 bits,
+1 when it did not or could not be run, 0 before it has run.
+
+What the driver does not do that the patch does: set ERASE_GROUP_DEF before the width search. That
+order is mmc(4)'s own, in `mmc_discover_cards()`, and only a patched `mmc.c` can change it. With CMD19
+never sent, the card is no longer silent when mmc(4) sends it, after the bus test, as it always has.
+
+## How the plugin delivers it
+
+- `install/install.sh` lays the sources down in `/usr/local/share/os-xgs-npu/fchemmc` only where
+  `pciconf -l` lists a 1022:7906 controller, and takes every file of the driver away on any other
+  machine.
+- `install/kernel-follow.sh` builds `fchemmc.ko` after the module it follows (`npuep.ko` on the
+  XGS 87), against the same kernel sources and for the same kernel, at an install and at every kernel
+  the follower follows: in `/var/db/os-xgs-npu/build-fchemmc`, installed as `/boot/modules/fchemmc.ko`
+  with a stamp beside it for the follower, and `/boot/loader.conf.d/fchemmc.conf`
+  (`fchemmc_load="YES"`) written beside the module, never without one. It is not critical: the eMMC
+  holds data only. A build that fails, or sources that are not here, are said once for that kernel; the
+  next boot is not sent to `kernel.old` for it; and a boot of a kernel it was not rebuilt for leaves the
+  eMMC to `sdhci_pci` (item 7).
+- `install/uninstall.sh` removes the module, its stamp, the loader line and the build directory; the
+  sources go with `/usr/local/share/os-xgs-npu`. A loaded fchemmc stays until the next reboot.
+
+Root on the eMMC is not a part of this; the eMMC is for data until a later step.
 
 ## What is tested, and what is not
 
-Tested here, by [tools/test-emmc-patch.py](../../tools/test-emmc-patch.py):
+Run here:
 
-- that the patch applies to a copy of FreeBSD 15.1's `sys/dev/mmc` and `sys/dev/sdhci` with no fuzz
-  and no offset, and comes off again leaving them as they were (where those sources are given; a
-  GitHub runner has none, and skips it);
-- `mmc_compare_bus_width()`, `mmc_set_erase_group()`, `sdhci_pci_amd_fch()` and `sdhci_pci_reset()`
-  cut out of the patch, compiled with stand-ins, every warning fatal, and run: 4 bits kept when EXT_CSD
-  reads back the same, 1 bit when it reads back changed, when the card refuses the switch, when the
-  read fails or when the host does not follow the card, 8 bits tried first, nothing sent on a 1-bit
-  host, card and host always handed back at 1 bit - and the stand-in card gives its EXT_CSD only over
-  the width it was switched to, so a version that reads EXT_CSD before the host follows is shown to
-  fail; ERASE_GROUP_DEF sent as discovery always sent it, and nothing for a card without an erase
-  group size; the quirk for SMBus revision 0x4a and for a Hudson-2, none for 0x51 and later or for no
-  known SMBus, and the capability always; and the reset: D3 and back, then the wait for card detect
-  (at most ten 10 ms steps), then the generic reset, for a full reset of 1022:7906 only;
-- `sdhci_set_transfer_mode()` cut out of the patched `sdhci.c`: 0 written before a command without data
-  with the quirk, nothing without it, and a command with data set as before;
-- that the comparison covers the bytes Linux compares; the order discovery sends its commands in, on a
-  host with the capability and on one without; and that `sdhci_if.m`'s reset method and
-  `sdhci_generic_reset()` are as the reset expects.
+- [tools/test-fchemmc.py](../../tools/test-fchemmc.py): `fchemmc.c` compiled whole with stand-ins for
+  the kernel, every warning fatal, and run. The probe takes 1022:7906 alone, at `BUS_PROBE_DEFAULT`,
+  and nothing with `hw.fchemmc.disable=1` or on a kernel whose version line is not the one it was built
+  for. CMD19 never reaches the controller. CMD14 returns the pattern only when EXT_CSD reads back the
+  same over 4 bits, and fails when any one of the seventeen bytes differs, when the card refuses the
+  switch, when the read fails, with no 1-bit copy, after a CMD0, or with the host not at 4 bits; the
+  card is switched back to 1 bit every time it was switched, and the switch time follows
+  GEN_CMD6_TIME. The 1-bit copy is taken only from a 512-byte read at 1 bit, and the request's own
+  completion is always given back. Every other command goes to the controller unchanged. Transfer Mode
+  is written 0 only before a command without data and only with the quirk; the quirk is set for
+  SMBus revisions 0x4a and 0x50 and for a Hudson-2, and not for 0x51, 0x61 or no known SMBus. A full
+  reset goes through D3 and back, waits at most ten 10 ms steps for card detect and then resets; a
+  partial reset, or a controller without power management, gets the generic reset alone. The slot is
+  started at 4 bits and 50 MHz at most, with high speed and without DDR52, HS200, HS400, UHS or 1.8 V.
+  Then the source: the notices kept from `sdhci_pci.c`, no match by class, the methods, the tunable,
+  the module declarations and the Makefile. And the wiring: `install.sh` and `uninstall.sh` read, and
+  the kernel follower run with stand-ins for make, the fetcher, logger and sysctl - `fchemmc.ko` built
+  after the module it follows against the same sources, given the kernel's version line, stamped,
+  rebuilt for a new kernel, built at a tick when only it is missing, said once and not built when the
+  sources are missing, a failed build not tried again until an install, the loader line only beside a
+  module, and nothing at all where its sources are not laid down. A fault put into the driver on
+  purpose - CMD19 sent on, or the quirk set for revision 0x51 - is caught.
+- [tools/test-emmc-patch.py](../../tools/test-emmc-patch.py), for the patch: it applies to a copy of
+  FreeBSD 15.1's `sys/dev/mmc` and `sys/dev/sdhci` with no fuzz and no offset and comes off again
+  (where those sources are given; a GitHub runner has none and skips it); `mmc_compare_bus_width()`,
+  `mmc_set_erase_group()`, `sdhci_pci_amd_fch()`, `sdhci_pci_reset()` and the patched
+  `sdhci_set_transfer_mode()` compiled with stand-ins and run; the bytes compared; and the order
+  discovery sends its commands in.
+- A compile, and only that: `contrib/fchemmc` built with `make` against the kernel sources of
+  OPNsense 26.7 (FreeBSD 15.1-RELEASE-p6) that the kernel follower had fetched on the lab's second
+  XGS 3300, with the kernel's own flags and `-Werror`: no warning and no error. Every symbol the module
+  takes from the kernel is in that kernel's symbol table. That XGS 3300 has no 1022:7906 controller;
+  the module was not loaded there or anywhere, and the build was removed.
 
-Not tested: the whole of `mmc.c`, `sdhci.c` and `sdhci_pci.c` compiled - that needs a FreeBSD 15.1
-kernel tree; the PCI names the reset uses checked against `pcireg.h`, which is not among the sources
-here; any build of them; and any run on an XGS 87, where everything above about the card and the
-reset is still to be seen.
+Not run: anything on an XGS 87. Only one can show that the loader loads the module and that it wins
+the probe; that the card answers after the bus test is answered; that EXT_CSD reads back the same over
+4 bits, so that mmc(4) runs the card at 4 bits; that the clock reaches 50 MHz in high speed; that the
+reset through D3 brings the controller back; and that mmcsd0 reads and writes. The whole of the
+patched `mmc.c`, `sdhci.c` and `sdhci_pci.c` has not been compiled either; the patch is for FreeBSD,
+not for an appliance.

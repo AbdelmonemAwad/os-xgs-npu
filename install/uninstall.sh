@@ -68,6 +68,14 @@ rm -f /boot/modules/npuep.ko /boot/modules/npuep.ko.kernel
 rm -f /boot/modules/npuep.ko.prev /boot/modules/npuep.ko.prev.kernel
 rm -f /boot/modules/octep.ko /boot/modules/octep.ko.kernel
 rm -f /boot/modules/octep.ko.prev /boot/modules/octep.ko.prev.kernel
+# The eMMC controller's driver of the XGS 87 (contrib/fchemmc), its loader line and what the follower
+# keeps of its builds. A loaded fchemmc stays until the next reboot, which gives the controller back to
+# the kernel's own sdhci_pci.
+rm -f /boot/modules/fchemmc.ko /boot/modules/fchemmc.ko.kernel /boot/modules/fchemmc.ko.new \
+    /boot/modules/fchemmc.ko.kernel.new
+rm -f /boot/loader.conf.d/fchemmc.conf
+rm -rf /var/db/os-xgs-npu/build-fchemmc
+rm -f /var/db/os-xgs-npu/build-fchemmc.log /var/db/os-xgs-npu/fchemmc-follow.said
 
 # And the fall-back to kernel.old the follower armed for them, taken back: with the modules gone nothing
 # needs the next boot to take the kernel before, and the follower that would have let it go is going too.

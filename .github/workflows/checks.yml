@@ -594,6 +594,15 @@ jobs:
       - name: The eMMC patch for the XGS 87
         run: python3 tools/test-emmc-patch.py
 
+      # The eMMC driver the plugin ships for the XGS 87 (contrib/fchemmc, #1205): fchemmc.c compiled whole
+      # with stand-ins for the kernel, every warning fatal, and run - 1022:7906 alone taken, CMD19 never
+      # sent, CMD14 answered from EXT_CSD read again over 4 bits, Transfer Mode cleared only for a command
+      # without data and only where the SMBus asks for it, D3 and back on a full reset, 4 bits and 50 MHz
+      # at most, the tunable - and how install.sh, uninstall.sh and the kernel follower build, load and
+      # remove it. A build against FreeBSD's headers is not had here. tools/test-fchemmc.py.
+      - name: The eMMC driver for the XGS 87
+        run: python3 tools/test-fchemmc.py
+
   # contrib/mvsw/mvsw is the repository's one binary: the coprocessor's switch tool, built for aarch64,
   # which no appliance can build (contrib/mvsw/README.md). It is built again here from mvsw.c with its
   # own Makefile - freestanding, no build id, stripped, so the build is reproducible - in the Ubuntu
