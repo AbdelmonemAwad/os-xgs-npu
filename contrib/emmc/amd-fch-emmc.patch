@@ -3,22 +3,28 @@ The eMMC on the AMD FCH SD/eMMC controller (PCI 1022:7906), as on the XGS 87.
 Against FreeBSD 15.1's sys/dev/mmc and sys/dev/sdhci, the sources of the
 OPNsense 26.7 kernel; applied with `patch -p1` from the directory that holds
 sys/.  docs/findings/the-emmc-of-the-xgs-87-and-the-bus-test.md says what the
-fault is, what each change is for and what has not been run yet.
+fault is, what each change is for and what has not been run yet.  A host or
+controller that does not ask for these changes sends the same commands in the
+same order as before.
 
 mmc: a host capability, MMC_CAP_NO_BUS_TEST, for a host that cannot take the
   CMD19/CMD14 bus test.  On such a host the width is found the way Linux finds
   it on every host: the card is switched with CMD6, EXT_CSD is read again over
   the new width, and the width is kept only when its read-only fields read
-  back as they did over the 1-bit bus; 1 bit otherwise.  And ERASE_GROUP_DEF
-  is set before the width is looked for, on every host, as Linux does: while
-  the bus is still the 1-bit one the card came up on.
+  back as they did over the 1-bit bus; 1 bit otherwise.  Such a host also
+  sets ERASE_GROUP_DEF before the width is looked for, as Linux does; every
+  other host sets it where it always did (now in mmc_set_erase_group(), the
+  same code moved out so both places share it).
 
 sdhci: a quirk, SDHCI_QUIRK_CLEAR_TRANSFER_MODE, off unless a front end sets
   it: Transfer Mode written 0 before a command without data, as Linux's
   SDHCI_QUIRK2_CLEAR_TRANSFERMODE_REG_BEFORE_CMD.
 
 sdhci_pci: an entry for 1022:7906 that sets the capability, and the quirk
-  where the chipset's SMBus says it needs it (Linux's amd_probe()).
+  where the chipset's SMBus says it needs it (Linux's amd_probe()); and a
+  reset method that takes 1022:7906 through D3 and back to D0 on a full reset
+  before the generic one (Linux's amd_sdhci_reset()).  Every other controller
+  gets the generic reset alone, as before.
 
 diff -u a/sys/dev/mmc/bridge.h b/sys/dev/mmc/bridge.h
 --- a/sys/dev/mmc/bridge.h
@@ -27,7 +33,7 @@ diff -u a/sys/dev/mmc/bridge.h b/sys/dev/mmc/bridge.h
  #define	MMC_CAP_DRIVER_TYPE_A	(1 << 21) /* Can do Driver Type A */
  #define	MMC_CAP_DRIVER_TYPE_C	(1 << 22) /* Can do Driver Type C */
  #define	MMC_CAP_DRIVER_TYPE_D	(1 << 23) /* Can do Driver Type D */
-+#define	MMC_CAP_NO_BUS_TEST	(1 << 24) /* Cannot take the CMD19 bus test */
++#define	MMC_CAP_NO_BUS_TEST	(1 << 24) /* No CMD19/CMD14 bus test */
  	enum mmc_card_mode mode;
  	struct mmc_ios ios;	/* Current state of the host */
  };
@@ -42,7 +48,15 @@ diff -u a/sys/dev/mmc/mmc.c b/sys/dev/mmc/mmc.c
  static void mmc_decode_cid_mmc(uint32_t *raw_cid, struct mmc_cid *cid,
      bool is_4_41p);
  static void mmc_decode_cid_sd(uint32_t *raw_cid, struct mmc_cid *cid);
-@@ -1076,6 +1077,76 @@
+@@ -210,6 +211,7 @@
+ static int mmc_set_blocklen(struct mmc_softc *sc, uint32_t len);
+ static int mmc_set_card_bus_width(struct mmc_softc *sc, struct mmc_ivars *ivar,
+     enum mmc_bus_timing timing);
++static int mmc_set_erase_group(struct mmc_softc *sc, struct mmc_ivars *ivar);
+ static int mmc_set_power_class(struct mmc_softc *sc, struct mmc_ivars *ivar);
+ static int mmc_set_relative_addr(struct mmc_softc *sc, uint16_t resp);
+ static int mmc_set_timing(struct mmc_softc *sc, struct mmc_ivars *ivar,
+@@ -1076,6 +1078,93 @@
  	return (bus_width_1);
  }
  
@@ -116,13 +130,32 @@ diff -u a/sys/dev/mmc/mmc.c b/sys/dev/mmc/mmc.c
 +	return (width);
 +}
 +
++/* Handle HC erase sector size. */
++static int
++mmc_set_erase_group(struct mmc_softc *sc, struct mmc_ivars *ivar)
++{
++	int err;
++
++	if (ivar->raw_ext_csd[EXT_CSD_ERASE_GRP_SIZE] == 0)
++		return (MMC_ERR_NONE);
++	ivar->erase_sector = 1024 * ivar->raw_ext_csd[EXT_CSD_ERASE_GRP_SIZE];
++	err = mmc_switch(sc->dev, sc->dev, ivar->rca, EXT_CSD_CMD_SET_NORMAL,
++	    EXT_CSD_ERASE_GRP_DEF, EXT_CSD_ERASE_GRP_DEF_EN, ivar->cmd6_time,
++	    true);
++	if (err != MMC_ERR_NONE)
++		device_printf(sc->dev, "Error setting erase group %d\n", err);
++	return (err);
++}
++
  static uint32_t
  mmc_get_bits(uint32_t *bits, int bit_len, int start, int size)
  {
-@@ -1805,8 +1876,40 @@
+@@ -1805,8 +1894,28 @@
  				ivar->sec_count = sec_count;
  				ivar->high_cap = 1;
  			}
+-			/* Find maximum supported bus width. */
+-			ivar->bus_width = mmc_test_bus_width(sc);
 +			/*
 +			 * Determine generic switch timeout (provided in
 +			 * units of 10 ms), defaulting to 500 ms.
@@ -132,36 +165,23 @@ diff -u a/sys/dev/mmc/mmc.c b/sys/dev/mmc/mmc.c
 +				ivar->cmd6_time = 10 *
 +				    ext_csd[EXT_CSD_GEN_CMD6_TIME];
 +			/*
-+			 * Handle HC erase sector size.  Set before the bus
-+			 * width is looked for, as Linux does, while the bus
-+			 * is still the 1-bit one the card came up on.
++			 * Find maximum supported bus width.  A host without
++			 * the bus test sets ERASE_GROUP_DEF first, as Linux
++			 * does, while the bus is still the 1-bit one the card
++			 * came up on; every other host keeps the order below.
 +			 */
-+			if (ext_csd[EXT_CSD_ERASE_GRP_SIZE] != 0) {
-+				ivar->erase_sector = 1024 *
-+				    ext_csd[EXT_CSD_ERASE_GRP_SIZE];
-+				err = mmc_switch(sc->dev, sc->dev, ivar->rca,
-+				    EXT_CSD_CMD_SET_NORMAL,
-+				    EXT_CSD_ERASE_GRP_DEF,
-+				    EXT_CSD_ERASE_GRP_DEF_EN,
-+				    ivar->cmd6_time, true);
-+				if (err != MMC_ERR_NONE) {
-+					device_printf(sc->dev,
-+					    "Error setting erase group %d\n",
-+					    err);
++			if ((host_caps & MMC_CAP_NO_BUS_TEST) != 0) {
++				err = mmc_set_erase_group(sc, ivar);
++				if (err != MMC_ERR_NONE)
 +					goto free_ivar;
-+				}
-+			}
- 			/* Find maximum supported bus width. */
--			ivar->bus_width = mmc_test_bus_width(sc);
-+			if ((host_caps & MMC_CAP_NO_BUS_TEST) != 0)
 +				ivar->bus_width = mmc_compare_bus_width(sc,
 +				    ivar);
-+			else
++			} else
 +				ivar->bus_width = mmc_test_bus_width(sc);
  			/* Get device speeds beyond normal mode. */
  			card_type = ext_csd[EXT_CSD_CARD_TYPE];
  			if ((card_type & EXT_CSD_CARD_TYPE_HS_52) != 0) {
-@@ -1864,30 +1967,6 @@
+@@ -1864,29 +1973,11 @@
  				setbit(&ivar->timings, bus_timing_mmc_hs400es);
  				setbit(&ivar->vccq_180, bus_timing_mmc_hs400es);
  			}
@@ -186,12 +206,15 @@ diff -u a/sys/dev/mmc/mmc.c b/sys/dev/mmc/mmc.c
 -					device_printf(sc->dev,
 -					    "Error setting erase group %d\n",
 -					    err);
--					goto free_ivar;
++			/* Handle HC erase sector size, unless done above. */
++			if ((host_caps & MMC_CAP_NO_BUS_TEST) == 0) {
++				err = mmc_set_erase_group(sc, ivar);
++				if (err != MMC_ERR_NONE)
+ 					goto free_ivar;
 -				}
--			}
+ 			}
  		}
  
- 		mmc_decode_cid_mmc(ivar->raw_cid, &ivar->cid, rev >= 5);
 diff -u a/sys/dev/mmc/mmcreg.h b/sys/dev/mmc/mmcreg.h
 --- a/sys/dev/mmc/mmcreg.h
 +++ b/sys/dev/mmc/mmcreg.h
@@ -286,7 +309,7 @@ diff -u a/sys/dev/sdhci/sdhci_pci.c b/sys/dev/sdhci/sdhci_pci.c
  	{ 0,		0xffff,	NULL,
  	    0 }
  };
-@@ -293,6 +302,39 @@
+@@ -293,6 +302,80 @@
  	pci_write_config(dev, SDHC_PCI_BASE_FREQ_KEY, 0x00, 1);
  }
  
@@ -298,10 +321,7 @@ diff -u a/sys/dev/sdhci/sdhci_pci.c b/sys/dev/sdhci/sdhci_pci.c
 + * whose SMBus (0x790b) is revision 0x51 or later - the Hudson-2 and the "CZ"
 + * generation - Transfer Mode is cleared before a command without data.
 + *
-+ * Linux also resets this controller through a power state change on every
-+ * full reset (amd_sdhci_reset()).  That is left out: the controller was found
-+ * idle again after this driver's own resets, and it is the card, not the
-+ * controller, that stays silent after the bus test, which is not sent now.
++ * Its full reset is sdhci_pci_reset()'s, below.
 + */
 +static uint32_t
 +sdhci_pci_amd_fch(device_t dev, u_int *quirks)
@@ -323,10 +343,54 @@ diff -u a/sys/dev/sdhci/sdhci_pci.c b/sys/dev/sdhci/sdhci_pci.c
 +	return (MMC_CAP_NO_BUS_TEST);
 +}
 +
++/*
++ * A full reset of the AMD FCH controller goes through the PCI power states
++ * first, as Linux's amd_sdhci_reset() does: 0x7906 needs a hard reset to
++ * clear all of its internal state, and its own software reset does not
++ * bring it back from a stuck command.  The power state is written to the
++ * power management register directly rather than with pci_set_powerstate():
++ * this method runs with the slot's mutex held, and pci_set_powerstate() can
++ * go through ACPI, which sleeps.  D3hot to D0 may reset the configuration
++ * space, so it is saved before and restored after; the device is in D0
++ * again by then, so pci_restore_state() does not change its power state.
++ * The card detect logic is reset with the rest, and is given up to 100 ms
++ * to settle before the generic reset.  Other controllers, and the partial
++ * resets, go to the generic reset alone, as without this method.
++ */
++static void
++sdhci_pci_reset(device_t dev, struct sdhci_slot *slot, uint8_t mask)
++{
++	uint16_t status;
++	int i, pmc;
++
++	if (pci_get_devid(dev) == AMD_FCH_SD &&
++	    (mask & SDHCI_RESET_ALL) != 0 &&
++	    pci_find_cap(dev, PCIY_PMG, &pmc) == 0) {
++		pci_save_state(dev);
++		pci_disable_busmaster(dev);
++		status = pci_read_config(dev, pmc + PCIR_POWER_STATUS, 2) &
++		    ~PCIM_PSTAT_DMASK;
++		pci_write_config(dev, pmc + PCIR_POWER_STATUS,
++		    status | PCIM_PSTAT_D3, 2);
++		DELAY(10000);
++		pci_write_config(dev, pmc + PCIR_POWER_STATUS,
++		    status | PCIM_PSTAT_D0, 2);
++		DELAY(10000);
++		pci_restore_state(dev);
++		for (i = 0; i < 10; i++) {
++			if (sdhci_pci_read_4(dev, slot, SDHCI_PRESENT_STATE) &
++			    SDHCI_CARD_STABLE)
++				break;
++			DELAY(10000);
++		}
++	}
++	sdhci_generic_reset(dev, slot, mask);
++}
++
  static int
  sdhci_pci_probe(device_t dev)
  {
-@@ -331,7 +373,7 @@
+@@ -331,7 +414,7 @@
  {
  	struct sdhci_pci_softc *sc = device_get_softc(dev);
  	struct sdhci_slot *slot;
@@ -335,7 +399,7 @@ diff -u a/sys/dev/sdhci/sdhci_pci.c b/sys/dev/sdhci/sdhci_pci.c
  	uint16_t subvendor;
  	int bar, err, rid, slots, i;
  
-@@ -347,6 +389,9 @@
+@@ -347,6 +430,9 @@
  			break;
  		}
  	}
@@ -345,7 +409,7 @@ diff -u a/sys/dev/sdhci/sdhci_pci.c b/sys/dev/sdhci/sdhci_pci.c
  	sc->quirks &= ~sdhci_quirk_clear;
  	sc->quirks |= sdhci_quirk_set;
  
-@@ -389,6 +434,7 @@
+@@ -389,6 +475,7 @@
  		}
  
  		slot->quirks = sc->quirks;
@@ -353,3 +417,11 @@ diff -u a/sys/dev/sdhci/sdhci_pci.c b/sys/dev/sdhci/sdhci_pci.c
  
  		if (sdhci_init_slot(dev, slot, i) != 0)
  			continue;
+@@ -514,6 +601,7 @@
+ 	DEVMETHOD(sdhci_write_4,	sdhci_pci_write_4),
+ 	DEVMETHOD(sdhci_write_multi_4,	sdhci_pci_write_multi_4),
+ 	DEVMETHOD(sdhci_set_uhs_timing,	sdhci_generic_set_uhs_timing),
++	DEVMETHOD(sdhci_reset,		sdhci_pci_reset),
+ 
+ 	DEVMETHOD_END
+ };
