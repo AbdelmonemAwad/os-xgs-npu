@@ -197,6 +197,40 @@ WORKER_PATHS = ('/api/', '/.well-known/security.txt')
 warnings = []
 
 
+def fetch_badge(url):
+    req = urllib.request.Request(url.replace('&amp;', '&'), headers={'User-Agent': 'npuforge.org build'})
+    with urllib.request.urlopen(req, timeout=20) as r:
+        return r.read()
+
+
+def copy_badge(url, cache, fetch=fetch_badge, sleep=time.sleep):
+    """One badge into the cache, as (path, note, warning). A fresh copy when its host answers - three
+    tries a few seconds apart, as one connection img.shields.io reset failed a build on 2026-10-27;
+    else the last good copy an earlier build left, with a note saying how old it is; and a badge never
+    copied is a warning, which --check makes fatal (#1147). An answer that is not an SVG is not
+    retried, and does not replace a good copy."""
+    path = cache / (hashlib.sha1(url.encode()).hexdigest()[:16] + '.svg')
+    failed = None
+    for attempt in range(3):
+        try:
+            body = fetch(url)
+            if b'<svg' not in body[:400]:
+                raise ValueError('not an SVG')
+            path.write_bytes(body)
+            return path, None, None
+        except ValueError as e:
+            failed = e
+            break
+        except OSError as e:
+            failed = e
+            if attempt < 2:
+                sleep(3 * (attempt + 1))
+    if path.exists():
+        when = time.strftime('%Y-%m-%d %H:%M UTC', time.gmtime(path.stat().st_mtime))
+        return path, 'the badge %s could not be refreshed (%s); its copy of %s is used' % (url, failed, when), None
+    return None, None, 'the badge %s could not be copied (%s)' % (url, failed)
+
+
 def slug(name):
     return name.lower()
 
@@ -500,47 +534,35 @@ class Site:
 
     def badges(self):
         """The badges two pages show come from img.shields.io and GitHub. A copy of each is taken at
-        build time and served from the site, so reading a page sends nobody else the reader's address."""
+        build time and served from the site, so reading a page sends nobody else the reader's address.
+        Each build takes a fresh copy; when the badge's host does not answer, the last good copy - which
+        the site's workflow keeps between builds - is used, with a note (#1147, since 2026-11-21)."""
         cache = BUILD / 'badges'
         cache.mkdir(exist_ok=True)
         out = SRC / 'assets' / 'badges'
         # The pages show them as <img src="...">, so a URL runs to the closing quote - parentheses
         # and all, which some badges' labels have.
         pattern = re.compile(r'(?<=src=")https://(?:img\.shields\.io/|github\.com/[^"]+/badge\.svg)[^"]*')
+        taken = {}          # this build's answer for each badge, so one on two pages is fetched once
         for page in SRC.rglob('*.md'):
             text = page.read_text(encoding='utf-8')
             urls = sorted(set(pattern.findall(text)))
             if not urls:
                 continue
             for url in urls:
-                name = hashlib.sha1(url.encode()).hexdigest()[:16] + '.svg'
-                if not (cache / name).exists():
-                    # Three tries, a few seconds apart: one connection img.shields.io reset failed
-                    # the whole build on 2026-10-27, every warning being fatal here.
-                    failed = None
-                    for attempt in range(3):
-                        try:
-                            req = urllib.request.Request(url.replace('&amp;', '&'), headers={'User-Agent': 'npuforge.org build'})
-                            with urllib.request.urlopen(req, timeout=20) as r:
-                                body = r.read()
-                            if b'<svg' not in body[:400]:
-                                raise ValueError('not an SVG')
-                            (cache / name).write_bytes(body)
-                            failed = None
-                            break
-                        except ValueError as e:
-                            failed = e
-                            break
-                        except OSError as e:
-                            failed = e
-                            if attempt < 2:
-                                time.sleep(3 * (attempt + 1))
-                    if failed is not None:
-                        warnings.append('the badge %s could not be copied (%s)' % (url, failed))
-                        continue
+                if url not in taken:
+                    path, note, warning = copy_badge(url, cache)
+                    if note:
+                        print('NOTE -', note)
+                    if warning:
+                        warnings.append(warning)
+                    taken[url] = path
+                path = taken[url]
+                if path is None:
+                    continue
                 out.mkdir(parents=True, exist_ok=True)
-                shutil.copyfile(cache / name, out / name)
-                text = text.replace(url, '/assets/badges/' + name)
+                shutil.copyfile(path, out / path.name)
+                text = text.replace(url, '/assets/badges/' + path.name)
             page.write_text(text, encoding='utf-8', newline='\n')
 
     def front_matter(self, kind, origin, text):
