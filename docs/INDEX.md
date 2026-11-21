@@ -5,7 +5,7 @@
 > tool. Each page's date is the line at its top; how long it may go unread is set by its kind,
 > in [REVIEW.md](REVIEW.md). Where to start reading is [README.md](README.md).
 
-**267 pages** in 10 kinds. The next one due is [How it was found](the-road.md), on 2026-12-11.
+**268 pages** in 10 kinds. The next one due is [How it was found](the-road.md), on 2026-12-11.
 
 **Jump to:** [The hub and the pages beside it](#kind-top) &middot; [The guide - what the README used to carry](#kind-guide) &middot; [The coprocessor families](#kind-families) &middot; [The appliances as objects](#kind-hardware) &middot; [The ARMADA driver](#kind-npuep) &middot; [The OCTEON TX driver](#kind-octep) &middot; [OCTEON TX provenance](#kind-octeontx) &middot; [The measurements](#kind-measurements) &middot; [The findings, dated](#kind-findings) &middot; [Images](#kind-images)
 
@@ -213,7 +213,7 @@
 | 192 | [Two hours of TLS through the XGS 136, every byte checked, 2026-10-19](measurements/xgs136-soak-2026-10-19.md) | | | 2026-10-19 | 2027-04-17 |
 | 193 | [A thousand connections at once through the XGS 3300, measured, 2026-10-19](measurements/xgs3300-many-2026-10-19.md) | | | 2026-10-20 | 2027-04-18 |
 | 194 | [XGS 3300 - what has been measured on it](measurements/xgs3300.md) | | | 2026-10-17 | 2027-04-15 |
-| | <a name="kind-findings"></a>**The findings, dated** &nbsp;<sub>`docs/findings/`</sub> | **72** | **365 days** | | |
+| | <a name="kind-findings"></a>**The findings, dated** &nbsp;<sub>`docs/findings/`</sub> | **73** | **365 days** | | |
 | 195 | [AES-CBC with an HMAC runs at two thirds of GCM's rate](findings/a-block-cipher-at-two-thirds.md) | | | 2026-10-12 | 2027-10-12 |
 | 196 | [AES-CBC with an HMAC on the ARMADA: the four hashes taken, both ways in hardware](findings/a-block-cipher-on-the-armada.md) | | | 2026-10-20 | 2027-10-20 |
 | 197 | [Every command cost ten milliseconds on the ARMADA](findings/a-command-cost-ten-milliseconds-on-the-armada.md) | | | 2026-10-18 | 2027-10-18 |
@@ -257,34 +257,35 @@
 | 235 | [The crypto path completes, and the counter that said otherwise was never the one to read](findings/the-crypto-path-completes.md) | | | 2026-10-11 | 2027-10-11 |
 | 236 | [The decrypted frame is dropped on the ARMADA: ~~the receive model is not the OCTEON TX's~~](findings/the-decrypted-frame-is-dropped-on-the-armada.md) | | | 2026-10-14 | 2027-10-14 |
 | 237 | [The driver accelerates a flow on the ARMADA: FLOW_CREATE_FP, and the microflow goes active](findings/the-driver-accelerates-a-flow-on-the-armada.md) | | | 2026-10-14 | 2027-10-14 |
-| 238 | [The engine accepts the frame, and no completion path is armed](findings/the-engine-accepts-and-nothing-returns.md) | | | 2026-10-11 | 2027-10-11 |
-| 239 | [The engine decrypts inbound ESP on the ARMADA: an accepted association, decrypting in hardware](findings/the-engine-decrypts-inbound-esp-on-the-armada.md) | | | 2026-10-14 | 2027-10-14 |
-| 240 | [The engine encrypts outbound ESP on the ARMADA: the transmit side, and the two doors to it](findings/the-engine-encrypts-outbound-esp-on-the-armada.md) | | | 2026-10-14 | 2027-10-14 |
-| 241 | [The engine hands up the decrypted frame on the ARMADA: the OCTEON TX's receive model after all](findings/the-engine-hands-up-the-decrypted-frame-on-the-armada.md) | | | 2026-10-14 | 2027-10-14 |
-| 242 | [The engine takes an association on the ARMADA: SA_ADD is accepted](findings/the-engine-takes-an-association-on-the-armada.md) | | | 2026-10-14 | 2027-10-14 |
-| 243 | [The entry first, then the gate, then the flow table: the ARMADA's chain, measured](findings/the-entry-then-the-gate-on-the-armada.md) | | | 2026-10-14 | 2027-10-14 |
-| 244 | [The flow carries the association](findings/the-flow-carries-the-association.md) | | | 2026-10-20 | 2027-10-20 |
-| 245 | [The driver's flow table on the ARMADA begins: the candidates, and the vnet that killed the sweep](findings/the-flow-table-on-the-armada-begins.md) | | | 2026-10-14 | 2027-10-14 |
-| 246 | [The frames arrive, and TCP will not have them](findings/the-frames-arrive.md) | | | 2026-10-11 | 2027-10-11 |
-| 247 | [The handle is the index plus one](findings/the-handle-is-the-index-plus-one.md) | | | 2026-10-11 | 2027-10-11 |
-| 248 | [The handlers were readable all along](findings/the-handlers-were-readable.md) | | | 2026-10-11 | 2027-10-11 |
-| 249 | [The host answers through the tunnel on the ARMADA: the receive termination](findings/the-host-answers-through-the-tunnel-on-the-armada.md) | | | 2026-10-14 | 2027-10-14 |
-| 250 | [The kernel drives the coprocessor](findings/the-kernel-drives-the-coprocessor.md) | | | 2026-10-12 | 2027-10-12 |
-| 251 | [The kernel offers an association on the ARMADA: the IPsec offload contract is wired](findings/the-kernel-offers-an-association-on-the-armada.md) | | | 2026-10-14 | 2027-10-14 |
-| 252 | [The MTU is the LIF's, and a frame is as many buffers as it needs](findings/the-mtu-is-the-lifs.md) | | | 2026-10-17 | 2027-10-17 |
-| 253 | [The outbound half was programmed without its translation](findings/the-outbound-half-was-untranslated.md) | | | 2026-10-11 | 2027-10-11 |
-| 254 | [The outer header can be IPv6](findings/the-outer-header-can-be-ipv6.md) | | | 2026-10-20 | 2027-10-20 |
-| 255 | [The resolver asked lo0 for a neighbour: `looutput: af=35 unexpected`, once a second](findings/the-resolver-asked-lo0-for-a-neighbour.md) | | | 2026-10-14 | 2027-10-14 |
-| 256 | [The revision barrier on the ARMADA: a ruleset reload discards every offloaded flow](findings/the-revision-barrier-on-the-armada.md) | | | 2026-10-14 | 2027-10-14 |
-| 257 | [The receive ring was the ceiling](findings/the-ring-was-the-ceiling.md) | | | 2026-10-11 | 2027-10-11 |
-| 258 | [The second acknowledge: measured, and made unnecessary](findings/the-second-acknowledge.md) | | | 2026-10-11 | 2027-10-11 |
-| 259 | [The sensors answer on the host's own bus, and the bus had been there all along](findings/the-sensors-answer-on-the-host-bus.md) | | | 2026-10-13 | 2027-10-13 |
-| 260 | [A microflow is inert until its state says `MF_ACTIVE`](findings/the-state-is-the-gate.md) | | | 2026-10-11 | 2027-10-11 |
-| 261 | [The sweep accelerates flows on its own on the ARMADA: flow.auto, a flow table, and a keepalive](findings/the-sweep-accelerates-on-its-own-on-the-armada.md) | | | 2026-10-14 | 2027-10-14 |
-| 262 | [A flow table, a sweep, and the panic that came with them](findings/the-sweep-and-the-panic.md) | | | 2026-10-11 | 2027-10-11 |
-| 263 | [The switch dropped IPv6's neighbour solicitations on the ARMADA](findings/the-switch-drops-multicast-on-the-armada.md) | | | 2026-10-18 | 2027-10-18 |
-| 264 | [The encrypted frames are not lost, and the trigger cannot keep up](findings/the-trigger-is-capture-limited.md) | | | 2026-10-11 | 2027-10-11 |
-| 265 | [The way back keeps up](findings/the-way-back-keeps-up.md) | | | 2026-10-12 | 2027-10-12 |
-| 266 | [Address translation lives in the connection, not the microflow](findings/translation-is-in-the-connection.md) | | | 2026-10-11 | 2027-10-11 |
+| 238 | [The eMMC of the XGS 87 and FreeBSD's bus test](findings/the-emmc-of-the-xgs-87-and-the-bus-test.md) | | | 2026-11-22 | 2027-11-22 |
+| 239 | [The engine accepts the frame, and no completion path is armed](findings/the-engine-accepts-and-nothing-returns.md) | | | 2026-10-11 | 2027-10-11 |
+| 240 | [The engine decrypts inbound ESP on the ARMADA: an accepted association, decrypting in hardware](findings/the-engine-decrypts-inbound-esp-on-the-armada.md) | | | 2026-10-14 | 2027-10-14 |
+| 241 | [The engine encrypts outbound ESP on the ARMADA: the transmit side, and the two doors to it](findings/the-engine-encrypts-outbound-esp-on-the-armada.md) | | | 2026-10-14 | 2027-10-14 |
+| 242 | [The engine hands up the decrypted frame on the ARMADA: the OCTEON TX's receive model after all](findings/the-engine-hands-up-the-decrypted-frame-on-the-armada.md) | | | 2026-10-14 | 2027-10-14 |
+| 243 | [The engine takes an association on the ARMADA: SA_ADD is accepted](findings/the-engine-takes-an-association-on-the-armada.md) | | | 2026-10-14 | 2027-10-14 |
+| 244 | [The entry first, then the gate, then the flow table: the ARMADA's chain, measured](findings/the-entry-then-the-gate-on-the-armada.md) | | | 2026-10-14 | 2027-10-14 |
+| 245 | [The flow carries the association](findings/the-flow-carries-the-association.md) | | | 2026-10-20 | 2027-10-20 |
+| 246 | [The driver's flow table on the ARMADA begins: the candidates, and the vnet that killed the sweep](findings/the-flow-table-on-the-armada-begins.md) | | | 2026-10-14 | 2027-10-14 |
+| 247 | [The frames arrive, and TCP will not have them](findings/the-frames-arrive.md) | | | 2026-10-11 | 2027-10-11 |
+| 248 | [The handle is the index plus one](findings/the-handle-is-the-index-plus-one.md) | | | 2026-10-11 | 2027-10-11 |
+| 249 | [The handlers were readable all along](findings/the-handlers-were-readable.md) | | | 2026-10-11 | 2027-10-11 |
+| 250 | [The host answers through the tunnel on the ARMADA: the receive termination](findings/the-host-answers-through-the-tunnel-on-the-armada.md) | | | 2026-10-14 | 2027-10-14 |
+| 251 | [The kernel drives the coprocessor](findings/the-kernel-drives-the-coprocessor.md) | | | 2026-10-12 | 2027-10-12 |
+| 252 | [The kernel offers an association on the ARMADA: the IPsec offload contract is wired](findings/the-kernel-offers-an-association-on-the-armada.md) | | | 2026-10-14 | 2027-10-14 |
+| 253 | [The MTU is the LIF's, and a frame is as many buffers as it needs](findings/the-mtu-is-the-lifs.md) | | | 2026-10-17 | 2027-10-17 |
+| 254 | [The outbound half was programmed without its translation](findings/the-outbound-half-was-untranslated.md) | | | 2026-10-11 | 2027-10-11 |
+| 255 | [The outer header can be IPv6](findings/the-outer-header-can-be-ipv6.md) | | | 2026-10-20 | 2027-10-20 |
+| 256 | [The resolver asked lo0 for a neighbour: `looutput: af=35 unexpected`, once a second](findings/the-resolver-asked-lo0-for-a-neighbour.md) | | | 2026-10-14 | 2027-10-14 |
+| 257 | [The revision barrier on the ARMADA: a ruleset reload discards every offloaded flow](findings/the-revision-barrier-on-the-armada.md) | | | 2026-10-14 | 2027-10-14 |
+| 258 | [The receive ring was the ceiling](findings/the-ring-was-the-ceiling.md) | | | 2026-10-11 | 2027-10-11 |
+| 259 | [The second acknowledge: measured, and made unnecessary](findings/the-second-acknowledge.md) | | | 2026-10-11 | 2027-10-11 |
+| 260 | [The sensors answer on the host's own bus, and the bus had been there all along](findings/the-sensors-answer-on-the-host-bus.md) | | | 2026-10-13 | 2027-10-13 |
+| 261 | [A microflow is inert until its state says `MF_ACTIVE`](findings/the-state-is-the-gate.md) | | | 2026-10-11 | 2027-10-11 |
+| 262 | [The sweep accelerates flows on its own on the ARMADA: flow.auto, a flow table, and a keepalive](findings/the-sweep-accelerates-on-its-own-on-the-armada.md) | | | 2026-10-14 | 2027-10-14 |
+| 263 | [A flow table, a sweep, and the panic that came with them](findings/the-sweep-and-the-panic.md) | | | 2026-10-11 | 2027-10-11 |
+| 264 | [The switch dropped IPv6's neighbour solicitations on the ARMADA](findings/the-switch-drops-multicast-on-the-armada.md) | | | 2026-10-18 | 2027-10-18 |
+| 265 | [The encrypted frames are not lost, and the trigger cannot keep up](findings/the-trigger-is-capture-limited.md) | | | 2026-10-11 | 2027-10-11 |
+| 266 | [The way back keeps up](findings/the-way-back-keeps-up.md) | | | 2026-10-12 | 2027-10-12 |
+| 267 | [Address translation lives in the connection, not the microflow](findings/translation-is-in-the-connection.md) | | | 2026-10-11 | 2027-10-11 |
 | | <a name="kind-images"></a>**Images** &nbsp;<sub>`docs/images/`</sub> | **1** | **90 days** | | |
-| 267 | [Images](images/README.md) | | | 2026-10-19 | 2027-01-17 |
+| 268 | [Images](images/README.md) | | | 2026-10-19 | 2027-01-17 |

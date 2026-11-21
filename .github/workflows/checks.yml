@@ -584,6 +584,15 @@ jobs:
           command -v php > /dev/null || sudo apt-get install -y --no-install-recommends php-cli > /dev/null
           python3 tools/test-tacacs.py
 
+      # The eMMC of the XGS 87 (#1205): the two functions contrib/emmc/amd-fch-emmc.patch adds to
+      # FreeBSD's mmc and sdhci_pci, cut out of the patch, compiled with stand-ins, every warning fatal,
+      # and run - the width a card is left at when EXT_CSD reads back the same or changed over the wider
+      # bus, and which chipsets get the Transfer Mode quirk. Applying it to FreeBSD 15.1's sources needs
+      # those sources, which a runner does not have: that part is skipped here and run where they are.
+      # tools/test-emmc-patch.py.
+      - name: The eMMC patch for the XGS 87
+        run: python3 tools/test-emmc-patch.py
+
   # contrib/mvsw/mvsw is the repository's one binary: the coprocessor's switch tool, built for aarch64,
   # which no appliance can build (contrib/mvsw/README.md). It is built again here from mvsw.c with its
   # own Makefile - freestanding, no build id, stripped, so the build is reproducible - in the Ubuntu
