@@ -25,6 +25,16 @@ plan said one thing and the appliance said another.
    before OPNsense checks the interfaces it has assigned and configures them, so the link has its
    address and its rules in that same boot. Nothing is done where it is assigned already, or not
    there, and never on the XGS 3300, whose link is assigned by the bootup hook once it has started.
+   **An owner who removes it keeps it removed** (#1072, since 2026-11-21): `mgmt-link.sh` records
+   in config.xml what it last saw of `NPUMGMT` (the XGS model's `general/npumgmt`: `assigned optN`, or
+   `removed` and when), so an assignment it had seen and that is gone is taken as the owner's
+   choice - no boot, install or recovery assigns it again, the coprocessor is reached over its
+   console, and one line says so, on the console on the XGS 136 and in the XGS log on the XGS 3300.
+   Assigning the link again in Interfaces: Assignments brings it back as the plugin makes it,
+   enabled and with its address, since that page adds an interface disabled and with none. A
+   factory reset or a restored configuration carries its own record, so neither is taken for a
+   removal. Tried on both appliances on 2026-11-21: removed, then two boots without it and with
+   one line said once, then assigned again from the page's way and made right at the next boot.
 2. **Admits the coprocessor.** Not a rule in the configuration: the plugin's own firewall hook,
    `xgs_firewall`, registers two rules at every reload on whichever interface key carries
    `mvmgmt0` - ICMP, and TCP 22 for the coprocessor's `sshd`, from `169.254.254.2` to this host
