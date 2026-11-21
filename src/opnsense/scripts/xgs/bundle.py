@@ -9,7 +9,7 @@
                    .tar.gz in base64, which the Problem Reports page hands to the browser to save
 
 WHAT IS IN IT. The coprocessor's state as the pages read it (status, its software with the U-Boot
-match check, its own Linux with its memory's error counters, ports, transceivers, IPsec, the updater), the driver's sysctls and the kernel's modules, the boot messages, the plugin's own
+match check, its own Linux with its memory's error counters, ports, transceivers, IPsec, the updater), the driver's sysctls and the kernel's modules, the boot messages and what the early boot hooks decided this boot, the plugin's own
 lines from the system log, what the coprocessor printed on its console, the network interfaces and their counters, the switch's frame limit,
 OPNsense's version and the reports already held - each a text file, every one put through the
 Problem Reports cleaner first (reporter.Scrubber): addresses, MACs, serial numbers, the host and
@@ -97,6 +97,29 @@ def our_log_lines(limit=3000):
     return ''.join(lines[-limit:])
 
 
+EARLY_TAGS = ('npuctl:', 'npuep:', 'octep:', 'xgs-assign:', 'mgmt-link:')
+EARLY_FILES = ('/var/log/octep-bringup.log', '/var/log/xgs-assign.log')
+
+
+def early_boot(limit=400):
+    """What the early boot hooks decided this boot. They run before syslog-ng, so their logger lines
+    reach no log; what they print on the console stays in the kernel's message buffer, which dmesg -a
+    reads and plain dmesg does not (#1045, since 2026-11-21). With them, the files 08-octep and
+    30-xgs-assign write, their last lines."""
+    out = ["== the early hooks' lines of this boot, from the console (dmesg -a)\n"]
+    boot = command(['/sbin/dmesg', '-a']).split('---<<BOOT>>---')[-1]
+    lines = [line + '\n' for line in boot.splitlines() if line.startswith(EARLY_TAGS)]
+    out += lines[-limit:] or ['[none in this boot]\n']
+    for name in EARLY_FILES:
+        out.append('\n== %s, its last %d lines\n' % (name, limit // 4))
+        try:
+            with open(name, 'r', errors='replace') as handle:
+                out += handle.readlines()[-(limit // 4):] or ['[empty]\n']
+        except OSError:
+            out.append('[not there]\n')
+    return ''.join(out)
+
+
 def console_log_tail(limit=262144):
     """The last LIMIT bytes of the coprocessor's console log, the older file first if it is short."""
     text = b''
@@ -161,6 +184,7 @@ def items():
         ('sysctl-driver.txt', command(['/sbin/sysctl', '-e', 'dev.octep', 'dev.npuep', 'hw.octep', 'hw.npuep'])),
         ('kldstat.txt', command(['/sbin/kldstat', '-v'])),
         ('dmesg.txt', command(['/sbin/dmesg'])),
+        ('early-boot.txt', early_boot()),
         ('ifconfig.txt', command(['/sbin/ifconfig', '-a'])),
         # Interfaces whose subnets overlap, and which one the system keeps each subnet's route on:
         # the one applied last answers nothing from it (issue 911, scripts/xgs/subnets.py).

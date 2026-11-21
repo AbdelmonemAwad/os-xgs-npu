@@ -152,7 +152,7 @@ rm -f "${PREFIX}/opnsense/scripts/xgs/apply.php" "${PREFIX}/opnsense/scripts/xgs
     "${PREFIX}/opnsense/scripts/xgs/count.py" \
     "${PREFIX}/etc/cron.d/xgs-count"
 rm -f /var/db/os-xgs-npu/transceivers.json /var/db/os-xgs-npu/fastpath.json /var/db/os-xgs-npu/sensor-flags \
-    /var/db/os-xgs-npu/memory-sensor /var/db/os-xgs-npu/kernel-follow.said /var/db/os-xgs-npu/port-chips-read \
+    /var/db/os-xgs-npu/memory-sensor /var/db/os-xgs-npu/npumgmt.state /var/db/os-xgs-npu/kernel-follow.said /var/db/os-xgs-npu/port-chips-read \
     /var/db/os-xgs-npu/kernel-follow.result /var/db/os-xgs-npu/kernel-follow.result.new
 rm -rf /var/db/os-xgs-npu/lists /var/db/os-xgs-npu/ja4 /var/db/os-xgs-npu/anomaly /var/db/os-xgs-npu/appliance-id
 # The hardware watchdog: disarmed before its script goes, or nothing would ever stop watchdogd.

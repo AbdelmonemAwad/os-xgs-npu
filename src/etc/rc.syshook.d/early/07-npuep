@@ -42,7 +42,9 @@
 : ${KLDSTAT:=/sbin/kldstat}
 : ${KLDLOAD:=/sbin/kldload}
 
-log() { /usr/bin/logger -t npuep -p daemon.notice "$1"; }
+# On the console as well as to the logger: this hook runs before syslog-ng, and a logger line here
+# reaches no log (#1045). The console's lines stay in the kernel's message buffer (dmesg -a).
+log() { /usr/bin/logger -t npuep -p daemon.notice "$1"; echo "npuep: $1"; }
 
 # WHAT A BOOT DOES ONCE THE FRONT PORTS ARE THERE: the management link, the acceleration gate,
 # what the owner keeps with the host, the flow maker and the coprocessor's counts - each as the
@@ -102,7 +104,6 @@ after_ports() {
     done
     MSG="the ports' own addresses after ${k}s: ${M:-not asked} of $(/sbin/ifconfig -l | /usr/bin/tr ' ' '\n' | /usr/bin/grep -c '^npup') taken from the network agent"
     log "${MSG}"
-    echo "npuep: ${MSG}"
     # What the owner keeps with the host (XGS: Settings, "Never offloaded"), before the flow
     # maker can make anything: the driver starts with no exclusion whatever the page says.
     if [ -f /usr/local/opnsense/scripts/xgs/flow_exclude.php ]; then

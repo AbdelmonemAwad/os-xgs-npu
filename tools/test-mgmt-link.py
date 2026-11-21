@@ -151,6 +151,8 @@ class Early(unittest.TestCase):
         open(self.calls, 'w').close()
         # what the stand-in configuration carries for the link: the line `show` prints, or no file
         self.config = os.path.join(self.dir, 'assigned')
+        # what the script last saw of NPUMGMT (THE OWNER'S CHOICE KEPT, #1072)
+        self.state = os.path.join(self.dir, 'npumgmt.state')
 
     def tearDown(self):
         self.tmp.cleanup()
@@ -180,7 +182,7 @@ class Early(unittest.TestCase):
         script = os.path.join(self.dir, 'mgmt-link.sh')
         with open(script, 'w', encoding='utf-8', newline='\n') as f:
             f.write(text)
-        env = dict(os.environ, PHP=php, CONSOLE='/dev/null')
+        env = dict(os.environ, PHP=php, CONSOLE='/dev/null', STATE=self.state)
         done = subprocess.run(['/bin/sh', script, 'early'], env=env, capture_output=True, text=True,
                               timeout=60)
         with open(self.calls) as f:
@@ -218,6 +220,44 @@ class Early(unittest.TestCase):
         self.assertEqual(done.returncode, 0, done.stderr)
         self.assertEqual(self.of(calls, 'php'), [SHOW])
         self.assertEqual(self.of(calls, 'configctl') + self.of(calls, 'logger'), [])
+        self.assertEqual(done.stdout, '')
+
+    def read_state(self):
+        try:
+            with open(self.state) as f:
+                return f.read().strip()
+        except OSError:
+            return None
+
+    def test_an_assignment_made_is_recorded(self):
+        done, calls = self.run_early()
+        self.assertEqual(done.returncode, 0, done.stderr)
+        self.assertEqual(self.read_state(), 'assigned opt15')
+
+    def test_an_assignment_its_owner_removed_is_not_made_again_and_said_once(self):
+        # #1072: the owner removed NPUMGMT in Interfaces: Assignments after this script had assigned it
+        with open(self.state, 'w', newline='\n') as f:
+            f.write('assigned opt15\n')
+        done, calls = self.run_early()
+        self.assertEqual(done.returncode, 0, done.stderr)
+        self.assertEqual(self.of(calls, 'php'), [SHOW])
+        self.assertTrue(self.read_state().startswith('removed '))
+        self.assertIn('was removed by its owner', done.stdout)
+        self.assertIn('Interfaces: Assignments brings it back', done.stdout)
+        done, calls = self.run_early()
+        self.assertEqual(self.of(calls, 'php'), [SHOW])
+        self.assertEqual(done.stdout, '')
+        self.assertTrue(self.read_state().startswith('removed '))
+
+    def test_an_owner_who_assigns_it_again_has_it_back(self):
+        with open(self.state, 'w', newline='\n') as f:
+            f.write('removed 2026-11-21 12:00 UTC\n')
+        with open(self.config, 'w', newline='\n') as f:
+            f.write('opt15 NPUMGMT 169.254.254.1/30\n')
+        done, calls = self.run_early()
+        self.assertEqual(done.returncode, 0, done.stderr)
+        self.assertEqual(self.of(calls, 'php'), [SHOW])
+        self.assertEqual(self.read_state(), 'assigned opt15')
         self.assertEqual(done.stdout, '')
 
     def test_a_boot_without_the_link_reads_and_writes_nothing(self):

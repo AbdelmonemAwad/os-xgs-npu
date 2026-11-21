@@ -39,6 +39,8 @@
 log() {
 	/usr/bin/logger -t octep -p daemon.notice "$1"
 	echo "$(/bin/date '+%Y-%m-%dT%H:%M:%S') $1" >> /var/log/octep-bringup.log 2>/dev/null
+	# and on the console, kept in the message buffer the support bundle reads (#1045)
+	echo "octep: $1"
 }
 
 if [ ! -f "${MODULE}" ]; then
