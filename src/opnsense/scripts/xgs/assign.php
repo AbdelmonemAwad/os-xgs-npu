@@ -11,9 +11,11 @@
  *                         already, 3 when there are no front ports yet, 1 on a board it does not know
  *   assign.php --apply    back config.xml up, assign, and say what was written
  *
- * THE LAYOUT. One front port is WAN, on DHCP - Port2 on the XGS 3300, Port1 on the XGS 136 - and
- * every other front port is an interface of its own, named as the chassis names it and with no
- * address, all of them members of one bridge, bridge0, which is `lan`:
+ * THE LAYOUT. One front port is WAN, on DHCP - the one the model's table names: its family's, Port2
+ * on the XGS 3300 and Port1 on the XGS 136, unless the model's chassis prints WAN beside another
+ * socket, as the XGS 87's does beside Port2 - and every other front port is an interface of its own,
+ * named as the chassis names it and with no address, all of them members of one bridge, bridge0,
+ * which is `lan`:
  *
  *   LAN       bridge0, 192.168.1.1/24, with the factory LAN's DHCP range (.100-.199) and its
  *             rules - on every board, so a machine plugged into any front port finds the firewall
@@ -97,6 +99,39 @@ function xgs_where_named(SimpleXMLElement $root, array $devs, array $skip = []):
     return array_map('array_keys', $named);
 }
 
+/*
+ * The model's own table, as `scripts/xgs/models.py --json` gives it for this appliance: its name, the
+ * front port it gives the internet to, and each unit's name on the chassis. Null when it is not a
+ * table of this family's, and the defaults stay.
+ */
+function xgs_model_table($known, string $family): ?array
+{
+    if (!is_array($known) || ($known['family'] ?? '') !== $family || !isset($known['wan'], $known['ports'])) {
+        return null;
+    }
+    $names = [];
+    foreach ($known['ports'] as $p) {
+        $names[(int)$p['unit']] = $p['label'];
+    }
+    return ['model' => (string)$known['model'], 'wan' => (string)$known['wan'], 'names' => $names];
+}
+
+/*
+ * What the assignment makes of each front port - $ports is device => its name on the chassis: the one
+ * named $wan_label is WAN, unless a WAN exists already ($wan_ok), and every other one is a member of
+ * bridge0. Decided apart from the configuration, like the MGMT device above, so that
+ * tools/test-assign-mgmt.py can hold it to the models' table.
+ */
+function xgs_layout(array $ports, string $wan_label, bool $wan_ok): array
+{
+    $wan_dev = $wan_ok ? false : array_search($wan_label, $ports, true);
+    $layout = [];
+    foreach ($ports as $dev => $label) {
+        $layout[$dev] = $dev === $wan_dev ? 'wan' : 'bridge';
+    }
+    return $layout;
+}
+
 // The tests include this file for the functions above alone.
 if (getenv('XGS_ASSIGN_FUNCTIONS_ONLY') === '1') {
     return;
@@ -141,21 +176,20 @@ switch (explode(' ', $board)[1] ?? '') {
 
 /*
  * The model's own table, when it has this appliance: its name, the ports it has and what each is
- * called on the metal, and the port its family gives the internet to - scripts/xgs/models.py, by
- * the assembly number in the planar serial and never by the board revision. The defaults above are
- * the XGS 3300's and the XGS 136's, which is what every box of each family had before the table.
+ * called on the metal, and the port it gives the internet to - its family's, or its own where its
+ * chassis prints WAN beside another socket (the XGS 87's Port2) - scripts/xgs/models.py, by the
+ * assembly number in the planar serial and never by the board revision. The defaults above are the
+ * XGS 3300's and the XGS 136's, which is what every box of each family had before the table.
  */
-$known = json_decode((string)shell_exec('/usr/local/bin/python3 /usr/local/opnsense/scripts/xgs/models.py --json 2>/dev/null'), true);
-if (is_array($known) && ($known['family'] ?? '') === (explode(' ', $board)[1] ?? '')) {
+$known = xgs_model_table(json_decode((string)shell_exec('/usr/local/bin/python3 /usr/local/opnsense/scripts/xgs/models.py --json 2>/dev/null'), true),
+    explode(' ', $board)[1] ?? '');
+if ($known !== null) {
     $model = $known['model'];
     if ((explode(' ', $board)[2] ?? '') === 'rnd') {
         $model .= ' (untested: research and development)';
     }
     $wan_label = $known['wan'];
-    $fallback = [];
-    foreach ($known['ports'] as $p) {
-        $fallback[(int)$p['unit']] = $p['label'];
-    }
+    $fallback = $known['names'];
 }
 
 /* The front ports present now, with the name each one carries. */
@@ -198,6 +232,8 @@ $wan_ok = $wan_if !== '' && (does_interface_exist($wan_if) ||
 $lan_dev = isset($c->interfaces->lan) ? (string)$c->interfaces->lan->if : '';
 // The host's own NIC, if any: xgs_mgmt_device above.
 $mgmt_dev = xgs_mgmt_device($prefix, $lan_dev, $ports, $assigned, 'does_interface_exist');
+// WAN or a member of bridge0, port by port: xgs_layout above.
+$layout = xgs_layout($ports, $wan_label, $wan_ok);
 
 /* The plan, and what --check answers. */
 if (!$ports) {
@@ -225,8 +261,10 @@ printf("%-8s %-7s %s\n", 'device', 'name', 'to do');
 foreach ($ports as $dev => $label) {
     if ($verdict !== 0) {
         $what = isset($assigned[$dev]) ? "kept ({$assigned[$dev]})" : 'left unassigned';
+    } elseif ($layout[$dev] === 'wan') {
+        $what = 'WAN, DHCP';
     } elseif ($dev === $wan_dev) {
-        $what = $wan_ok ? 'member of bridge0 (a WAN exists)' : 'WAN, DHCP';
+        $what = 'member of bridge0 (a WAN exists)';
     } else {
         $what = 'member of bridge0';
     }
@@ -276,7 +314,7 @@ $set = function ($node, $name, $value) {
 
 $members = [];
 foreach ($ports as $dev => $label) {
-    if ($dev === $wan_dev && !$wan_ok) {
+    if ($layout[$dev] === 'wan') {
         if (!isset($c->interfaces->wan)) {
             $w = $c->interfaces->addChild('wan');
             $set($w, 'ipaddr', 'dhcp');

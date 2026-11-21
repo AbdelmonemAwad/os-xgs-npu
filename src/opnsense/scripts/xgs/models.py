@@ -113,9 +113,20 @@ def chip(assembly):
     return CHIP.get(assembly) or CHIP.get(assembly.split('-')[0])
 
 
-# The front port each family gives the internet to when it sets an appliance up by itself.
+# The front port each family gives the internet to when it sets an appliance up by itself - the XGS
+# 3300's Port2 and the XGS 136's Port1, the two run here - and the models whose chassis names another
+# one. The XGS 87's is printed 1/LAN, 2/WAN, 3/DMZ and 4 beside its copper ports (a photograph of one,
+# 2026-11-22), and the 87w is the same chassis with Wi-Fi: until then both were given their family's
+# Port1, the socket printed LAN, and the one printed WAN was put in the LAN bridge. Which socket every
+# other model's chassis prints WAN beside is not recorded here, and each keeps its family's.
 WAN = {'octeontx': 'Port2', 'armada': 'Port1'}
+WAN_OF_MODEL = {'AMDA0200-0001': 'Port2', 'AMDA0200-0002': 'Port2'}
 PREFIX = {'octeontx': 'oxp', 'armada': 'npup'}
+
+
+def wan(assembly):
+    """The front port the first boot gives the internet to on this model: its own, or its family's."""
+    return WAN_OF_MODEL.get(assembly) or WAN[MODELS[assembly][1]]
 
 
 def ports(assembly):
@@ -180,7 +191,7 @@ def this():
 def describe(a, version=None):
     model, family, table, tested = MODELS[a]
     return {'assembly': a, 'model': model, 'family': family, 'system_version': version,
-            'run_on_hardware': tested, 'wan': WAN[family], 'ports': ports(a)}
+            'run_on_hardware': tested, 'wan': wan(a), 'ports': ports(a)}
 
 
 def main(argv):

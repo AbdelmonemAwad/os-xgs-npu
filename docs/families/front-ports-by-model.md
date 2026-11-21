@@ -74,29 +74,34 @@ the boot hook.
   were counted as the interfaces were made: the same names, and a port whose interface is not made
   leaves its number empty instead of renaming the ports after it (the review's O3).
 - **The first boot's assignment** names every port as the table does, and gives the internet to Port2
-  on the OCTEON TX family and Port1 on the ARMADA family, as on the two appliances run here.
+  on the OCTEON TX family and Port1 on the ARMADA family, as on the two appliances run here - unless
+  the model's chassis prints WAN beside another socket, and the table gives the model its own
+  (`WAN_OF_MODEL` in `models.py`). **The XGS 87 and 87w take Port2 (2026-11-22)**: their chassis is
+  printed `1/LAN`, `2/WAN`, `3/DMZ` and `4`, and until then their WAN was Port1, the socket printed
+  LAN, with the one printed WAN in the LAN bridge. Which socket the other models' chassis print WAN
+  beside is not recorded here, and each keeps its family's; the WAN column below is what each is given.
 - A model the table does not have is given the XGS 3300's or the XGS 136's ports, which is what every
   appliance of each family was given before the table, and the driver or the bring-up says so.
 
 ## The table
 
-| model | assembly | ports | label and interface, in unit order | run here |
-|---|---|--:|---|:-:|
-| XGS 87 | `AMDA0200-0001` | 5 | Port1 `npup1`, Port2 `npup2`, Port3 `npup3`, Port4 `npup4`, F1 `npup5` | no |
-| XGS 87w | `AMDA0200-0002` | 5 | Port1 `npup1`, Port2 `npup2`, Port3 `npup3`, Port4 `npup4`, F1 `npup5` | no |
-| XGS 107 | `AMDA0200-0003` | 9 | Port1 `npup1`, Port2 `npup2`, Port3 `npup3`, Port4 `npup4`, Port5 `npup5`, Port6 `npup6`, Port7 `npup7`, Port8 `npup8`, F1 `npup9` | no |
-| XGS 107w | `AMDA0200-0004` | 9 | Port1 `npup1`, Port2 `npup2`, Port3 `npup3`, Port4 `npup4`, Port5 `npup5`, Port6 `npup6`, Port7 `npup7`, Port8 `npup8`, F1 `npup9` | no |
-| XGS 126 | `AMDA0201-0001` | 14 | Port1 `npup1`, Port2 `npup2`, Port3 `npup3`, Port4 `npup4`, Port5 `npup5`, Port6 `npup6`, Port7 `npup7`, Port8 `npup8`, Port9 `npup9`, Port10 `npup10`, Port11 `npup11`, Port12 `npup12`, F1 `npup13`, F2 `npup14` | no |
-| XGS 126w | `AMDA0201-0002` | 14 | Port1 `npup1`, Port2 `npup2`, Port3 `npup3`, Port4 `npup4`, Port5 `npup5`, Port6 `npup6`, Port7 `npup7`, Port8 `npup8`, Port9 `npup9`, Port10 `npup10`, Port11 `npup11`, Port12 `npup12`, F1 `npup13`, F2 `npup14` | no |
-| XGS 136 | `AMDA0201-0003` | 14 | Port1 `npup1`, Port2 `npup2`, Port3 `npup3`, Port4 `npup4`, Port5 `npup5`, Port6 `npup6`, Port7 `npup7`, Port8 `npup8`, Port9 `npup9`, Port10 `npup10`, Port11 `npup11`, Port12 `npup12`, F1 `npup13`, F2 `npup14` | **yes** |
-| XGS 136w | `AMDA0201-0004` | 14 | Port1 `npup1`, Port2 `npup2`, Port3 `npup3`, Port4 `npup4`, Port5 `npup5`, Port6 `npup6`, Port7 `npup7`, Port8 `npup8`, Port9 `npup9`, Port10 `npup10`, Port11 `npup11`, Port12 `npup12`, F1 `npup13`, F2 `npup14` | no |
-| XGS 116 | `AMDA0208-0001` | 9 | Port1 `npup1`, Port2 `npup2`, Port3 `npup3`, Port4 `npup4`, Port5 `npup5`, Port6 `npup6`, Port7 `npup7`, Port8 `npup8`, F1 `npup9` | no |
-| XGS 116w | `AMDA0208-0002` | 9 | Port1 `npup1`, Port2 `npup2`, Port3 `npup3`, Port4 `npup4`, Port5 `npup5`, Port6 `npup6`, Port7 `npup7`, Port8 `npup8`, F1 `npup9` | no |
-| XGS 138 | `AMDA0224-0001` | 8 | Port1 `npup1`, Port2 `npup2`, Port3 `npup3`, Port4 `npup4`, Port5 `npup5`, Port6 `npup6`, F1 `npup7`, F2 `npup8` | no |
-| XGS 2100 | `AMDA0202-0001` | 10 | Port1 `oxp0`, Port2 `oxp1`, Port3 `oxp2`, Port4 `oxp3`, Port5 `oxp4`, Port6 `oxp5`, Port7 `oxp6`, Port8 `oxp7`, F1 `oxp8`, F2 `oxp9` | no |
-| XGS 2300 | `AMDA0202-0002` | 10 | Port1 `oxp0`, Port2 `oxp1`, Port3 `oxp2`, Port4 `oxp3`, Port5 `oxp4`, Port6 `oxp5`, Port7 `oxp6`, Port8 `oxp7`, F1 `oxp8`, F2 `oxp9` | no |
-| XGS 3100 | `AMDA0202-0003` | 12 | F1 `oxp0`, F2 `oxp1`, Port1 `oxp2`, Port2 `oxp3`, Port3 `oxp4`, Port4 `oxp5`, Port5 `oxp6`, Port6 `oxp7`, Port7 `oxp8`, Port8 `oxp9`, F3 `oxp10`, F4 `oxp11` | no |
-| XGS 3300 | `AMDA0202-0004` | 12 | F1 `oxp0`, F2 `oxp1`, Port1 `oxp2`, Port2 `oxp3`, Port3 `oxp4`, Port4 `oxp5`, Port5 `oxp6`, Port6 `oxp7`, Port7 `oxp8`, Port8 `oxp9`, F3 `oxp10`, F4 `oxp11` | **yes** |
+| model | assembly | ports | label and interface, in unit order | WAN | run here |
+|---|---|--:|---|---|:-:|
+| XGS 87 | `AMDA0200-0001` | 5 | Port1 `npup1`, Port2 `npup2`, Port3 `npup3`, Port4 `npup4`, F1 `npup5` | **Port2** | no |
+| XGS 87w | `AMDA0200-0002` | 5 | Port1 `npup1`, Port2 `npup2`, Port3 `npup3`, Port4 `npup4`, F1 `npup5` | **Port2** | no |
+| XGS 107 | `AMDA0200-0003` | 9 | Port1 `npup1`, Port2 `npup2`, Port3 `npup3`, Port4 `npup4`, Port5 `npup5`, Port6 `npup6`, Port7 `npup7`, Port8 `npup8`, F1 `npup9` | Port1 | no |
+| XGS 107w | `AMDA0200-0004` | 9 | Port1 `npup1`, Port2 `npup2`, Port3 `npup3`, Port4 `npup4`, Port5 `npup5`, Port6 `npup6`, Port7 `npup7`, Port8 `npup8`, F1 `npup9` | Port1 | no |
+| XGS 126 | `AMDA0201-0001` | 14 | Port1 `npup1`, Port2 `npup2`, Port3 `npup3`, Port4 `npup4`, Port5 `npup5`, Port6 `npup6`, Port7 `npup7`, Port8 `npup8`, Port9 `npup9`, Port10 `npup10`, Port11 `npup11`, Port12 `npup12`, F1 `npup13`, F2 `npup14` | Port1 | no |
+| XGS 126w | `AMDA0201-0002` | 14 | Port1 `npup1`, Port2 `npup2`, Port3 `npup3`, Port4 `npup4`, Port5 `npup5`, Port6 `npup6`, Port7 `npup7`, Port8 `npup8`, Port9 `npup9`, Port10 `npup10`, Port11 `npup11`, Port12 `npup12`, F1 `npup13`, F2 `npup14` | Port1 | no |
+| XGS 136 | `AMDA0201-0003` | 14 | Port1 `npup1`, Port2 `npup2`, Port3 `npup3`, Port4 `npup4`, Port5 `npup5`, Port6 `npup6`, Port7 `npup7`, Port8 `npup8`, Port9 `npup9`, Port10 `npup10`, Port11 `npup11`, Port12 `npup12`, F1 `npup13`, F2 `npup14` | Port1 | **yes** |
+| XGS 136w | `AMDA0201-0004` | 14 | Port1 `npup1`, Port2 `npup2`, Port3 `npup3`, Port4 `npup4`, Port5 `npup5`, Port6 `npup6`, Port7 `npup7`, Port8 `npup8`, Port9 `npup9`, Port10 `npup10`, Port11 `npup11`, Port12 `npup12`, F1 `npup13`, F2 `npup14` | Port1 | no |
+| XGS 116 | `AMDA0208-0001` | 9 | Port1 `npup1`, Port2 `npup2`, Port3 `npup3`, Port4 `npup4`, Port5 `npup5`, Port6 `npup6`, Port7 `npup7`, Port8 `npup8`, F1 `npup9` | Port1 | no |
+| XGS 116w | `AMDA0208-0002` | 9 | Port1 `npup1`, Port2 `npup2`, Port3 `npup3`, Port4 `npup4`, Port5 `npup5`, Port6 `npup6`, Port7 `npup7`, Port8 `npup8`, F1 `npup9` | Port1 | no |
+| XGS 138 | `AMDA0224-0001` | 8 | Port1 `npup1`, Port2 `npup2`, Port3 `npup3`, Port4 `npup4`, Port5 `npup5`, Port6 `npup6`, F1 `npup7`, F2 `npup8` | Port1 | no |
+| XGS 2100 | `AMDA0202-0001` | 10 | Port1 `oxp0`, Port2 `oxp1`, Port3 `oxp2`, Port4 `oxp3`, Port5 `oxp4`, Port6 `oxp5`, Port7 `oxp6`, Port8 `oxp7`, F1 `oxp8`, F2 `oxp9` | Port2 | no |
+| XGS 2300 | `AMDA0202-0002` | 10 | Port1 `oxp0`, Port2 `oxp1`, Port3 `oxp2`, Port4 `oxp3`, Port5 `oxp4`, Port6 `oxp5`, Port7 `oxp6`, Port8 `oxp7`, F1 `oxp8`, F2 `oxp9` | Port2 | no |
+| XGS 3100 | `AMDA0202-0003` | 12 | F1 `oxp0`, F2 `oxp1`, Port1 `oxp2`, Port2 `oxp3`, Port3 `oxp4`, Port4 `oxp5`, Port5 `oxp6`, Port6 `oxp7`, Port7 `oxp8`, Port8 `oxp9`, F3 `oxp10`, F4 `oxp11` | Port2 | no |
+| XGS 3300 | `AMDA0202-0004` | 12 | F1 `oxp0`, F2 `oxp1`, Port1 `oxp2`, Port2 `oxp3`, Port3 `oxp4`, Port4 `oxp5`, Port5 `oxp6`, Port6 `oxp7`, Port7 `oxp8`, Port8 `oxp9`, F3 `oxp10`, F4 `oxp11` | Port2 | **yes** |
 
 ## How a port is tagged
 

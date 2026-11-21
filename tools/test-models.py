@@ -29,6 +29,10 @@ did not come up leaves its unit empty, and portmap.py names an interface and por
 port's LMAC by its place - until 2026-11-06 portstats.py counted the list, and read every port after
 one missing from the LMAC of the one before it.
 
+And the port each model gives the internet to at the first boot: its family's, or its own where its
+chassis prints WAN beside another socket - the XGS 87's and 87w's Port2, which until 2026-11-22 was
+their family's Port1, the socket printed LAN - in models.py --json and on the site's pages.
+
     python3 tools/test-models.py
 """
 
@@ -159,6 +163,27 @@ class Models(unittest.TestCase):
         self.assertIn("$wan_label = 'Port2'", src)
         self.assertIn("$wan_label = 'Port1'", src)
         self.assertEqual(models.WAN, {'octeontx': 'Port2', 'armada': 'Port1'})
+
+    def test_wan_of_each_model(self):
+        # The XGS 87 and 87w take Port2, the socket their chassis prints WAN beside (until 2026-11-22
+        # their family's Port1, the one printed LAN); every other model keeps its family's, the XGS 136
+        # and the XGS 3300 as before. And it is one of the model's own ports.
+        own = {'AMDA0200-0001': 'Port2', 'AMDA0200-0002': 'Port2'}
+        for a, (model, family, _, _) in models.MODELS.items():
+            want = own.get(a, models.WAN[family])
+            self.assertEqual(models.wan(a), want, '%s %s' % (a, model))
+            self.assertEqual(models.describe(a)['wan'], want, '%s %s' % (a, model))
+            self.assertIn(want, [p['label'] for p in models.ports(a)], '%s %s' % (a, model))
+        self.assertEqual((models.wan('AMDA0201-0003'), models.wan('AMDA0202-0004')), ('Port1', 'Port2'))
+
+    def test_wan_from_models_py_json(self):
+        # What assign.php reads: models.py --json on an appliance of the model.
+        for a, want in (('AMDA0200-0001', 'Port2'), ('AMDA0200-0002', 'Port2'), ('AMDA0200-0003', 'Port1'),
+                        ('AMDA0201-0003', 'Port1'), ('AMDA0202-0004', 'Port2')):
+            out = subprocess.run([sys.executable, os.path.join(XGS, 'models.py'), '--json'], capture_output=True,
+                                 text=True, env=dict(os.environ, XGS_PLANAR_SERIAL=serial(a)))
+            self.assertEqual(out.returncode, 0, out.stderr)
+            self.assertEqual(json.loads(out.stdout)['wan'], want, a)
 
 
 XGS2100, XGS3300, UNKNOWN = 'AMDA0202-0001', 'AMDA0202-0004', 'AMDA0202-0009'
@@ -386,6 +411,15 @@ class TheSitesPages(unittest.TestCase):
         self.assertEqual(sorted(v['assembly'] for p in pages for v in p['variants']), sorted(models.MODELS))
         for page in pages:
             self.same('devices.json, %s' % page['model'], page['ports'], page['variants'][0]['assembly'])
+
+    def test_the_sites_wan_is_the_models(self):
+        # A page is a model and its Wi-Fi twin: the internet on the port the table gives each of them.
+        with open(os.path.join(ROOT, 'website', 'data', 'devices.json'), encoding='utf-8') as f:
+            pages = json.load(f)['pages']
+        for page in pages + self.made(table.pages):
+            for v in page['variants']:
+                self.assertEqual(page['wan'], models.wan(v['assembly']), '%s, %s' % (page['model'], v['model']))
+        self.assertEqual({p['model']: p['wan'] for p in pages}['XGS 87'], 'Port2')
 
     def test_site_2100_f1_f2_are_the_switch(self):
         for a in (XGS2100, 'AMDA0202-0002'):
