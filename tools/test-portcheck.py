@@ -70,6 +70,15 @@ class ShortLine(unittest.TestCase):
         self.assertEqual(found['lines'], ["the coprocessor answered, but its answer was cut short: "
                                           "the coprocessor's console did not answer within 60s"])
 
+    def test_the_switch_link_alone_is_not_an_agreement(self):
+        """An XGS 87's agent listed only its link to the switch (its support bundle, 2026-11-21): read whole,
+        no front port was compared, and 0 of 0 "agreed" - which the untested-model report would keep as the
+        table confirmed."""
+        self.said = 'answered\ncount 1\nsoc 0 2 eth0 cp0/config-space/ethernet@0/eth0 de:ad:be:ef:00:00\nfinished\n'
+        found = portcheck.check_armada('201')
+        self.assertEqual((found['verdict'], found['why'], found['ports']), ('unread', 'no_front_ports', []))
+        self.assertIn('no front port (num_of_ports 1)', found['lines'][0])
+
 
 if __name__ == '__main__':
     sys.exit(0 if unittest.main(exit=False).result.wasSuccessful() else 1)

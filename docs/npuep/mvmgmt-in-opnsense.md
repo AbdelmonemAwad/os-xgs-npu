@@ -78,15 +78,14 @@ plan said one thing and the appliance said another.
    platform store and the sensors are all reachable through it.
 
 `mgmt-link.sh status` prints the interface, the assignment, any bridge it is a member of, the live
-rules, a ping and an ssh,
-which is what the proof below is read from.
+rules, a ping and an ssh, which is what the proof below is read from.
 
 ## What is not done
 
 - The interface is never bridged, never given a gateway, never offered to the WAN or the LAN.
-  Since 2026-11-22 a bridge it is a member of all the same is said on the Ports
-  page and by `mgmt-link.sh status`, and `mgmt-link.php` gives it no interface key that the
-  configuration still names elsewhere, such as a bridge's member left behind by a removed interface.
+  Since 2026-11-22 the Ports page and `mgmt-link.sh status` say so when it is in a bridge anyway,
+  and `mgmt-link.php` gives it no interface key the configuration still names elsewhere, such as a
+  bridge's member left behind by a removed interface.
 - No DHCP on either end. No IPv6 on either end.
 - The vendor's firmware image on the coprocessor is changed by exactly one appended line in
   `authorized_keys`, under its own remount script; `/persistent` is not used.

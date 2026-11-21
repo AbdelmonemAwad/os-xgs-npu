@@ -165,6 +165,13 @@ def check_armada(assembly):
                                         'gave none (num_of_ports %s)' % count)
         return {'verdict': 'unread', 'why': why, 'lines': [line], 'ports': [],
                 'board_labels': len(addrs)}
+    if not [w for w in soc if len(w) > 2 and w[2] != '2']:
+        # The switch link alone - an XGS 87's agent listed nothing else (its support bundle, 2026-11-21):
+        # no front port is compared, so the check has nothing to agree on, and is not taken as one that did.
+        count = next((l.split()[1] for l in said if l.startswith('count ') and len(l.split()) > 1), '?')
+        return {'verdict': 'unread', 'why': 'no_front_ports', 'ports': [], 'board_labels': len(addrs),
+                'lines': ['the coprocessor answered, and its network agent\'s list of its ports has only its '
+                          'link to the switch, no front port (num_of_ports %s)' % count]}
     macs = host_macs('npup')
     lines, agree, disagree, shared, rows = [], 0, 0, 0, []
     member = laggs()

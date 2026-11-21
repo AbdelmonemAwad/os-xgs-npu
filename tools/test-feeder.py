@@ -1929,7 +1929,7 @@ class TheConsoleSession(unittest.TestCase):
     def test_a_session_that_logged_in_logs_out_once_answered(self):
         done, keys = self.run_script(first='\r\nlogin: ', seconds='20', answer=self.ANSWERED)
         self.assertEqual(done.returncode, 0)
-        self.assertTrue(keys.endswith(b'exit\r'), keys)
+        self.assertTrue(keys.endswith(b'exit\r') and not keys.endswith(b'\x03exit\r'), keys)
         # the first read's two, the login's two, and one for the logout's own lines
         self.assertEqual(self.sleeps(), [1, 1, 2, 1])
 
@@ -1941,7 +1941,9 @@ class TheConsoleSession(unittest.TestCase):
                                      reader=1)
         self.assertEqual((done.returncode, done.stdout), (1, 'alive\n'))
         self.assertIn('did not answer within 4s', done.stderr)
-        self.assertTrue(keys.endswith(b'exit\r'), keys)
+        # a Ctrl-C with the logout, so that a '}' the console dropped leaves no continuation prompt
+        # behind it, where 'exit' would be one more line of the command (a review, 2026-11-22)
+        self.assertTrue(keys.endswith(b'\x03exit\r'), keys)
         # the first read's two and the login's two; then the command's four, one a second
         self.assertEqual(self.sleeps(), [1, 1, 2] + [1] * 4)
 

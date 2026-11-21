@@ -341,6 +341,9 @@ class ReporterTest(unittest.TestCase):
         self.assertIn('ssh-rsa <key withheld> <e-mail>', text)
         # a word that only starts like one stays: no run of forty after it
         self.assertIn('AAAA battery', scrub('AAAA battery'))
+        # after its type, a key whose AAAA the console cut to AAA is taken out all the same
+        garbled = scrub('ssh-ed25519 AAAC3NzaC1lZDI1NTE5AAAAI%s xgs-npu\n' % ('Q' * 43))
+        self.assertEqual(garbled, 'ssh-ed25519 <key withheld> xgs-npu\n')
 
     def test_scrubber_takes_the_machine_s_names_whole(self):
         # The host here is gatekeeper.example.org. Its name inside another word stays (a host named

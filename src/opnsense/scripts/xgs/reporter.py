@@ -341,10 +341,10 @@ SERIAL_NUMBER = re.compile(r'(?i)\b(serial number|s/n)(\s*[:=]?\s*)[\w-]{4,}')
 # 21.0.0.169 - and the appliance table names it so: the table's own words keep it, and the support
 # bundle's keys for it too (until 2026-11-22 its system.json and coprocessor.json had <ipv4> there).
 VENDOR_BUILD = re.compile(r'(?:vendor build |\bsfversion |"(?:vendor_build|sfversion)":\s*")$')
-# An OpenSSH public key on one line - its type, then base64 that starts with AAAA - and the same
-# base64 alone, as a command that looks for the key in authorized_keys quotes it. Until 2026-11-22
-# both went out whole in an XGS 87's support bundle.
-SSH_KEY = re.compile(r'\b((?:ssh|ecdsa|sk)-[\w@.-]+)\s+AAAA[A-Za-z0-9+/]+={0,3}')
+# An OpenSSH public key on one line - its type, then base64 (AAAA at its start, unless a console that
+# drops characters lost one) - and the same base64 alone, as a command that looks for the key in
+# authorized_keys quotes it. Until 2026-11-22 both went out whole in an XGS 87's support bundle.
+SSH_KEY = re.compile(r'\b((?:ssh|ecdsa|sk)-[\w@.-]+)\s+[A-Za-z0-9+/]{40,}={0,3}')
 BARE_KEY = re.compile(r'(?<![A-Za-z0-9+/])AAAA[A-Za-z0-9+/]{40,}={0,2}')
 # A key's fingerprint as the boot banner prints it - "SHA256" and sixteen hex pairs for the GUI's
 # certificate, "SHA256" and base64 for an SSH host key - and the second line of pairs it runs onto.
@@ -1317,7 +1317,8 @@ def from_untested_model():
     unread = {'no_answer': 'the coprocessor did not answer',
               'no_table': 'the coprocessor answered, but without its list of ports',
               'empty_table': "the coprocessor answered, and its list of ports was empty",
-              'cut_short': 'the coprocessor answered, but its answer was cut short'}
+              'cut_short': 'the coprocessor answered, but its answer was cut short',
+              'no_front_ports': 'the coprocessor answered, and its list of ports has no front port'}
     said['unread'] = unread.get(result.get('why'), 'the coprocessor could not be read')
     return [{
         'part': 'os-xgs-npu', 'kind': 'untested-model',

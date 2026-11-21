@@ -225,7 +225,7 @@ def mgmt_lines(mixed):
             lines.append('%s is the management link to the coprocessor, and is in a bridge, which it never is: %s'
                          % (describe(m), ', '.join(describe(o) for o in m['others'])))
             continue
-        what ='is in a bridge with ports of the coprocessor' if m['how'] == 'bridge' else \
+        what = 'is in a bridge with ports of the coprocessor' if m['how'] == 'bridge' else \
             'shares a subnet with ports of the coprocessor'
         lines.append('%s %s: %s' % (describe(m), what, ', '.join(describe(o) for o in m['others'])))
     return lines

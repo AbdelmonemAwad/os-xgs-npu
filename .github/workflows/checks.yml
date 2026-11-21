@@ -330,7 +330,7 @@ jobs:
       # no key the configuration still names elsewhere (an XGS 87's bundle had it in a bridge).
       - name: The management link's address
         run: |
-          command -v php > /dev/null || sudo apt-get install -y --no-install-recommends php-cli > /dev/null
+          command -v php > /dev/null || { sudo apt-get update -qq && sudo apt-get install -y -qq --no-install-recommends php-cli > /dev/null; }
           python3 tools/test-mgmt-link.py
 
       # The coprocessor's log to OPNsense's remote destinations: the Syslog templates' overlay
