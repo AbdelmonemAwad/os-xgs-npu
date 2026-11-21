@@ -66,6 +66,21 @@ is the GIU port's own, is not implemented by this firmware at all. The driver re
 counts and says so plainly, because an instrument that prints a zero reading like a measurement is
 worse than one that admits it cannot see.
 
+**On the XGS 136, part of a stream whose data comes from the far side still crosses the host.** The
+fast path hands a connection back when ten packets in a row carry the same acknowledgement, end and
+window - its rule for a retransmission, and one nothing turns off. Each time a connection is made or
+revived in hardware, its frames there overtake the ones still in the host's path; the receiver answers
+with duplicate acknowledgements, and the rule fires again. Since 0.1.0-alpha.6 npuep revives a
+connection every time it is handed back (#726): in heavy downloads the host carried most of the stream
+in 3 runs of 16 instead of 8, its frames fell from 931,000 to 447,000 on average and its CPU from 14.9 %
+to 9.5 %. What remains: in the heavy runs a connection is still revived 20 to 27 times, and of the
+frames that reach the host in the runs of 2026-10-27, 69 % arrive before it runs in hardware and 31 %
+after a hand-back; measured again on 2026-11-13, about 95 % of them arrive within 250 ms of a make or a
+revive, and turning the sequence check off changed nothing. In practice, part of some downloads that
+lose segments passes through the host, about 10 % of the CPU in those heavy runs, and there is
+nothing to set
+([#717](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/717)).
+
 ## Suricata sees how a connection starts, not all of it
 
 *Both families. Added 2026-10-24.*
