@@ -10,7 +10,8 @@ kernel it was not built for or with hw.fchemmc.disable set; CMD19 never reaches 
 answered from EXT_CSD read again over 4 bits and compared with the copy read over 1 bit, and the card is
 always switched back to 1 bit; that copy is taken from mmc(4)'s own 1-bit read and from no other;
 Transfer Mode is written 0 before a command without data, only where the chipset's SMBus asks for it;
-a full reset goes through D3 and back to D0 before the generic one, and no other reset does; and the
+a full reset goes through D3hot and back to D0 before the generic one, the configuration is restored only
+once D0 reads back, and no other reset does; and the
 slot offers 4 bits and 50 MHz at most, with no DDR52, HS200 or HS400. Then the source itself: the
 copyright notices kept from sdhci_pci.c, the tunable, the module's declarations, and the bytes compared
 against the ones Linux compares.
@@ -133,6 +134,7 @@ static void ev(const char *fmt, ...)
 #define	PCIM_PSTAT_DMASK	0x0003
 #define	PCIM_PSTAT_D0		0x0000
 #define	PCIM_PSTAT_D3		0x0003
+#define	PCIM_PSTAT_NOSOFTRESET	0x0008
 
 /* mmc(4) */
 #define	MMC_CAP_4_BIT_DATA	(1 <<  0)
@@ -208,6 +210,8 @@ static int STABLE_AFTER;		/* polls of Present State before card detect is stable
 static int UNSTABLE;			/* never stable */
 static int POLLS;
 static int PM_STATE;
+static int PM_STUCK;			/* the power state stays D3 */
+static int NO_SOFT_RESET;
 
 static void *device_get_softc(device_t dev) { return dev->softc; }
 static void device_set_desc(device_t dev, const char *d) { (void)dev; ev("desc %s", d); }
@@ -233,15 +237,17 @@ static uint32_t pci_read_config(device_t dev, int reg, int width)
 	if (reg == 0x40)
 		return 0x00;			/* PCI_SLOT_INFO: one slot, BAR 0 */
 	if (reg == 0x50 + PCIR_POWER_STATUS)
-		return 0x0008 | PM_STATE;	/* No_Soft_Reset clear, and the state */
+		return 0x0100 | (NO_SOFT_RESET ? 0x0008 : 0) | PM_STATE;	/* PME_En, No_Soft_Reset, state */
 	return 0;
 }
 static void pci_write_config(device_t dev, int reg, uint32_t val, int width)
 {
 	(void)dev; (void)width;
 	if (reg == 0x50 + PCIR_POWER_STATUS) {
-		PM_STATE = val & 3;
-		ev("pm %u%s", PM_STATE, (val & ~3u) == 0x0008 ? "" : " (other bits changed)");
+		if (!PM_STUCK || (val & 3) == 3)
+			PM_STATE = val & 3;
+		ev("pm %u%s", val & 3, (val & ~3u) == (0x0100u | (NO_SOFT_RESET ? 0x0008u : 0)) ?
+		    "" : " (other bits changed)");
 	} else
 		ev("cfg %x=%x", reg, val);
 }
@@ -326,6 +332,7 @@ static uint8_t CARD_EXT_CSD[MMC_EXTCSD_SIZE];
 static int CARD_WIDTH;			/* EXT_CSD_BUS_WIDTH_* the card is switched to */
 static int CARD_CHANGED_AT_4;		/* a byte at which EXT_CSD reads changed over 4 bits, or -1 */
 static int CARD_REFUSES_SWITCH;
+static int CARD_SWITCH_ANSWER_LOST;
 static int CARD_READ_FAILS;
 static int CONTROLLER_ERR;		/* what sdhci_generic_request() answers */
 static int REQUEST_ERROR;		/* the error a request sent to the controller completes with */
@@ -351,6 +358,8 @@ static int mmc_switch(device_t busdev, device_t dev, uint16_t rca, uint8_t set, 
 		return (MMC_ERR_FAILED);
 	if (index == EXT_CSD_BUS_WIDTH)
 		CARD_WIDTH = value;
+	if (CARD_SWITCH_ANSWER_LOST && value == EXT_CSD_BUS_WIDTH_4)
+		return (MMC_ERR_TIMEOUT);	/* taken, but its status poll timed out */
 	return (MMC_ERR_NONE);
 }
 static int mmc_send_ext_csd(device_t busdev, device_t dev, uint8_t *buf)
@@ -390,14 +399,14 @@ static void fresh(void)
 	SC.dev = &CTRL;
 	SMBUS_ID = 0;
 	SMBUS.revid = 0;
-	STABLE_AFTER = 0; UNSTABLE = 0; POLLS = 0; PM_STATE = 0; DELAYED = 0;
+	STABLE_AFTER = 0; UNSTABLE = 0; POLLS = 0; PM_STATE = 0; PM_STUCK = 0; NO_SOFT_RESET = 0; DELAYED = 0;
 	for (int i = 0; i < MMC_EXTCSD_SIZE; i++)
 		CARD_EXT_CSD[i] = (uint8_t)(i * 7 + 3);
 	CARD_EXT_CSD[EXT_CSD_REV] = 8;
 	CARD_EXT_CSD[EXT_CSD_GEN_CMD6_TIME] = 0x0a;
 	CARD_WIDTH = EXT_CSD_BUS_WIDTH_1;
 	CARD_CHANGED_AT_4 = -1;
-	CARD_REFUSES_SWITCH = 0; CARD_READ_FAILS = 0; CONTROLLER_ERR = 0; REQUEST_ERROR = MMC_ERR_NONE;
+	CARD_REFUSES_SWITCH = 0; CARD_SWITCH_ANSWER_LOST = 0; CARD_READ_FAILS = 0; CONTROLLER_ERR = 0; REQUEST_ERROR = MMC_ERR_NONE;
 	DONE_CALLS = 0; DONE_DATA_SEEN = NULL;
 	fchemmc_disable = 0;
 	strcpy(version, FCHEMMC_KERNEL "\n    root@builder:/usr/obj/usr/src/amd64.amd64/sys/SMP\n");
@@ -464,6 +473,10 @@ static void test_probe(void)
 	fresh();
 	strcpy(version, FCHEMMC_KERNEL);
 	CHECK(fchemmc_probe(&CTRL) == BUS_PROBE_DEFAULT, "a version line alone, with no newline, not taken");
+	/* The shape of OPNsense 26.7's own version string: the line and one newline. */
+	fresh();
+	strcpy(version, FCHEMMC_KERNEL "\n");
+	CHECK(fchemmc_probe(&CTRL) == BUS_PROBE_DEFAULT, "a version line and one newline not taken");
 }
 
 static void test_bus_test_matches(void)
@@ -536,6 +549,18 @@ static void test_bus_test_failures(void)
 	EV[0] = '\0';
 	CHECK(bus_test(buf) != MMC_ERR_NONE, "4 bits kept when the card refused the switch");
 	CHECK(strstr(EV, "read EXT_CSD") == NULL, "EXT_CSD read after a refused switch");
+	CHECK(strstr(EV, "switch 183=0") != NULL, "no switch back after a refused switch: %s", EV);
+
+	/* The card takes the switch to 4 bits, but its answer is lost. */
+	fresh();
+	discover();
+	CARD_SWITCH_ANSWER_LOST = 1;
+	EV[0] = '\0';
+	CHECK(bus_test(buf) != MMC_ERR_NONE, "4 bits kept when the switch timed out");
+	CHECK(strstr(EV, "read EXT_CSD") == NULL, "EXT_CSD read after a failed switch");
+	CHECK(strstr(EV, "switch 183=0") != NULL && CARD_WIDTH == EXT_CSD_BUS_WIDTH_1,
+	    "card left at 4 bits after a lost answer: %s", EV);
+	CHECK(SC.bus_test == 1, "bus_test %d", SC.bus_test);
 
 	fresh();
 	discover();
@@ -658,6 +683,21 @@ static void test_reset(void)
 	fchemmc_reset(&CTRL, &SC.slot, SDHCI_RESET_ALL);
 	CHECK(strcmp(EV, "save;busmaster off;pm 3;pm 0;restore D0;generic reset 01;") == 0, "full: %s", EV);
 	CHECK(DELAYED == 10000 + 10000 + 3 * 10000, "waited %ld us", DELAYED);
+	CHECK(SC.d3_cycles == 1 && SC.d0_failed == 0 && SC.no_soft_reset == 0,
+	    "cycles %d, failed %d, no_soft_reset %d", SC.d3_cycles, SC.d0_failed, SC.no_soft_reset);
+	/* No_Soft_Reset set: kept for the owner to read, the cycle the same. */
+	fresh();
+	NO_SOFT_RESET = 1;
+	fchemmc_reset(&CTRL, &SC.slot, SDHCI_RESET_ALL);
+	CHECK(SC.no_soft_reset == 1, "no_soft_reset %d", SC.no_soft_reset);
+	CHECK(strcmp(EV, "save;busmaster off;pm 3;pm 0;restore D0;generic reset 01;") == 0, "No_Soft_Reset: %s", EV);
+	/* D0 never reads back: nothing restored, so nothing can sleep under the slot's mutex. */
+	fresh();
+	PM_STUCK = 1;
+	fchemmc_reset(&CTRL, &SC.slot, SDHCI_RESET_ALL);
+	CHECK(strcmp(EV, "save;busmaster off;pm 3;pm 0;printf;generic reset 01;") == 0, "stuck in D3: %s", EV);
+	CHECK(SC.d3_cycles == 1 && SC.d0_failed == 1, "cycles %d, failed %d", SC.d3_cycles, SC.d0_failed);
+	CHECK(POLLS == 0 && DELAYED == 10000 + 10 * 10000, "polled %d, waited %ld us", POLLS, DELAYED);
 	fresh();
 	UNSTABLE = 1;
 	fchemmc_reset(&CTRL, &SC.slot, SDHCI_RESET_ALL);
@@ -876,7 +916,9 @@ class Follower(unittest.TestCase):
         for d in ('modules', 'src', 'fsrc', 'sys/sys', 'sys/amd64/include', 'loader.conf.d'):
             os.makedirs(self.path(d))
         open(self.path('sys/sys/param.h'), 'w').close()
-        self.write('kernel', '\0\0' + KERNEL + '\n\0')
+        # A kernel built without reproducible builds carries a second line after its version line;
+        # the follower takes the first line alone, which is what the module compares.
+        self.write('kernel', '\0\0' + KERNEL + '\n    root@builder:/usr/obj/usr/src/amd64.amd64/sys/SMP\n\0')
         for name in ('Makefile', 'npuep.c'):
             open(self.path('src/' + name), 'w').close()
         for name in ('Makefile', 'fchemmc.c'):

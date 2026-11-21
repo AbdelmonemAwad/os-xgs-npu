@@ -98,8 +98,9 @@ same order as before. Change by change:
    `amd_probe()` reads it, the quirk: where a Hudson-2 SMBus (1022:780b) is present, or a 1022:790b
    SMBus below revision 0x51. With `bootverbose` it says which it set.
 7. `sdhci/sdhci_pci.c`, `sdhci_pci_reset()`: the front end's own `sdhci_reset` method, as
-   `sdhci_fsl_fdt.c` has one. A full reset of 1022:7906 first takes the controller to D3 and back to
-   D0, as Linux's `amd_sdhci_reset()` does: configuration space saved, bus mastering off, D3, 10 ms,
+   `sdhci_fsl_fdt.c` has one. A full reset of 1022:7906 first takes the controller to D3hot and back
+   to D0, as Linux's `amd_sdhci_reset()` does with D3cold: configuration space saved, bus mastering
+   off, D3hot, 10 ms,
    D0, 10 ms, configuration space restored, then up to 100 ms in 10 ms steps for Present State's
    card-detect-stable bit, then the generic reset. The power state is written to the power management
    register itself, not with `pci_set_powerstate()`: the method runs with the slot's mutex held, and
@@ -160,8 +161,17 @@ differs from it in these:
    is present, or a 1022:790b SMBus below revision 0x51 (`fchemmc_needs_clear_tm()`, read as Linux's
    `amd_probe()` reads it). This XGS 87's is 0x4a. Tuning commands carry data, so they never come
    there. `dev.fchemmc.0.clear_transfer_mode` says whether it is on.
-4. The reset (`fchemmc_reset()`): a full reset goes through D3 and back to D0 before the generic
-   reset, as change 7 of the patch above; the partial resets get the generic reset alone.
+4. The reset (`fchemmc_reset()`): a full reset goes through D3hot and back to D0 before the generic
+   reset, as change 7 of the patch above; the partial resets get the generic reset alone. This is
+   D3hot, not the D3cold Linux asks for: Linux's `pci_set_power_state(pdev, PCI_D3cold)` can cut the
+   power through ACPI where the platform has it, and a write to the power management register cannot.
+   Whether D3hot clears the controller's state depends on its No_Soft_Reset bit, which nobody has read
+   on an XGS 87; `dev.fchemmc.0.no_soft_reset` shows it (0: D3hot resets it). The configuration space
+   is restored only once D0 reads back, so that `pci_restore_state()` never calls
+   `pci_set_powerstate()` under the slot's mutex; if D0 does not read back, the driver says so,
+   restores nothing, and the device's `d0_failed` sysctl counts it (`d3_cycles` counts the cycles). sdhci
+   asks for a full reset at attach, detach, suspend and resume only. Its command and data timeouts
+   reset CMD and DATA, so this cycle does not recover a stuck card while the machine runs.
 5. The slot (`fchemmc_limit_slot()`): 4 bits and never 8, no DDR52, HS200, HS400 or UHS modes, no
    1.8 V or 1.2 V signaling, and 50 MHz at most, set after `sdhci_init_slot()` has read the
    capabilities and before the slot is started. That is how Linux runs this card: 4 bits, 50 MHz,
@@ -195,7 +205,9 @@ never sent, the card is no longer silent when mmc(4) sends it, after the bus tes
   (`fchemmc_load="YES"`) written beside the module, never without one. It is not critical: the eMMC
   holds data only. A build that fails, or sources that are not here, are said once for that kernel; the
   next boot is not sent to `kernel.old` for it; and a boot of a kernel it was not rebuilt for leaves the
-  eMMC to `sdhci_pci` (item 7).
+  eMMC to `sdhci_pci` (item 7). On this controller that means the stock bus test: the card is silent
+  until the power is removed, as it is today. No earlier `fchemmc.ko` is kept, so a boot back into the
+  old kernel after a new one was staged is such a boot.
 - `install/uninstall.sh` removes the module, its stamp, the loader line and the build directory; the
   sources go with `/usr/local/share/os-xgs-npu`. A loaded fchemmc stays until the next reboot.
 
@@ -210,13 +222,15 @@ Run here:
   and nothing with `hw.fchemmc.disable=1` or on a kernel whose version line is not the one it was built
   for. CMD19 never reaches the controller. CMD14 returns the pattern only when EXT_CSD reads back the
   same over 4 bits, and fails when any one of the seventeen bytes differs, when the card refuses the
-  switch, when the read fails, with no 1-bit copy, after a CMD0, or with the host not at 4 bits; the
-  card is switched back to 1 bit every time it was switched, and the switch time follows
+  switch, when the switch times out after the card took it, when the read fails, with no 1-bit copy,
+  after a CMD0, or with the host not at 4 bits; the card is switched back to 1 bit after every
+  attempt to switch it, and the switch time follows
   GEN_CMD6_TIME. The 1-bit copy is taken only from a 512-byte read at 1 bit, and the request's own
   completion is always given back. Every other command goes to the controller unchanged. Transfer Mode
   is written 0 only before a command without data and only with the quirk; the quirk is set for
   SMBus revisions 0x4a and 0x50 and for a Hudson-2, and not for 0x51, 0x61 or no known SMBus. A full
-  reset goes through D3 and back, waits at most ten 10 ms steps for card detect and then resets; a
+  reset goes through D3hot and back, keeps the No_Soft_Reset bit, waits at most ten 10 ms steps for
+  card detect and then resets; when D0 never reads back it restores nothing, says so and counts it; a
   partial reset, or a controller without power management, gets the generic reset alone. The slot is
   started at 4 bits and 50 MHz at most, with high speed and without DDR52, HS200, HS400, UHS or 1.8 V.
   Then the source: the notices kept from `sdhci_pci.c`, no match by class, the methods, the tunable,
@@ -226,7 +240,8 @@ Run here:
   rebuilt for a new kernel, built at a tick when only it is missing, said once and not built when the
   sources are missing, a failed build not tried again until an install, the loader line only beside a
   module, and nothing at all where its sources are not laid down. A fault put into the driver on
-  purpose - CMD19 sent on, or the quirk set for revision 0x51 - is caught.
+  purpose - CMD19 sent on, the quirk set for revision 0x51, the configuration restored when D0 did
+  not read back, or no switch back after a failed switch to 4 bits - is caught.
 - [tools/test-emmc-patch.py](../../tools/test-emmc-patch.py), for the patch: it applies to a copy of
   FreeBSD 15.1's `sys/dev/mmc` and `sys/dev/sdhci` with no fuzz and no offset and comes off again
   (where those sources are given; a GitHub runner has none and skips it); `mmc_compare_bus_width()`,
@@ -236,12 +251,15 @@ Run here:
 - A compile, and only that: `contrib/fchemmc` built with `make` against the kernel sources of
   OPNsense 26.7 (FreeBSD 15.1-RELEASE-p6) that the kernel follower had fetched on the lab's second
   XGS 3300, with the kernel's own flags and `-Werror`: no warning and no error. Every symbol the module
-  takes from the kernel is in that kernel's symbol table. That XGS 3300 has no 1022:7906 controller;
-  the module was not loaded there or anywhere, and the build was removed.
+  takes from the kernel is in that kernel's symbol table. The version line the follower reads from
+  that kernel file is, byte for byte, the start of the running kernel's `kern.version`, followed by
+  one newline and nothing else, which is what the module's match takes. That XGS 3300 has no
+  1022:7906 controller; the module was not loaded there or anywhere, and the build was removed.
 
 Not run: anything on an XGS 87. Only one can show that the loader loads the module and that it wins
 the probe; that the card answers after the bus test is answered; that EXT_CSD reads back the same over
-4 bits, so that mmc(4) runs the card at 4 bits; that the clock reaches 50 MHz in high speed; that the
-reset through D3 brings the controller back; and that mmcsd0 reads and writes. The whole of the
+4 bits, so that mmc(4) runs the card at 4 bits; that the clock reaches 50 MHz in high speed; whether
+the controller's No_Soft_Reset bit is clear, so that D3hot resets it as Linux's D3cold does, and that
+the reset through D3hot brings the controller back to D0; and that mmcsd0 reads and writes. The whole of the
 patched `mmc.c`, `sdhci.c` and `sdhci_pci.c` has not been compiled either; the patch is for FreeBSD,
 not for an appliance.

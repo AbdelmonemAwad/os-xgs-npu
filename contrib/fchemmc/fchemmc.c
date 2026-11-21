@@ -53,8 +53,8 @@
  * - On the chipsets before the one whose SMBus, 1022:790b, is revision 0x51
  *   or later, Transfer Mode is written 0 before a command without data
  *   (amd_probe(), SDHCI_QUIRK2_CLEAR_TRANSFERMODE_REG_BEFORE_CMD).
- * - A full reset first takes the controller to D3 and back to D0
- *   (amd_sdhci_reset()).
+ * - A full reset first takes the controller to D3hot and back to D0
+ *   (amd_sdhci_reset(), which asks for D3cold).
  * - 4 bits at most, no DDR52, HS200 or HS400, and 50 MHz at most: an SDHCI
  *   2.00 host, run as Linux runs this card (4 bits, 50 MHz, high speed).
  *
@@ -133,6 +133,9 @@ struct fchemmc_softc {
 	int		have_slot;
 	int		clear_tm;	/* Transfer Mode cleared before a command without data */
 	int		bus_test;	/* FCHEMMC_TEST_* */
+	int		no_soft_reset;	/* PMCSR No_Soft_Reset, -1 until read */
+	int		d3_cycles;	/* Full resets through D3hot and back */
+	int		d0_failed;	/* Of those, D0 not read back */
 	uint16_t	rca;		/* Of the card selected last */
 	int		ext_csd_valid;
 	uint8_t		ext_csd[MMC_EXTCSD_SIZE];	/* As read over 1 bit */
@@ -312,40 +315,60 @@ fchemmc_write_multi_4(device_t dev, struct sdhci_slot *slot __unused,
 /*
  * A full reset goes through the PCI power states first, as Linux's
  * amd_sdhci_reset() does: 0x7906 needs a hard reset to clear all of its
- * internal state, and its own software reset does not bring it back from a
- * stuck command.  The power state is written to the power management
- * register directly rather than with pci_set_powerstate(): sdhci calls this
- * with the slot's mutex held, and pci_set_powerstate() can go through ACPI,
- * which sleeps.  D3hot to D0 may reset the configuration space, so it is
- * saved before and restored after; the device is in D0 again by then, so
- * pci_restore_state() does not change its power state.  Card detect is
- * reset with the rest and is given up to 100 ms to settle before the
- * generic reset.  The partial resets get the generic reset alone.
+ * internal state.  Linux asks for D3cold, which can cut power through ACPI
+ * where the platform has it; this goes to D3hot only, by writing the power
+ * management register directly rather than with pci_set_powerstate(): sdhci
+ * calls this with the slot's mutex held, and pci_set_powerstate() can go
+ * through ACPI, which sleeps.  Whether D3hot resets the controller's state
+ * depends on its No_Soft_Reset bit, kept in dev.fchemmc.N.no_soft_reset.
+ * D3hot to D0 may reset the configuration space, so it is saved before and
+ * restored after, and only once D0 reads back: pci_restore_state() would
+ * otherwise call pci_set_powerstate() itself.  If D0 does not read back,
+ * that is logged and counted, and the generic reset runs alone.  Card
+ * detect is reset with the rest and is given up to 100 ms to settle before
+ * the generic reset.  sdhci asks for a full reset at attach, detach,
+ * suspend and resume only; its command and data timeouts reset CMD and
+ * DATA, which get the generic reset alone, so this does not recover a
+ * stuck card at run time.
  */
 static void
 fchemmc_reset(device_t dev, struct sdhci_slot *slot, uint8_t mask)
 {
+	struct fchemmc_softc *sc = device_get_softc(dev);
 	uint16_t status;
 	int i, pmc;
 
 	if ((mask & SDHCI_RESET_ALL) != 0 &&
 	    pci_find_cap(dev, PCIY_PMG, &pmc) == 0) {
+		status = pci_read_config(dev, pmc + PCIR_POWER_STATUS, 2);
+		sc->no_soft_reset = (status & PCIM_PSTAT_NOSOFTRESET) != 0;
+		status &= ~PCIM_PSTAT_DMASK;
 		pci_save_state(dev);
 		pci_disable_busmaster(dev);
-		status = pci_read_config(dev, pmc + PCIR_POWER_STATUS, 2) &
-		    ~PCIM_PSTAT_DMASK;
 		pci_write_config(dev, pmc + PCIR_POWER_STATUS,
 		    status | PCIM_PSTAT_D3, 2);
 		DELAY(10000);
 		pci_write_config(dev, pmc + PCIR_POWER_STATUS,
 		    status | PCIM_PSTAT_D0, 2);
-		DELAY(10000);
-		pci_restore_state(dev);
 		for (i = 0; i < 10; i++) {
-			if (fchemmc_read_4(dev, slot, SDHCI_PRESENT_STATE) &
-			    SDHCI_CARD_STABLE)
-				break;
 			DELAY(10000);
+			if ((pci_read_config(dev, pmc + PCIR_POWER_STATUS, 2) &
+			    PCIM_PSTAT_DMASK) == PCIM_PSTAT_D0)
+				break;
+		}
+		sc->d3_cycles++;
+		if (i == 10) {
+			sc->d0_failed++;
+			device_printf(dev, "not back in D0 after D3hot; "
+			    "configuration not restored\n");
+		} else {
+			pci_restore_state(dev);
+			for (i = 0; i < 10; i++) {
+				if (fchemmc_read_4(dev, slot,
+				    SDHCI_PRESENT_STATE) & SDHCI_CARD_STABLE)
+					break;
+				DELAY(10000);
+			}
 		}
 	}
 	sdhci_generic_reset(dev, slot, mask);
@@ -414,12 +437,15 @@ fchemmc_bus_test(struct fchemmc_softc *sc, device_t mmcdev,
 			    sc->ext_csd[fchemmc_compared[i]])
 				err = MMC_ERR_FAILED;
 		}
-		/* Back to 1 bit, whether 4 bits work or not. */
-		if (mmc_switch(mmcdev, mmcdev, sc->rca, EXT_CSD_CMD_SET_NORMAL,
-		    EXT_CSD_BUS_WIDTH, EXT_CSD_BUS_WIDTH_1, timeout, true) !=
-		    MMC_ERR_NONE)
-			err = MMC_ERR_FAILED;
 	}
+	/*
+	 * Back to 1 bit after any attempt, whether 4 bits work or not: the
+	 * card may have taken the switch even when its answer was lost.
+	 */
+	if (mmc_switch(mmcdev, mmcdev, sc->rca, EXT_CSD_CMD_SET_NORMAL,
+	    EXT_CSD_BUS_WIDTH, EXT_CSD_BUS_WIDTH_1, timeout, true) !=
+	    MMC_ERR_NONE)
+		err = MMC_ERR_FAILED;
 	free(ext_csd, M_DEVBUF);
 	if (err != MMC_ERR_NONE) {
 		sc->bus_test = FCHEMMC_TEST_FAILED;
@@ -522,6 +548,7 @@ fchemmc_attach(device_t dev)
 	int bar, err, rid, i;
 
 	sc->dev = dev;
+	sc->no_soft_reset = -1;
 	sc->clear_tm = fchemmc_needs_clear_tm();
 	/*
 	 * No sdhci quirks of its own; hw.sdhci.quirk_set still applies, as in
@@ -581,6 +608,13 @@ fchemmc_attach(device_t dev)
 	SYSCTL_ADD_INT(ctx, tree, OID_AUTO, "bus_test", CTLFLAG_RD,
 	    &sc->bus_test, 0,
 	    "Width EXT_CSD read back the same at (4), failed (1), not run (0)");
+	SYSCTL_ADD_INT(ctx, tree, OID_AUTO, "no_soft_reset", CTLFLAG_RD,
+	    &sc->no_soft_reset, 0,
+	    "PMCSR No_Soft_Reset bit: D3hot keeps state (1), resets it (0)");
+	SYSCTL_ADD_INT(ctx, tree, OID_AUTO, "d3_cycles", CTLFLAG_RD,
+	    &sc->d3_cycles, 0, "Full resets through D3hot and back to D0");
+	SYSCTL_ADD_INT(ctx, tree, OID_AUTO, "d0_failed", CTLFLAG_RD,
+	    &sc->d0_failed, 0, "Full resets after which D0 did not read back");
 
 	/* Activate the interrupt */
 	err = bus_setup_intr(dev, sc->irq_res, INTR_TYPE_MISC | INTR_MPSAFE,
