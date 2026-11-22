@@ -516,6 +516,125 @@ record() {
 	return 0
 }
 
+# ---------------------------------------------------------------- the eMMC driver beside it
+#
+# fchemmc.ko, the driver of the XGS 87's eMMC controller (contrib/fchemmc, AMD FCH 1022:7906), follows
+# the same kernel with the same sources, after the module above - but it is not that module. The eMMC
+# holds data only, so nothing here is critical: a build that fails, or sources that are not here, are
+# said once for the kernel to follow and leave the boot as it is, with no fall-back to kernel.old. The
+# loader loads fchemmc.ko before anything can check a stamp, so the module carries the version line of
+# the kernel it was built for and does not probe on any other (fchemmc.c, fchemmc_kernel_matches): a
+# boot of a kernel it was not rebuilt for leaves the controller to the built-in sdhci_pci. The stamp
+# beside it is for this follower only, to know when to build. Its sources are laid down by install.sh
+# only where a 1022:7906 controller is, so on every other appliance this does nothing at all.
+: ${FCHEMMC_SRCTREE:=${PREFIX}/share/os-xgs-npu/fchemmc}
+: ${FCHEMMC_MODULE:=${MODDIR}/fchemmc.ko}
+: ${FCHEMMC_BUILDROOT:=/var/db/os-xgs-npu/build-fchemmc}
+: ${FCHEMMC_BUILDLOG:=/var/db/os-xgs-npu/build-fchemmc.log}
+: ${FCHEMMC_SAID:=/var/db/os-xgs-npu/fchemmc-follow.said}
+: ${FCHEMMC_LOADER:=/boot/loader.conf.d/fchemmc.conf}
+
+# Said once for each kernel to follow and outcome, and at every FORCE=1 (an install, which reports it);
+# a build that failed for this kernel is not tried again every five minutes, only at FORCE=1 or for
+# another kernel.
+fchemmc_said() {
+	[ "${FORCE}" != "1" ] && [ "$(/bin/cat "${FCHEMMC_SAID}" 2>/dev/null)" = "${TARGET}|$1" ] && return 0
+	[ "${DRY}" = "1" ] || { /bin/mkdir -p "${FCHEMMC_SAID%/*}" &&
+	    printf '%s\n' "${TARGET}|$1" > "${FCHEMMC_SAID}"; } 2>/dev/null
+	return 1
+}
+
+# The loader line, beside a module and never without one: a line for a missing module is an error at
+# every boot.
+fchemmc_loader() {
+	if [ -f "${FCHEMMC_MODULE}" ]; then
+		[ -f "${FCHEMMC_LOADER}" ] && return 0
+		{ /bin/mkdir -p "${FCHEMMC_LOADER%/*}" &&
+		    printf '%s\n' 'fchemmc_load="YES"' > "${FCHEMMC_LOADER}"; } 2>/dev/null &&
+		    log "fchemmc: ${FCHEMMC_LOADER} loads it at the next boot"
+	else
+		/bin/rm -f "${FCHEMMC_LOADER}"
+	fi
+}
+
+# $1: SYSDIR when the module above was just built against it; empty to look for the sources here only.
+# Whatever the build does, the loader line is then made to agree with what is in ${MODDIR}.
+follow_fchemmc() {
+	[ -f "${FCHEMMC_SRCTREE}/Makefile" ] || return 0
+	build_fchemmc "$@"
+	[ "${DRY}" = "1" ] || fchemmc_loader
+	return 0
+}
+build_fchemmc() {
+	fstamp=$(/bin/cat "${FCHEMMC_MODULE}.kernel" 2>/dev/null || true)
+	if [ -f "${FCHEMMC_MODULE}" ] && [ "${fstamp}" = "${TARGET}" ] && [ "${FORCE}" != "1" ]; then
+		return 0
+	fi
+	if [ "${DRY}" = "1" ]; then
+		log "DRY=1 - would build fchemmc.ko for ${TARGET}"
+		return 0
+	fi
+	if [ "${FORCE}" != "1" ] &&
+	    [ "$(/bin/cat "${FCHEMMC_SAID}" 2>/dev/null)" = "${TARGET}|failed" ]; then
+		return 0
+	fi
+	fsys=${1:-}
+	if [ -z "${fsys}" ]; then
+		fsys=$(NONET=1 /bin/sh "${FETCH}" "${TARGET}" 2>/dev/null |
+		    /usr/bin/sed -n 's/^[[:space:]]*SYSDIR=\([^[:space:]]*\).*/\1/p' | /usr/bin/tail -1)
+	fi
+	if [ -z "${fsys}" ] || [ ! -f "${fsys}/sys/param.h" ]; then
+		fchemmc_said nosources ||
+		    warn "fchemmc: no kernel sources for ${TARGET} here; the eMMC driver is not rebuilt, and a boot of that kernel leaves the eMMC to the built-in driver"
+		return 0
+	fi
+	case "${TARGET}" in
+	*'"'*|*'\'*)
+		fchemmc_said badversion || warn "fchemmc: the kernel's version line holds a quote or a backslash; not built"
+		return 0
+		;;
+	esac
+	/bin/rm -rf "${FCHEMMC_BUILDROOT}"
+	if ! /bin/mkdir -p "${FCHEMMC_BUILDROOT}"; then
+		warn "fchemmc: cannot create ${FCHEMMC_BUILDROOT}; ${FCHEMMC_MODULE} is untouched"
+		return 0
+	fi
+	for f in "${FCHEMMC_SRCTREE}"/Makefile "${FCHEMMC_SRCTREE}"/*.c "${FCHEMMC_SRCTREE}"/*.h; do
+		[ -f "${f}" ] && /bin/cp "${f}" "${FCHEMMC_BUILDROOT}/"
+	done
+	if ! ( cd "${FCHEMMC_BUILDROOT}" &&
+	    /usr/bin/make SYSDIR="${fsys}" FCHEMMC_KERNEL="${TARGET}" ) > "${FCHEMMC_BUILDLOG}" 2>&1 ||
+	    [ ! -f "${FCHEMMC_BUILDROOT}/fchemmc.ko" ]; then
+		fchemmc_said failed ||
+		    warn "fchemmc: the build failed; ${FCHEMMC_MODULE} is untouched (the whole log is ${FCHEMMC_BUILDLOG})"
+		return 0
+	fi
+	fmlink=$(/usr/bin/readlink "${FCHEMMC_BUILDROOT}/machine" 2>/dev/null || true)
+	case "${fmlink}" in
+	"${fsys}"/*) ;;
+	*)
+		fchemmc_said failed ||
+		    warn "fchemmc: the machine headers came from ${fmlink:-nowhere}, not from ${fsys}; not installed"
+		return 0
+		;;
+	esac
+	/bin/mkdir -p "${MODDIR}"
+	if ! /bin/cp "${FCHEMMC_BUILDROOT}/fchemmc.ko" "${FCHEMMC_MODULE}.new" ||
+	    ! /bin/mv "${FCHEMMC_MODULE}.new" "${FCHEMMC_MODULE}"; then
+		/bin/rm -f "${FCHEMMC_MODULE}.new"
+		warn "fchemmc: could not move the new module into place; ${FCHEMMC_MODULE} is untouched"
+		return 0
+	fi
+	{ printf '%s\n' "${TARGET}" > "${FCHEMMC_MODULE}.kernel.new" &&
+	    /bin/mv "${FCHEMMC_MODULE}.kernel.new" "${FCHEMMC_MODULE}.kernel"; } 2>/dev/null ||
+	    warn "fchemmc: could not write the stamp beside ${FCHEMMC_MODULE}; the next run builds it again"
+	/bin/chmod 0555 "${FCHEMMC_MODULE}" 2>/dev/null || true
+	/bin/chmod 0444 "${FCHEMMC_MODULE}.kernel" 2>/dev/null || true
+	/bin/rm -f "${FCHEMMC_SAID}"
+	log "fchemmc: installed ${FCHEMMC_MODULE}, built for ${TARGET}"
+	return 0
+}
+
 WHERE=
 TARGET=$(kernel_staged || true)
 if [ -n "${TARGET}" ]; then
@@ -576,6 +695,7 @@ if [ "${STAMP}" = "${TARGET}" ] && [ "${FORCE}" != "1" ]; then
 	[ -f "${ARMED}" ] && unpin_old_kernel
 	record ok "matches the kernel to follow"
 	said
+	follow_fchemmc ""
 	prune_old_sources
 	exit 0
 fi
@@ -818,4 +938,5 @@ record built "rebuilt for the kernel to follow"
 # still staged too, where this follower armed it (unpin_old_kernel, 2026-11-17).
 STAMP=${TARGET}
 unpin_old_kernel
+follow_fchemmc "${SYSDIR}"
 exit 0

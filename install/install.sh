@@ -742,6 +742,20 @@ copy_driver "${SRC}/contrib/octep" "${PREFIX}/share/os-xgs-npu/octep"
 # the appliance that has one. Laid down on both families, because the follower decides which module
 # it is following from what is installed, and the sources cost nothing where they are not used.
 copy_driver "${SRC}/contrib/npuep" "${PREFIX}/share/os-xgs-npu/npuep"
+# The eMMC controller's driver (contrib/fchemmc, #1205): the XGS 87's AMD FCH SD/eMMC controller,
+# PCI 1022:7906, which the kernel's own sdhci_pci takes by its class and leaves unusable. Its sources
+# go only where such a controller is on the bus - the kernel follower builds fchemmc.ko from them,
+# after the driver above and against the same kernel, and writes the loader line beside it - and
+# everything of it is taken away anywhere else. Both spellings of the identity, as for the endpoint
+# above. Root on the eMMC is not a part of it: the eMMC holds data only.
+if /usr/sbin/pciconf -l 2>/dev/null |
+    grep -qE 'chip=0x79061022|vendor=0x1022[[:space:]]+device=0x7906'; then
+    copy_driver "${SRC}/contrib/fchemmc" "${PREFIX}/share/os-xgs-npu/fchemmc"
+else
+    rm -rf "${PREFIX}/share/os-xgs-npu/fchemmc"
+    rm -f /boot/modules/fchemmc.ko /boot/modules/fchemmc.ko.kernel /boot/loader.conf.d/fchemmc.conf \
+        /var/db/os-xgs-npu/fchemmc-follow.said
+fi
 
 # A carried copy of the kernel sources, if this checkout has one beside it.
 #
@@ -904,6 +918,11 @@ if [ "${OCTEONTX}" = 0 ]; then
         fi
     else
         echo "   none built yet - the end of this run says why, and what to do"
+    fi
+    # The eMMC controller's driver, built by the same run of the follower where its sources are.
+    if [ -d "${PREFIX}/share/os-xgs-npu/fchemmc" ]; then
+        grep '^fchemmc: ' /var/db/os-xgs-npu/install-build.log 2>/dev/null |
+            sed 's/^fchemmc: /   eMMC driver (fchemmc): /'
     fi
 else
     rm -f /boot/modules/npuep.ko /boot/modules/npuep.ko.kernel
