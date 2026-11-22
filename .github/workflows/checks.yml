@@ -281,7 +281,9 @@ jobs:
       # what the site's model pages say each port is on, tools/device_facts.py as
       # tools/devices-table.py writes it and website/data/devices.json has it. And an expansion
       # module's ports by their places: an interface's name in portmap.py and a port's LMAC in
-      # portstats.py, a port that did not come up moving neither (the review's O3).
+      # portstats.py, a port that did not come up moving neither (the review's O3). And each model's
+      # WAN: its family's, or its own where its chassis prints WAN beside another socket (the XGS 87's
+      # Port2), in models.py --json and on the site's pages.
       - name: Models and their ports
         run: python3 tools/test-models.py
 
@@ -433,8 +435,11 @@ jobs:
         run: python3 tools/test-health.py
 
       # Which device becomes MGMT at the first boot, after an install and after a factory reset (issue
-      # 957): scripts/xgs/assign.php's own function, with PHP and no OPNsense. tools/test-assign-mgmt.py.
-      - name: MGMT after a factory reset
+      # 957): scripts/xgs/assign.php's own function, with PHP and no OPNsense. And the port each model
+      # is given as WAN, from models.py as assign.php reads it - the XGS 87's Port2, printed WAN on its
+      # chassis, and the XGS 136's and the XGS 3300's as before - with every other front port in the
+      # bridge. tools/test-assign-mgmt.py.
+      - name: MGMT after a factory reset, and each model's WAN
         run: |
           command -v php > /dev/null || sudo apt-get install -y --no-install-recommends php-cli > /dev/null
           python3 tools/test-assign-mgmt.py

@@ -40,6 +40,14 @@ differs from the plan below.
   installer's `lan` (igb0) stays and is named MGMT.~~ bridge0 is `lan`, and igb0 is MGMT, as above.
 - **The 136.** Port1 is WAN; Port2 to Port12, F1 and F2 are members of bridge0, which is `lan` -
   the 136 has no NIC of its own, so there is no MGMT.
+- **A model may name its own WAN (2026-11-22).** Every model takes its family's WAN port - Port2 on
+  the OCTEON TX family, as on the 3300, and Port1 on the ARMADA family, as on the 136 - unless the
+  table gives it another, where its chassis prints WAN beside another socket. **The XGS 87's and
+  87w's is Port2**: their chassis is printed `1/LAN`, `2/WAN`, `3/DMZ` and `4`, so Port2 is WAN and
+  Port1, Port3, Port4 and F1 are members of bridge0. Until then they took their family's Port1, the
+  socket printed LAN, and the one printed WAN was a member of the bridge. Which socket the other
+  models' chassis print WAN beside is not recorded, and they keep their family's
+  ([front-ports-by-model.md](../families/front-ports-by-model.md#what-changes-on-each-model)).
 - **After a factory reset (2026-11-01, issue 957).** OPNsense's reset empties `/conf`, the mark
   with it, so the next boot assigns the ports again - but its configuration's `lan` names a device
   that is not there, the factory's placeholder, and MGMT used to be taken from `lan`. So after a reset

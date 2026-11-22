@@ -19,7 +19,7 @@
    "family": "ARMADA",
    "family_key": "armada",
    "driver": "npuep",
-   "wan": "Port1",
+   "wan": "Port2",
    "board": "AMDA0200",
    "platform": "xgsdt1",
    "chip": "CN9130",

@@ -494,7 +494,7 @@ Updates brings what came after it.
 
 Write it to a USB stick, boot the appliance from it and install to the disk. At the first boot from
 the disk a thirty-second countdown on the console assigns the front ports by the names on the chassis:
-**WAN** on Port2 (XGS 3300) or Port1 (XGS 136), every other front port in one bridge as **LAN** on
+**WAN** on Port2 (XGS 3300, XGS 87) or Port1 (XGS 136), every other front port in one bridge as **LAN** on
 192.168.1.1, and the management port, where there is one, as **MGMT** on 192.168.100.1.
 
 > [!CAUTION]
