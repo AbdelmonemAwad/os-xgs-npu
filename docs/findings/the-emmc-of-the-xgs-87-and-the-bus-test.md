@@ -235,7 +235,8 @@ fchemmc. It looks in the booted kernel's own directory first: `config.loadKernel
 `stand/lua/config.lua` sets `module_path` to `/boot/<kernel>;` and the rest, and `mod_search_hints()`
 in `stand/common/module.c` falls back to the file name `fchemmc.ko` in each directory whose
 `linker.hints` does not name the module. A kernel update moves the whole directory: `install_kernel()`
-in opnsense-update (opnsense/update, `src/update/opnsense-update.sh.in`) unpacks the new kernel into
+in [opnsense-update](https://github.com/opnsense/update/blob/master/src/update/opnsense-update.sh.in)
+unpacks the new kernel into
 `/boot/kernel.new`, removes `/boot/kernel.old`, renames `/boot/kernel` to `/boot/kernel.old` and
 `kernel.new` to `kernel`. So a build kept as `/boot/kernel.old/fchemmc.ko` - or as
 `/boot/kernel/fchemmc.ko` just before an upgrade's rename - goes with the kernel it was built for, and
