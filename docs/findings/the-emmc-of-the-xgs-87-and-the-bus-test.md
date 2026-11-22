@@ -4,9 +4,10 @@
 2026-11-22, from the readings an XGS 87's owner sent in
 [#1205](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/1205) (and
 [#1204](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/1204)). There is no XGS 87 in the lab:
-everything below about the hardware is that owner's reading, and nothing here has run on one yet.
-Two things come of it: a patch for FreeBSD's own drivers, to offer upstream, and a driver of the
-plugin's own, `fchemmc`, that reaches an XGS 87 with no new kernel.
+everything below about the hardware is that owner's reading, ~~and nothing here has run on one yet~~ and the
+driver has run on that owner's XGS 87 since (the end of this page). Two things come of it: a patch
+for FreeBSD's own drivers, to offer upstream, and a driver of the plugin's own, `fchemmc`, that
+reaches an XGS 87 with no new kernel.
 
 ## The fault
 
@@ -202,16 +203,93 @@ never sent, the card is no longer silent when mmc(4) sends it, after the bus tes
   XGS 87), against the same kernel sources and for the same kernel, at an install and at every kernel
   the follower follows: in `/var/db/os-xgs-npu/build-fchemmc`, installed as `/boot/modules/fchemmc.ko`
   with a stamp beside it for the follower, and `/boot/loader.conf.d/fchemmc.conf`
-  (`fchemmc_load="YES"`) written beside the module, never without one. It is not critical: the eMMC
-  holds data only. A build that fails, or sources that are not here, are said once for that kernel; the
-  next boot is not sent to `kernel.old` for it; and a boot of a kernel it was not rebuilt for leaves the
-  eMMC to `sdhci_pci` (item 7). On this controller that means the stock bus test: the card is silent
-  until the power is removed, as it is today. No earlier `fchemmc.ko` is kept, so a boot back into the
-  old kernel after a new one was staged is such a boot.
+  (`fchemmc_load="YES"`) written beside the module, never without one. Where the eMMC holds data
+  only, it is not critical. A build that fails, or sources that are not here, are said once for that
+  kernel; the next boot is not sent to `kernel.old` for it; and a boot of a kernel it was not rebuilt
+  for leaves the eMMC to `sdhci_pci` (item 7). On this controller that means the stock bus test: the
+  card is silent until the power is removed, as it is today. No earlier `fchemmc.ko` is kept, so a boot
+  back into the old kernel after a new one was staged is such a boot. Where the system disk is the
+  eMMC, all of this is different: see [the eMMC as the system disk](#the-emmc-as-the-system-disk).
 - `install/uninstall.sh` removes the module, its stamp, the loader line and the build directory; the
   sources go with `/usr/local/share/os-xgs-npu`. A loaded fchemmc stays until the next reboot.
 
-Root on the eMMC is not a part of this; the eMMC is for data until a later step.
+~~Root on the eMMC is not a part of this; the eMMC is for data until a later step.~~ Since
+2026-11-22 the system can be installed onto the eMMC from the XGS image (below).
+
+## The eMMC as the system disk
+
+With the system disk on the eMMC, a kernel booted without an `fchemmc.ko` built for it has no root
+disk, and the appliance does not boot at all. Nothing below changes anything for an appliance whose
+system is anywhere else - every other model, and an XGS 87 that stays on a USB disk.
+
+**Which disk the system is on.** `src/opnsense/scripts/xgs/system-disk.sh` follows the root
+filesystem down to its disk: the device from `mount -p` (OPNsense's installer mounts it by a label -
+`/dev/gpt/rootfs` for UFS, `opnsense-ufs.sh` in opnsense/installer - or as the pool `zroot` for ZFS,
+whose devices `zpool list -vHP` names), then down `kern.geom.conftxt`, where every provider is printed
+after the one it is built on, one level deeper. `-e` answers 0 only where that disk is an `mmcsd`; a
+root it cannot follow to a disk counts as not the eMMC. In a plain OPNsense 26.7 VM it printed `ada0`
+for a root on the label `ufs/OPNsense_Nano` and answered 1.
+
+**Where the builds live, and why in the kernel's own directory.** The loader, not a boot hook, loads
+fchemmc. It looks in the booted kernel's own directory first: `config.loadKernel()` in
+`stand/lua/config.lua` sets `module_path` to `/boot/<kernel>;` and the rest, and `mod_search_hints()`
+in `stand/common/module.c` falls back to the file name `fchemmc.ko` in each directory whose
+`linker.hints` does not name the module. A kernel update moves the whole directory: `install_kernel()`
+in opnsense-update (opnsense/update, `src/update/opnsense-update.sh.in`) unpacks the new kernel into
+`/boot/kernel.new`, removes `/boot/kernel.old`, renames `/boot/kernel` to `/boot/kernel.old` and
+`kernel.new` to `kernel`. So a build kept as `/boot/kernel.old/fchemmc.ko` - or as
+`/boot/kernel/fchemmc.ko` just before an upgrade's rename - goes with the kernel it was built for, and
+the next kernel update removes it with that kernel. `/boot/modules` keeps one build, for the kernel to
+follow, as before. A build left in `/boot/kernel` is taken out again once `/boot/modules` has the same
+one: opnsense-update runs `kldxref /boot/kernel` at every base update, and the health check compares
+`/boot/kernel` with the kernel set's own list. Tested in a plain OPNsense 26.7 VM, which has no
+1022:7906 controller: with a build for `kernel.old` in `/boot/kernel.old` and one for `/boot/kernel` in
+`/boot/modules`, a boot sent to `kernel.old` by `nextboot -k kernel.old` loaded
+`/boot/kernel.old/fchemmc.ko` (`kldstat -v`), and the boot after it loaded `/boot/modules/fchemmc.ko`.
+
+**What the kernel follower does there** (`install/kernel-follow.sh`, "the eMMC as the system disk"):
+
+- the next boot is never sent to a kernel the loader would find no matching fchemmc for, while
+  `kernel.old` has one: the fall-back to `kernel.old` (`nextboot -k kernel.old`) is armed as it is for
+  npuep - before a rebuild, again at every boot, and at every orderly reboot by the stop hook - and let
+  go only once fchemmc is built for `/boot/kernel`, never for npuep alone;
+- the fall-back is never armed for npuep where `kernel.old` would find no fchemmc: a boot without its
+  front ports is still a boot, one without its system disk is not;
+- the build that is replaced is kept, for the kernel it was built for, in that kernel's own directory;
+- an upgrade to a new major release, whose kernel is a staged set that OPNsense's `upgrade.sh` applies
+  only when every upgrade hook succeeded, is stopped by the upgrade hook where fchemmc could not be
+  built for that kernel (`EMMCCHECK=1`): the upgrade says why, applies nothing, and can be run again.
+
+`install/uninstall.sh` leaves fchemmc, its loader line, the kept builds and a fall-back to
+`kernel.old` where the system disk is the eMMC, and says that nothing builds it for a new kernel once
+the plugin is gone.
+
+One window is left: between an update installing a new kernel and the follower's next run (its
+five-minute tick, or the stop hook at the reboot the update asks for), a power cut leaves the next boot
+on the new kernel without its fchemmc. The boot menu's **Kernel** entry (`k`) then picks `kernel.old`,
+which has one.
+
+**In the XGS image.** The image is made on a build machine with no XGS 87, and its first boot is too
+late for the plugin to build fchemmc: `install.sh` runs from the image's first-boot hook after the
+kernel has probed the bus, and a warm reboot does not bring the card back. So the image build itself
+runs `install/image-fchemmc.sh put <image root> [<sys>]`: fchemmc built for the image's own kernel
+(its version line read out of `/boot/kernel/kernel`), against that kernel's sources - the archive the
+image already carries in `/usr/local/share/os-xgs-npu/kernel-sources` when no `<sys>` is given - with
+the make and cc of a FreeBSD of the image's own major release (refused on any other). It puts in
+`/boot/modules/fchemmc.ko` with its stamp, `/boot/loader.conf.d/fchemmc.conf`, the sources, and a
+mark, `/usr/local/share/os-xgs-npu/fchemmc.image`; a step that fails takes all of it away. The live
+system of an XGS 87 then boots with fchemmc, and its installer offers `mmcsd0`: the UFS installer
+lists every `/dev/<letters><digits>` that `diskinfo` reads (`opnsense_load_disks()`,
+opnsense/installer), the ZFS one every GEOM disk (`f_device_find`, bsdconfig's `device.subr`), and the
+copy of the live system takes `/boot` whole and every directory of `/usr/local`
+(`opnsense-install.sh`, cpdup). At the first boot `install.sh` runs `image-fchemmc.sh settle` before
+anything else: where a 1022:7906 is on the bus of a board this project installs on, the plugin takes
+the module over (the mark goes); anywhere else everything the image put in is taken away, so after
+its first boot an appliance of any other model is as it would have been without it. A loaded fchemmc
+stays until the next boot, attached to nothing. In the same VM, `put` built `fchemmc.ko` for the VM's
+own kernel against its sources; the module loaded with `kldload` and by the loader at the next boot,
+with no message and no device attached; and `settle` then left the made-up image root as it was
+before `put`.
 
 ## What is tested, and what is not
 
@@ -242,6 +320,19 @@ Run here:
   module, and nothing at all where its sources are not laid down. A fault put into the driver on
   purpose - CMD19 sent on, the quirk set for revision 0x51, the configuration restored when D0 did
   not read back, or no switch back after a failed switch to 4 bits - is caught.
+- [tools/test-emmc-root.py](../../tools/test-emmc-root.py), for the eMMC as the system disk:
+  `system-disk.sh` given what `mount -p`, `kern.geom.conftxt` and `zpool list -vHP` print (UFS on
+  `gpt/rootfs` and on the partition itself on the eMMC, UFS on a USB disk, ZFS on an NVMe label and on
+  an encrypted eMMC partition, a root on no disk); the kernel follower and the upgrade hook on a made-up
+  `/boot`, each run asked what the loader would load for the kernel the next boot takes - after an
+  update with fchemmc built, with its build failing and at the boots after, with a build cut off, at
+  the stop hook's reboot, with no fchemmc for either kernel, at an upgrade with its kernel staged with
+  and without a matching build, and every one of them with the system disk elsewhere, where nothing is
+  kept in a kernel's directory and npuep alone decides as before; and `image-fchemmc.sh`: what `put`
+  lays into an image root, from a given `sys` and from the archive the image carries, and nothing on a
+  failed build, on machine headers from another tree, on a build machine of another major release or
+  for a kernel without a version line; and what `settle` leaves on an XGS 87, on a board without the
+  controller, on a board this project does not install on, and where the system disk is the eMMC.
 - [tools/test-emmc-patch.py](../../tools/test-emmc-patch.py), for the patch: it applies to a copy of
   FreeBSD 15.1's `sys/dev/mmc` and `sys/dev/sdhci` with no fuzz and no offset and comes off again
   (where those sources are given; a GitHub runner has none and skips it); `mmc_compare_bus_width()`,
@@ -256,10 +347,14 @@ Run here:
   one newline and nothing else, which is what the module's match takes. That XGS 3300 has no
   1022:7906 controller; the module was not loaded there or anywhere, and the build was removed.
 
-Not run: anything on an XGS 87. Only one can show that the loader loads the module and that it wins
-the probe; that the card answers after the bus test is answered; that EXT_CSD reads back the same over
-4 bits, so that mmc(4) runs the card at 4 bits; that the clock reaches 50 MHz in high speed; whether
-the controller's No_Soft_Reset bit is clear, so that D3hot resets it as Linux's D3cold does, and that
-the reset through D3hot brings the controller back to D0; and that mmcsd0 reads and writes. The whole of the
-patched `mmc.c`, `sdhci.c` and `sdhci_pci.c` has not been compiled either; the patch is for FreeBSD,
+~~Not run: anything on an XGS 87. Only one can show that the loader loads the module and that it
+wins the probe; that the card answers after the bus test is answered; that EXT_CSD reads back the same
+over 4 bits, so that mmc(4) runs the card at 4 bits; that the clock reaches 50 MHz in high speed;
+whether the controller's No_Soft_Reset bit is clear, so that D3hot resets it as Linux's D3cold does,
+and that the reset through D3hot brings the controller back to D0; and that mmcsd0 reads and
+writes.~~ An owner's XGS 87 has run the driver from `main` since 2026-11-22, with its system on a USB
+disk: `mmcsd0` at 50 MHz and 4 bits, no errors, at cold and warm boots. Not run on an XGS 87: the
+system installed onto its eMMC from an image carrying fchemmc, the BIOS starting it from there, and a
+kernel update or an upgrade with the system on it; and the image's live system with fchemmc built in.
+The whole of the patched `mmc.c`, `sdhci.c` and `sdhci_pci.c` has not been compiled either; the patch is for FreeBSD,
 not for an appliance.

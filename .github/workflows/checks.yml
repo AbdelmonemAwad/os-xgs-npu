@@ -612,6 +612,15 @@ jobs:
       - name: The eMMC driver for the XGS 87
         run: python3 tools/test-fchemmc.py
 
+      # The XGS 87's eMMC as the system disk: system-disk.sh following the root filesystem down to its
+      # disk; the kernel follower and the upgrade hook on a made-up /boot, each run asked what the loader
+      # would load for the kernel the next boot takes - after an update, at a reboot, at an upgrade with
+      # its kernel staged, with and without a matching fchemmc build, and the same with the system disk
+      # elsewhere, where nothing differs; and what a ready-made image carries for it and what an install
+      # leaves of it on a board with and without the controller. tools/test-emmc-root.py.
+      - name: The eMMC as the system disk of the XGS 87
+        run: python3 tools/test-emmc-root.py
+
   # contrib/mvsw/mvsw is the repository's one binary: the coprocessor's switch tool, built for aarch64,
   # which no appliance can build (contrib/mvsw/README.md). It is built again here from mvsw.c with its
   # own Makefile - freestanding, no build id, stripped, so the build is reproducible - in the Ubuntu

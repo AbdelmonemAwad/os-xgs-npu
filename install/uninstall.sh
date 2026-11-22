@@ -71,9 +71,22 @@ rm -f /boot/modules/octep.ko.prev /boot/modules/octep.ko.prev.kernel
 # The eMMC controller's driver of the XGS 87 (contrib/fchemmc), its loader line and what the follower
 # keeps of its builds. A loaded fchemmc stays until the next reboot, which gives the controller back to
 # the kernel's own sdhci_pci.
-rm -f /boot/modules/fchemmc.ko /boot/modules/fchemmc.ko.kernel /boot/modules/fchemmc.ko.new \
-    /boot/modules/fchemmc.ko.kernel.new
-rm -f /boot/loader.conf.d/fchemmc.conf
+#
+# EXCEPT WHERE THE SYSTEM DISK IS THAT eMMC: the system boots only with fchemmc there, so the module,
+# its loader line and the builds kept in the kernels' own directories stay, and so does a fall-back to
+# kernel.old (below), which there may be what keeps the next boot on a kernel that has its fchemmc.
+# Nothing builds it for a new kernel once the plugin is gone, and it says so.
+EMMCROOT=0
+if [ -f "${PREFIX}/opnsense/scripts/xgs/system-disk.sh" ] &&
+    /bin/sh "${PREFIX}/opnsense/scripts/xgs/system-disk.sh" -e > /dev/null 2>&1; then
+    EMMCROOT=1
+    echo "== the system disk is the eMMC: fchemmc and its loader line stay, or the next boot would find no system disk =="
+    echo "   nothing builds it for a new kernel now: install the plugin again before any kernel update"
+else
+    rm -f /boot/modules/fchemmc.ko /boot/modules/fchemmc.ko.kernel /boot/modules/fchemmc.ko.new \
+        /boot/modules/fchemmc.ko.kernel.new
+    rm -f /boot/loader.conf.d/fchemmc.conf
+fi
 rm -rf /var/db/os-xgs-npu/build-fchemmc
 rm -f /var/db/os-xgs-npu/build-fchemmc.log /var/db/os-xgs-npu/fchemmc-follow.said
 
@@ -85,7 +98,9 @@ rm -f /var/db/os-xgs-npu/build-fchemmc.log /var/db/os-xgs-npu/fchemmc-follow.sai
 # nextboot holds one fall-back for the whole host, and os-kernelfollow arms the same one for modules of
 # its own: while it holds a mark of its own, the fall-back stays. And only while nextboot.conf still
 # sends the next boot to kernel.old - one set since for another kernel is not this package's.
-if [ -f /var/run/octep-follow.armed ]; then
+if [ -f /var/run/octep-follow.armed ] && [ "${EMMCROOT}" = 1 ]; then
+    echo "== a fall-back to /boot/kernel.old the kernel follower armed stays: the system disk is the eMMC =="
+elif [ -f /var/run/octep-follow.armed ]; then
     if [ -f /var/run/kernelfollow.armed ] || [ -f /var/db/os-kernelfollow/pinned ]; then
         echo "== the fall-back to /boot/kernel.old stays: os-kernelfollow armed it as well, for a module of its own =="
     elif grep -q '^[[:space:]]*kernel="kernel\.old"' /boot/nextboot.conf 2>/dev/null &&
@@ -112,6 +127,7 @@ rmdir "${PREFIX}/opnsense/scripts/octep" 2>/dev/null || true
 
 # The board reader both appliances' hooks ask, the status reader, and the gate writer.
 rm -f "${PREFIX}/opnsense/scripts/xgs/board.sh"
+rm -f "${PREFIX}/opnsense/scripts/xgs/system-disk.sh"
 # XGS: Certificate Import's reading of a certificate file; its controllers go with the directory below.
 rm -f "${PREFIX}/opnsense/scripts/xgs/certimport.inc"
 # The ready-made service aliases script; the aliases it added stay in Firewall: Aliases, which rules may use.

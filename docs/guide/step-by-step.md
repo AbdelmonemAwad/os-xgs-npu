@@ -228,6 +228,28 @@ Sign in as **`installer`**, password **`opnsense`**. Then, with the arrow keys, 
 *The console pictures in steps 6 to 8 were taken in a virtual machine running the same image: its
 disk is a `QEMU HARDDISK`, and its menus are the ones an appliance shows.*
 
+### On an XGS 87: installing onto the eMMC
+
+The XGS 87's internal disk is a 16 GB eMMC, `mmcsd0`. The XGS image brings the plugin's own driver
+for it, `fchemmc`, built for the image's kernel, so the system running from the stick sees the eMMC
+and the installer offers it. Everything else in step 7 is the same: in step 4, tick **mmcsd0** alone.
+
+- **It replaces the vendor's system.** The vendor's system is on that eMMC; the installer erases it.
+  The vendor's own image puts it back whenever you want it again.
+- **Kernel updates are protected.** With the system on the eMMC, a kernel without a matching
+  `fchemmc.ko` has no disk to start from, so the plugin builds `fchemmc` for every new kernel before
+  that kernel is used: until the build is done, the next boot takes the previous kernel, which keeps
+  its own build. An upgrade to a new release whose kernel `fchemmc` could not be built for is stopped
+  before anything is applied, and says so; run it again later. If the power goes off just after an
+  update installed a new kernel and the appliance does not start, press **k** at the boot menu until
+  it shows **kernel.old**, then boot: that kernel has its `fchemmc`.
+- **Removing the plugin leaves `fchemmc` in place**, because the system needs it to start. Nothing
+  builds it for a new kernel while the plugin is gone: install the plugin again before any update.
+- **Going back to a USB disk.** Boot the XGS image from the stick, and in the live system's shell
+  (option 8) clear the eMMC first: `gpart destroy -F mmcsd0`. Two installed systems on two disks carry
+  the same names, and a boot can take its system from either. Then install onto the USB disk as in
+  step 7, or put the vendor's system back on the eMMC with the vendor's own image.
+
 ## 8. The first boot from the disk
 
 This is the boot that loads the driver, so the front ports appear now, by the names the driver gives
