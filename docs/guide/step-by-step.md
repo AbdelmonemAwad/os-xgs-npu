@@ -248,6 +248,10 @@ Let it run out. The ports are then assigned by the names printed on the chassis:
 | **LAN**, one bridge on **192.168.1.1**, handing out addresses | every other front port, a module's included | every other front port |
 | **MGMT**, the management port, on **192.168.100.1** | the MGMT port | - |
 
+Every model takes its family's WAN - Port2 on the XGS 3300's family, Port1 on the XGS 136's - unless
+its chassis prints WAN beside another socket: on an **XGS 87 or 87w** the WAN is **Port2**, and
+Port1, Port3, Port4 and F1 are the LAN ([every model's](../families/front-ports-by-model.md#the-table)).
+
 > [!CAUTION]
 > **Keep MGMT apart from the coprocessor's ports, always.** MGMT is the host's own port, wired to
 > the host's CPU; every front port and cage belongs to the coprocessor and reaches the host only

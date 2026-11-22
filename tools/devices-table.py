@@ -136,7 +136,7 @@ def pages():
         out.append({
             'slug': slug(base), 'model': base, 'run': run,
             'variants': [{'model': models.MODELS[a][0], 'assembly': a, 'run': models.MODELS[a][3]} for a in assemblies],
-            'family': FAMILY[family], 'family_key': family, 'driver': DRIVER[family], 'wan': models.WAN[family],
+            'family': FAMILY[family], 'family_key': family, 'driver': DRIVER[family], 'wan': models.wan(first),
             'board': board, 'platform': facts.PLATFORM[board],
             'chip': models.chip(first), 'chip_parts': facts.CHIP_PARTS.get(models.chip(first)),
             'switch': wired['switch'], 'uplink': list(wired['uplink']), 'slot': wired.get('slot'),

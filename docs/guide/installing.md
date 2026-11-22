@@ -289,7 +289,9 @@ the page after the boot. On the three appliances of the lab since
 
 On an appliance whose front ports are all unassigned, the first boot that has them counts thirty
 seconds down on the console and then assigns them by the names on the chassis: **Port2** is WAN on
-an XGS 3300, **Port1** on an XGS 136, and every other front port is a member of one bridge, the
+an XGS 3300, **Port1** on an XGS 136 - each family's - and **Port2** on an XGS 87 or 87w, the socket
+its chassis prints WAN beside ([every model's](../families/front-ports-by-model.md#the-table)), and
+every other front port is a member of one bridge, the
 LAN, on **192.168.1.1/24**; the management port, where there is one (the XGS 3300's), becomes MGMT
 on **192.168.100.1/24** - both with DHCP. Any key during the countdown leaves the assignment to the
 console menu or the GUI. A box whose
