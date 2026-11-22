@@ -9,7 +9,7 @@
                    .tar.gz in base64, which the Problem Reports page hands to the browser to save
 
 WHAT IS IN IT. The coprocessor's state as the pages read it (status, its software with the U-Boot
-match check, its own Linux with its memory's error counters, ports, transceivers, IPsec, the updater), the driver's sysctls and the kernel's modules, the boot messages and what the early boot hooks decided this boot, the plugin's own
+match check, its own Linux with its memory's error counters, ports, transceivers, IPsec, the updater), the driver's sysctls and loader tunables and the kernel's modules, the boot messages and what the early boot hooks decided this boot, the plugin's own
 lines from the system log, what the coprocessor printed on its console, the network interfaces and their counters, the switch's frame limit,
 OPNsense's version and the reports already held - each a text file, every one put through the
 Problem Reports cleaner first (reporter.Scrubber): addresses, MACs, serial numbers, the host and
@@ -166,6 +166,31 @@ def coprocessor_log_tail(limit=262144):
     return text[-limit:].decode('utf-8', errors='replace')
 
 
+def driver_tree():
+    """The running family's driver: its sysctl tree, and its loader tunables as the kernel's environment
+    has them. The tunables (hw.npuep.*, hw.octep.*) are TUNABLE_INT, read at the driver's load and no
+    sysctl node: until 2026-11-22 this asked sysctl for them and for the other family's tree, and an XGS
+    87's bundle had three "unknown oid" lines and no tunable. Both families where board.sh says neither."""
+    words = command(['/bin/sh', XGS + '/board.sh'], timeout=10).split()
+    drivers = {'octeontx': ['octep'], 'armada': ['npuep']}.get(words[1] if len(words) > 1 else '',
+                                                               ['octep', 'npuep'])
+    text = command(['/sbin/sysctl', '-e'] + ['dev.' + d for d in drivers])
+    prefixes = tuple('hw.%s.' % d for d in drivers)
+    tunables = [l for l in command(['/bin/kenv'], timeout=10).splitlines() if l.startswith(prefixes)]
+    return text + '\n[loader tunables, from kenv]\n' + ('\n'.join(tunables) if tunables else '[none set]') + '\n'
+
+
+ECC_ALERT = '/var/db/os-xgs-npu/ecc-alert.json'
+
+
+def ecc_alert():
+    """The last memory alert health.py wrote; until 2026-11-22 a cat's "No such file" where none was ever
+    written, as if reading it had failed."""
+    if not os.path.exists(ECC_ALERT):
+        return '[no memory alert recorded]\n'
+    return pretty(command(['/bin/cat', ECC_ALERT]))
+
+
 def items():
     """(name, text) for every file in the bundle, in the order they are listed."""
     return [
@@ -180,7 +205,7 @@ def items():
         # its memory and its memory's error counters (EDAC) - and the last memory alert
         # (scripts/xgs/health.py), without asking it again.
         ('coprocessor-health.json', pretty(command([XGS + '/health.py', 'show']))),
-        ('coprocessor-ecc-alert.json', pretty(command(['/bin/cat', '/var/db/os-xgs-npu/ecc-alert.json']))),
+        ('coprocessor-ecc-alert.json', ecc_alert()),
         ('ports.json', pretty(command([XGS + '/portmap.py']))),
         ('transceivers.json', transceivers()),
         ('ipsec.json', pretty(command([XGS + '/ipsec.py']))),
@@ -191,7 +216,7 @@ def items():
         # The feeder watcher's record: the coprocessor's uptime and its feeder's state as last asked,
         # and each correction made (scripts/xgs/feeder.py, which says this bundle has it).
         ('feeder.json', pretty(command(['/bin/cat', '/var/db/os-xgs-npu/feeder.json']))),
-        ('sysctl-driver.txt', command(['/sbin/sysctl', '-e', 'dev.octep', 'dev.npuep', 'hw.octep', 'hw.npuep'])),
+        ('sysctl-driver.txt', driver_tree()),
         ('kldstat.txt', command(['/sbin/kldstat', '-v'])),
         ('dmesg.txt', command(['/sbin/dmesg'])),
         ('early-boot.txt', early_boot()),

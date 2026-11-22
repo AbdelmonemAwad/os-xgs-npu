@@ -113,6 +113,20 @@ link = [('mvmgmt0', subnets.ipaddress.ip_interface('192.168.1.2/24')),
         ('bridge0', subnets.ipaddress.ip_interface('192.168.1.1/24'))]
 check('the coprocessor\'s own management link is not MGMT',
       subnets.mgmt_mixed(subnets.overlaps(link, {}, NAMES), apart, NAMES), [])
+# The management link in a bridge is said, whatever else the bridge holds: an XGS 87's support bundle had
+# mvmgmt0 in a bridge with its WAN port (2026-11-21), and until 2026-11-22 nothing here said it.
+LINK_NAMES = dict(NAMES, mvmgmt0={'key': 'opt2', 'descr': 'NPUMGMT'}, bridge1={'key': 'opt5', 'descr': 'BR'})
+bridged_link = subnets.bridges(BRIDGES_TEXT.replace('\tmember: oxp0', '\tmember: mvmgmt0 flags=143<LEARNING>\n'
+                                                    '\tmember: oxp0')
+                               + 'bridge1: flags=8843<UP> metric 0 mtu 1500\n\tmember: oxmgmt0 flags=143<LEARNING>\n'
+                               '\tmember: igb1 flags=143<LEARNING>\n')
+mixed = subnets.mgmt_mixed([], bridged_link, LINK_NAMES)
+check('the management link in a bridge: said, by link',
+      [(m['device'], m['how'], [o['device'] for o in m['others']]) for m in mixed],
+      [('mvmgmt0', 'link', ['bridge0']), ('oxmgmt0', 'link', ['bridge1'])])
+check('its line for verify.sh', subnets.mgmt_lines(mixed)[:1],
+      ['NPUMGMT (mvmgmt0) is the management link to the coprocessor, and is in a bridge, which it never is: '
+       'LAN (bridge0)'])
 
 # A VLAN or a LAGG over the coprocessor's ports is on its side as much as the ports are: until
 # 2026-11-06 either was taken for a device of its own, and MGMT sharing its subnet was not said.

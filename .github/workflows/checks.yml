@@ -327,9 +327,13 @@ jobs:
       # mgmt-link.sh early, the ARMADA's link assigned at a boot that has it and no assignment, before
       # OPNsense configures its interfaces, and nothing done at the boot after, without the link, on
       # the XGS 3300, or on an answer it cannot read (the review's A4). And mgmt-link.sh ping, an
-      # address or name and a count checked before anything reaches the coprocessor (svc-1-10).
+      # address or name and a count checked before anything reaches the coprocessor (svc-1-10). And
+      # mgmt-link.sh status naming a bridge the link is in, and mgmt-link.php's own PHP giving the link
+      # no key the configuration still names elsewhere (an XGS 87's bundle had it in a bridge).
       - name: The management link's address
-        run: python3 tools/test-mgmt-link.py
+        run: |
+          command -v php > /dev/null || { sudo apt-get update -qq && sudo apt-get install -y -qq --no-install-recommends php-cli > /dev/null; }
+          python3 tools/test-mgmt-link.py
 
       # The coprocessor's log to OPNsense's remote destinations: the Syslog templates' overlay
       # rendered against made-up destinations (svc-3-30). tools/test-syslog-remote.py.

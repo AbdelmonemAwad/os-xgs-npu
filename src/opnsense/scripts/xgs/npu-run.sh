@@ -265,7 +265,11 @@ if clean | grep -q 'login:'; then
 	clean | grep -q 'assword' && { printf '\r' > "${DEV}"; sleep 2; }
 	in=1
 fi
-printf 'echo "---NPU""BEGIN---"; %s; echo "---NPU""END---"\r' "${CMD}" > "${DEV}"
+# The command in braces, on lines of its own: a command of more than one line - portcheck.py's, which
+# starts and ends with a newline - left a lone '; echo END' line until 2026-11-22, a syntax error, so
+# the end marker never came (an XGS 87's support bundle). In braces, the shell reads all of it before
+# running any, so the console's echo of its later lines does not come between the markers.
+printf 'echo "---NPU""BEGIN---"; {\r%s\r}; echo "---NPU""END---"\r' "${CMD}" > "${DEV}"
 # Read for <seconds> at most, and no longer than it takes the end marker to come. Until 2026-11-06 the
 # whole <seconds> were slept however soon the command answered, and the reader waited for after them: every
 # session held the console its seconds and some seven more, and coprocessor.py's 60 and 90 held it
@@ -278,7 +282,15 @@ while [ ${t} -lt ${SECS} ] && ! clean | grep -q '^---NPUEND---'; do
 	sleep 1
 	t=$((t + 1))
 done
-[ ${in} = 1 ] && printf 'exit\r' > "${DEV}"
+# A logged-in session that had no end marker gets a Ctrl-C before its logout: a '}' or a quote that the
+# console dropped leaves the shell in its continuation prompt, where 'exit' would be one more line of
+# the open command and every later session found no prompt. Only where a logout is typed anyway, and
+# at the same moment: a session that found the root shell types nothing more, and nothing is typed
+# later than before, to a coprocessor that may be restarting into its boot firmware.
+if [ ${in} = 1 ]; then
+	clean | grep -q '^---NPUEND---' || printf '\003' > "${DEV}"
+	printf 'exit\r' > "${DEV}"
+fi
 if clean | grep -q '^---NPUEND---'; then
 	# answered: a second for the logout's own lines if this logged in, and the reader stopped
 	[ ${in} = 1 ] && sleep 1

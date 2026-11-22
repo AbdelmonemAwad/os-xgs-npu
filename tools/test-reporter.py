@@ -315,6 +315,36 @@ class ReporterTest(unittest.TestCase):
         for word in ('1.2.3.4.5', '10.0.0.1.2', 'vendor build 21.0.0.169', 'serial console'):
             self.assertIn(word, kept)
 
+    def test_scrubber_keeps_the_vendor_build_under_the_bundle_s_keys(self):
+        # An XGS 87's support bundle had <ipv4> for its vendor build in system.json and coprocessor.json
+        # (2026-11-21): the keys say what it is, as the table's words do.
+        scrub = self.reporter.Scrubber()
+        kept = scrub('{"vendor_build": "21.0.0.169", "sfversion":"22.0.2.546", "gateway": "192.0.2.1"}\n'
+                     'slot 2 sfversion 23.0.0.120\n')
+        for word in ('"vendor_build": "21.0.0.169"', '"sfversion":"22.0.2.546"', 'sfversion 23.0.0.120',
+                     '"gateway": "<ipv4>"'):
+            self.assertIn(word, kept)
+
+    def test_scrubber_takes_out_a_one_line_ssh_key_and_its_bare_base64(self):
+        # The same bundle carried the coprocessor's console as a command typed the key there: the key on
+        # its line, and its base64 alone in the grep that looks for it first (2026-11-21). Made up here.
+        body = 'AAAAC3NzaC1lZDI1NTE5AAAAI' + 'Q' * 43
+        scrub = self.reporter.Scrubber()
+        text = scrub("grep -qF '%s' /root/.ssh/authorized_keys || echo 'ssh-ed25519 %s xgs-npu' >> keys\n"
+                     'ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTY%s= root\n'
+                     'ssh-rsa ' 'AAAAB3NzaC1yc2E%s== someone@example.org\n' % (body, body, 'R' * 60, 'S' * 80))
+        for secret in (body, 'AAAAE2Vj', 'AAAAB3Nz', 'someone@example.org'):
+            self.assertNotIn(secret, text)
+        self.assertIn("grep -qF '<key withheld>' /root/.ssh/authorized_keys", text)
+        self.assertIn("echo 'ssh-ed25519 <key withheld> xgs-npu'", text)
+        self.assertIn('ecdsa-sha2-nistp256 <key withheld> root', text)
+        self.assertIn('ssh-rsa <key withheld> <e-mail>', text)
+        # a word that only starts like one stays: no run of forty after it
+        self.assertIn('AAAA battery', scrub('AAAA battery'))
+        # after its type, a key whose AAAA the console cut to AAA is taken out all the same
+        garbled = scrub('ssh-ed25519 AAAC3NzaC1lZDI1NTE5AAAAI%s xgs-npu\n' % ('Q' * 43))
+        self.assertEqual(garbled, 'ssh-ed25519 <key withheld> xgs-npu\n')
+
     def test_scrubber_takes_the_machine_s_names_whole(self):
         # The host here is gatekeeper.example.org. Its name inside another word stays (a host named
         # "home" ate "homepage" until 2026-11-06); the name itself, with a label before it or a

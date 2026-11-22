@@ -1723,7 +1723,8 @@ class TheConsoleSession(unittest.TestCase):
                 "/dev/cuau2 is not the console's port"}
 
     def run_script(self, first='', again='', interrupted='', ssh=1, mark=None, queued=False, gone=False,
-                   reloaded=False, busy=False, seconds='4', answer=None, reader=60, by=0, irq=True, **env):
+                   reloaded=False, busy=False, seconds='4', answer=None, reader=60, by=0, irq=True,
+                   command='echo alive', **env):
         """npu-run.sh <seconds> 'echo alive', the console printing first at its first read, and at a later
         one interrupted after a Ctrl-C and a carriage return, or again after a carriage return alone; the
         link's ssh exiting ssh; the watch's mark made mark seconds before (None: no mark), or while this
@@ -1731,7 +1732,8 @@ class TheConsoleSession(unittest.TestCase):
         the driver loaded again, its handshake not made (reloaded), or the wait for the lock run out
         (busy). With answer, the console prints that once the command is typed, and its reader runs for
         reader seconds unless it is stopped, as the cat does. console-dev.sh exits by for the console's
-        device; with irq False the UART's interrupts do not move. What it did, and the keys it typed."""
+        device; with irq False the UART's interrupts do not move; command in place of 'echo alive'. What it
+        did, and the keys it typed."""
         for name in ('reads', 'irq', 'kept', 'urgent', 'gone', 'reloaded', 'sleeps'):
             if os.path.exists(self.path(name)):
                 os.unlink(self.path(name))
@@ -1807,7 +1809,8 @@ class TheConsoleSession(unittest.TestCase):
                  ('printf \'\\r\' >> "${DEV}"; sleep 1',
                   'printf \'\\r\' >> "${DEV}"; sleep 1; console > "${TMP}"')]
         if answer is not None:
-            typed = 'printf \'echo "---NPU""BEGIN---"; %s; echo "---NPU""END---"\\r\' "${CMD}" >> "${DEV}"'
+            typed = ('printf \'echo "---NPU""BEGIN---"; {\\r%s\\r}; echo "---NPU""END---"\\r\' "${CMD}"'
+                     ' >> "${DEV}"')
             swaps.append((typed, typed + '; console > "${TMP}"'))
         for real, fake in swaps + list(stubs.items()):
             self.assertIn(real, text)
@@ -1817,7 +1820,7 @@ class TheConsoleSession(unittest.TestCase):
         environ.update(PATH=bin_ + os.pathsep + os.environ.get('PATH', ''), NPU_RUN_TWICE='1',
                        CONSOLE_FIRST=first, CONSOLE_AGAIN=again, CONSOLE_INTERRUPTED=interrupted,
                        CONSOLE_ANSWER=answer or '', **env)
-        done = subprocess.run(['/bin/sh', script, seconds, 'echo alive'], env=environ, capture_output=True,
+        done = subprocess.run(['/bin/sh', script, seconds, command], env=environ, capture_output=True,
                               text=True, timeout=60)
         with open(self.dev, 'rb') as f:
             return done, f.read()
@@ -1828,8 +1831,26 @@ class TheConsoleSession(unittest.TestCase):
         alive, which a carriage return alone took for a stopped Linux (finding 2 of the review)."""
         done, keys = self.run_script(first='\r\n> ', again='\r\n> ', interrupted='^C\r\nroot@marvell:~# ')
         self.assertTrue(keys.startswith(b'\r\x03\r'), keys)
-        self.assertIn(b'echo "---NPU""BEGIN---"; echo alive;', keys)
+        self.assertIn(b'echo "---NPU""BEGIN---"; {\recho alive\r};', keys)
         self.assertNotEqual(done.returncode, feeder.NO_PROMPT)
+
+    def test_a_command_of_more_than_one_line_is_typed_whole(self):
+        """portcheck.py's read starts and ends with a newline: typed as 'echo BEGIN; %s; echo END', its last
+        line was a lone '; echo END', a syntax error, and the end marker never came (an XGS 87's support
+        bundle, 2026-11-21). The keys typed, run by a shell as the coprocessor's would run them: no error,
+        and everything the command printed between the markers."""
+        portcheck = load('portcheck', os.path.join(XGS, 'portcheck.py'))
+        command = portcheck.ARMADA_READ % self.path('no-such-table')
+        done, keys = self.run_script(first='\r\nroot@marvell:~# ', command=command)
+        typed = keys[keys.index(b'echo "---NPU""BEGIN'):].replace(b'\r', b'\n').decode()
+        shell = subprocess.run(['/bin/sh', '-c', typed], capture_output=True, text=True, timeout=60,
+                               env={'PATH': '/usr/bin:/bin'})
+        self.assertEqual(shell.returncode, 0, shell.stderr)
+        self.assertNotIn('syntax error', shell.stderr)
+        said = shell.stdout.splitlines()
+        self.assertEqual((said[0], said[1], said[-2], said[-1]),
+                         ('---NPUBEGIN---', 'answered', 'finished', '---NPUEND---'))
+        self.assertTrue(said[2].startswith('no-table'), said)
 
     def test_both_reads_go_to_the_console_s_log(self):
         """The second read took TMP over, and the first - the evidence behind a no prompt, and so behind a
@@ -1846,7 +1867,7 @@ class TheConsoleSession(unittest.TestCase):
         up, and every caller was refused (finding 7 of the review)."""
         done, keys = self.run_script(first='\r\nroot@marvell:~# ', mark=-3600)
         self.assertNotEqual(done.returncode, feeder.BUSY)
-        self.assertIn(b'echo "---NPU""BEGIN---"; echo alive;', keys)
+        self.assertIn(b'echo "---NPU""BEGIN---"; {\recho alive\r};', keys)
         done, keys = self.run_script(first='\r\nroot@marvell:~# ', mark=10)
         self.assertEqual((done.returncode, keys), (feeder.BUSY, b''))
         self.assertIn('kept for the watch', done.stderr)
@@ -1902,13 +1923,13 @@ class TheConsoleSession(unittest.TestCase):
         stopped: left to run, it would hold this for its minute."""
         done, keys = self.run_script(first='\r\nroot@marvell:~# ', seconds='20', answer=self.ANSWERED)
         self.assertEqual((done.returncode, done.stdout), (0, 'alive\n'))
-        self.assertIn(b'echo "---NPU""BEGIN---"; echo alive;', keys)
+        self.assertIn(b'echo "---NPU""BEGIN---"; {\recho alive\r};', keys)
         self.assertEqual(self.sleeps(), [1, 1])
 
     def test_a_session_that_logged_in_logs_out_once_answered(self):
         done, keys = self.run_script(first='\r\nlogin: ', seconds='20', answer=self.ANSWERED)
         self.assertEqual(done.returncode, 0)
-        self.assertTrue(keys.endswith(b'exit\r'), keys)
+        self.assertTrue(keys.endswith(b'exit\r') and not keys.endswith(b'\x03exit\r'), keys)
         # the first read's two, the login's two, and one for the logout's own lines
         self.assertEqual(self.sleeps(), [1, 1, 2, 1])
 
@@ -1920,7 +1941,9 @@ class TheConsoleSession(unittest.TestCase):
                                      reader=1)
         self.assertEqual((done.returncode, done.stdout), (1, 'alive\n'))
         self.assertIn('did not answer within 4s', done.stderr)
-        self.assertTrue(keys.endswith(b'exit\r'), keys)
+        # a Ctrl-C with the logout, so that a '}' the console dropped leaves no continuation prompt
+        # behind it, where 'exit' would be one more line of the command (a review, 2026-11-22)
+        self.assertTrue(keys.endswith(b'\x03exit\r'), keys)
         # the first read's two and the login's two; then the command's four, one a second
         self.assertEqual(self.sleeps(), [1, 1, 2] + [1] * 4)
 
@@ -1962,7 +1985,7 @@ class TheConsoleSession(unittest.TestCase):
             done, keys = self.run_script(first='\r\nroot@marvell:~# ', again='\r\nroot@marvell:~# ', by=by,
                                          irq=False)
             self.assertIn('it was attached again', done.stderr)
-            self.assertIn(b'echo "---NPU""BEGIN---"; echo alive;', keys)
+            self.assertIn(b'echo "---NPU""BEGIN---"; {\recho alive\r};', keys)
         self.assertEqual(self.devctl(), ['detach uart2', 'attach \\_SB_.PCI0.UAR3'] * 2)
         self.assertFalse(os.path.exists(self.path('refused')))
         self.assertFalse(os.path.exists(self.path('logged')))
@@ -1971,7 +1994,7 @@ class TheConsoleSession(unittest.TestCase):
         """The interrupts moved: nothing detached, by either answer that is used (exit 2 never opens it)."""
         for by in (0, 1):
             done, keys = self.run_script(first='\r\nroot@marvell:~# ', by=by)
-            self.assertIn(b'echo "---NPU""BEGIN---"; echo alive;', keys)
+            self.assertIn(b'echo "---NPU""BEGIN---"; {\recho alive\r};', keys)
         self.assertEqual(self.devctl(), [])
         self.assertFalse(os.path.exists(self.path('refused')))
 

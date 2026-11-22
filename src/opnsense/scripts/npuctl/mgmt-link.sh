@@ -348,6 +348,16 @@ status)
 	have_link || { echo "no ${LINK} on this machine"; exit 0; }
 	echo "${LINK}: $(/sbin/ifconfig "${LINK}" | /usr/bin/grep -E 'flags|inet ' | /usr/bin/awk '{$1=$1; print}' | /usr/bin/tr '\n' '|')"
 	echo "assignment: $(/usr/local/bin/php "${ASSIGN}" show "${LINK}" 2>/dev/null || echo none)"
+	# The link is never bridged (docs/npuep/mvmgmt-in-opnsense.md): an XGS 87's support bundle had it
+	# in a bridge with the WAN port (2026-11-21), and nothing said so.
+	BRIDGED=$(for b in $(/sbin/ifconfig -g bridge 2>/dev/null); do
+		/sbin/ifconfig "${b}" 2>/dev/null | /usr/bin/grep -q "member: ${LINK} " && echo "${b}"
+	done | /usr/bin/tr '\n' ' ')
+	if [ -n "${BRIDGED}" ]; then
+		echo "bridge: ${LINK} is a member of ${BRIDGED}- it is never bridged; take it out in Interfaces: Devices: Bridge"
+	else
+		echo "bridge: none"
+	fi
 	echo "rules admitting ${NPU_ADDR}: $(/sbin/pfctl -sr 2>/dev/null | /usr/bin/grep -c "from ${NPU_ADDR} ")"
 	echo "ping ${NPU_ADDR}: $(/sbin/ping -c 2 -t 3 -q "${NPU_ADDR}" 2>&1 | /usr/bin/grep -o '[0-9]* packets received')"
 	echo "ssh: $(ssh -i "${KEY}" -o BatchMode=yes -o ConnectTimeout=6 "root@${NPU_ADDR}" 'echo ok, $(uname -r)' 2>&1 | /usr/bin/tail -1)"
