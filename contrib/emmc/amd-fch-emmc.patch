@@ -1,0 +1,427 @@
+The eMMC on the AMD FCH SD/eMMC controller (PCI 1022:7906), as on the XGS 87.
+
+Against FreeBSD 15.1's sys/dev/mmc and sys/dev/sdhci, the sources of the
+OPNsense 26.7 kernel; applied with `patch -p1` from the directory that holds
+sys/.  docs/findings/the-emmc-of-the-xgs-87-and-the-bus-test.md says what the
+fault is, what each change is for and what has not been run yet.  A host or
+controller that does not ask for these changes sends the same commands in the
+same order as before.
+
+mmc: a host capability, MMC_CAP_NO_BUS_TEST, for a host that cannot take the
+  CMD19/CMD14 bus test.  On such a host the width is found the way Linux finds
+  it on every host: the card is switched with CMD6, EXT_CSD is read again over
+  the new width, and the width is kept only when its read-only fields read
+  back as they did over the 1-bit bus; 1 bit otherwise.  Such a host also
+  sets ERASE_GROUP_DEF before the width is looked for, as Linux does; every
+  other host sets it where it always did (now in mmc_set_erase_group(), the
+  same code moved out so both places share it).
+
+sdhci: a quirk, SDHCI_QUIRK_CLEAR_TRANSFER_MODE, off unless a front end sets
+  it: Transfer Mode written 0 before a command without data, as Linux's
+  SDHCI_QUIRK2_CLEAR_TRANSFERMODE_REG_BEFORE_CMD.
+
+sdhci_pci: an entry for 1022:7906 that sets the capability, and the quirk
+  where the chipset's SMBus says it needs it (Linux's amd_probe()); and a
+  reset method that takes 1022:7906 through D3 and back to D0 on a full reset
+  before the generic one (Linux's amd_sdhci_reset()).  Every other controller
+  gets the generic reset alone, as before.
+
+diff -u a/sys/dev/mmc/bridge.h b/sys/dev/mmc/bridge.h
+--- a/sys/dev/mmc/bridge.h
++++ b/sys/dev/mmc/bridge.h
+@@ -177,6 +177,7 @@
+ #define	MMC_CAP_DRIVER_TYPE_A	(1 << 21) /* Can do Driver Type A */
+ #define	MMC_CAP_DRIVER_TYPE_C	(1 << 22) /* Can do Driver Type C */
+ #define	MMC_CAP_DRIVER_TYPE_D	(1 << 23) /* Can do Driver Type D */
++#define	MMC_CAP_NO_BUS_TEST	(1 << 24) /* No CMD19/CMD14 bus test */
+ 	enum mmc_card_mode mode;
+ 	struct mmc_ios ios;	/* Current state of the host */
+ };
+diff -u a/sys/dev/mmc/mmc.c b/sys/dev/mmc/mmc.c
+--- a/sys/dev/mmc/mmc.c
++++ b/sys/dev/mmc/mmc.c
+@@ -174,6 +174,7 @@
+ static int mmc_app_send_scr(struct mmc_softc *sc, uint16_t rca,
+     uint32_t *rawscr);
+ static int mmc_calculate_clock(struct mmc_softc *sc);
++static int mmc_compare_bus_width(struct mmc_softc *sc, struct mmc_ivars *ivar);
+ static void mmc_decode_cid_mmc(uint32_t *raw_cid, struct mmc_cid *cid,
+     bool is_4_41p);
+ static void mmc_decode_cid_sd(uint32_t *raw_cid, struct mmc_cid *cid);
+@@ -210,6 +211,7 @@
+ static int mmc_set_blocklen(struct mmc_softc *sc, uint32_t len);
+ static int mmc_set_card_bus_width(struct mmc_softc *sc, struct mmc_ivars *ivar,
+     enum mmc_bus_timing timing);
++static int mmc_set_erase_group(struct mmc_softc *sc, struct mmc_ivars *ivar);
+ static int mmc_set_power_class(struct mmc_softc *sc, struct mmc_ivars *ivar);
+ static int mmc_set_relative_addr(struct mmc_softc *sc, uint16_t resp);
+ static int mmc_set_timing(struct mmc_softc *sc, struct mmc_ivars *ivar,
+@@ -1076,6 +1078,93 @@
+ 	return (bus_width_1);
+ }
+ 
++/*
++ * Find the widest bus width without the bus test above, for a host that
++ * cannot take it (MMC_CAP_NO_BUS_TEST): on some controllers the CMD19 write
++ * never completes and the card answers no command after it until its power
++ * is removed.  This is how Linux finds the width on every host: the card is
++ * switched to a width with CMD6, EXT_CSD is read again over that width, and
++ * the width is kept only when the fields that cannot change read back as
++ * they did over the 1-bit bus.  Like mmc_test_bus_width(), it leaves the card
++ * and the host at 1 bit; mmc_calculate_clock() switches both to the width
++ * found here.
++ */
++static int
++mmc_compare_bus_width(struct mmc_softc *sc, struct mmc_ivars *ivar)
++{
++	static const struct {
++		enum mmc_bus_width	width;
++		uint32_t		cap;
++		uint8_t			value;
++	} widths[] = {
++		{ bus_width_8, MMC_CAP_8_BIT_DATA, EXT_CSD_BUS_WIDTH_8 },
++		{ bus_width_4, MMC_CAP_4_BIT_DATA, EXT_CSD_BUS_WIDTH_4 }
++	};
++	/* The read-only fields Linux compares, mmc_compare_ext_csds(). */
++	static const uint8_t fields[] = {
++		EXT_CSD_PART_SUPPORT, EXT_CSD_ERASED_MEM_CONT, EXT_CSD_REV,
++		EXT_CSD_STRUCTURE, EXT_CSD_CARD_TYPE, EXT_CSD_S_A_TIMEOUT,
++		EXT_CSD_HC_WP_GRP_SIZE, EXT_CSD_ERASE_TO_MULT,
++		EXT_CSD_ERASE_GRP_SIZE, EXT_CSD_SEC_TRIM_MULT,
++		EXT_CSD_SEC_ERASE_MULT, EXT_CSD_SEC_FEATURE_SUPPORT,
++		EXT_CSD_TRIM_MULT, EXT_CSD_SEC_CNT, EXT_CSD_SEC_CNT + 1,
++		EXT_CSD_SEC_CNT + 2, EXT_CSD_SEC_CNT + 3
++	};
++	uint8_t *ext_csd;
++	u_int i, j;
++	int err, width;
++
++	width = bus_width_1;
++	ext_csd = malloc(MMC_EXTCSD_SIZE, M_DEVBUF, M_WAITOK);
++	for (i = 0; i < nitems(widths) && width == bus_width_1; i++) {
++		if ((mmcbr_get_caps(sc->dev) & widths[i].cap) == 0)
++			continue;
++		sc->squelched++; /* Errors are expected, squelch reporting. */
++		err = mmc_switch(sc->dev, sc->dev, ivar->rca,
++		    EXT_CSD_CMD_SET_NORMAL, EXT_CSD_BUS_WIDTH, widths[i].value,
++		    ivar->cmd6_time, true);
++		if (err == MMC_ERR_NONE) {
++			mmcbr_set_bus_width(sc->dev, widths[i].width);
++			mmcbr_update_ios(sc->dev);
++			err = mmc_send_ext_csd(sc->dev, sc->dev, ext_csd);
++			for (j = 0; err == MMC_ERR_NONE &&
++			    j < nitems(fields); j++) {
++				if (ext_csd[fields[j]] !=
++				    ivar->raw_ext_csd[fields[j]])
++					err = MMC_ERR_FAILED;
++			}
++			if (err == MMC_ERR_NONE)
++				width = widths[i].width;
++			/* Back to 1 bit, whether this width works or not. */
++			(void)mmc_switch(sc->dev, sc->dev, ivar->rca,
++			    EXT_CSD_CMD_SET_NORMAL, EXT_CSD_BUS_WIDTH,
++			    EXT_CSD_BUS_WIDTH_1, ivar->cmd6_time, true);
++			mmcbr_set_bus_width(sc->dev, bus_width_1);
++			mmcbr_update_ios(sc->dev);
++		}
++		sc->squelched--;
++	}
++	free(ext_csd, M_DEVBUF);
++	return (width);
++}
++
++/* Handle HC erase sector size. */
++static int
++mmc_set_erase_group(struct mmc_softc *sc, struct mmc_ivars *ivar)
++{
++	int err;
++
++	if (ivar->raw_ext_csd[EXT_CSD_ERASE_GRP_SIZE] == 0)
++		return (MMC_ERR_NONE);
++	ivar->erase_sector = 1024 * ivar->raw_ext_csd[EXT_CSD_ERASE_GRP_SIZE];
++	err = mmc_switch(sc->dev, sc->dev, ivar->rca, EXT_CSD_CMD_SET_NORMAL,
++	    EXT_CSD_ERASE_GRP_DEF, EXT_CSD_ERASE_GRP_DEF_EN, ivar->cmd6_time,
++	    true);
++	if (err != MMC_ERR_NONE)
++		device_printf(sc->dev, "Error setting erase group %d\n", err);
++	return (err);
++}
++
+ static uint32_t
+ mmc_get_bits(uint32_t *bits, int bit_len, int start, int size)
+ {
+@@ -1805,8 +1894,28 @@
+ 				ivar->sec_count = sec_count;
+ 				ivar->high_cap = 1;
+ 			}
+-			/* Find maximum supported bus width. */
+-			ivar->bus_width = mmc_test_bus_width(sc);
++			/*
++			 * Determine generic switch timeout (provided in
++			 * units of 10 ms), defaulting to 500 ms.
++			 */
++			ivar->cmd6_time = 500 * 1000;
++			if (rev >= 6)
++				ivar->cmd6_time = 10 *
++				    ext_csd[EXT_CSD_GEN_CMD6_TIME];
++			/*
++			 * Find maximum supported bus width.  A host without
++			 * the bus test sets ERASE_GROUP_DEF first, as Linux
++			 * does, while the bus is still the 1-bit one the card
++			 * came up on; every other host keeps the order below.
++			 */
++			if ((host_caps & MMC_CAP_NO_BUS_TEST) != 0) {
++				err = mmc_set_erase_group(sc, ivar);
++				if (err != MMC_ERR_NONE)
++					goto free_ivar;
++				ivar->bus_width = mmc_compare_bus_width(sc,
++				    ivar);
++			} else
++				ivar->bus_width = mmc_test_bus_width(sc);
+ 			/* Get device speeds beyond normal mode. */
+ 			card_type = ext_csd[EXT_CSD_CARD_TYPE];
+ 			if ((card_type & EXT_CSD_CARD_TYPE_HS_52) != 0) {
+@@ -1864,29 +1973,11 @@
+ 				setbit(&ivar->timings, bus_timing_mmc_hs400es);
+ 				setbit(&ivar->vccq_180, bus_timing_mmc_hs400es);
+ 			}
+-			/*
+-			 * Determine generic switch timeout (provided in
+-			 * units of 10 ms), defaulting to 500 ms.
+-			 */
+-			ivar->cmd6_time = 500 * 1000;
+-			if (rev >= 6)
+-				ivar->cmd6_time = 10 *
+-				    ext_csd[EXT_CSD_GEN_CMD6_TIME];
+-			/* Handle HC erase sector size. */
+-			if (ext_csd[EXT_CSD_ERASE_GRP_SIZE] != 0) {
+-				ivar->erase_sector = 1024 *
+-				    ext_csd[EXT_CSD_ERASE_GRP_SIZE];
+-				err = mmc_switch(sc->dev, sc->dev, ivar->rca,
+-				    EXT_CSD_CMD_SET_NORMAL,
+-				    EXT_CSD_ERASE_GRP_DEF,
+-				    EXT_CSD_ERASE_GRP_DEF_EN,
+-				    ivar->cmd6_time, true);
+-				if (err != MMC_ERR_NONE) {
+-					device_printf(sc->dev,
+-					    "Error setting erase group %d\n",
+-					    err);
++			/* Handle HC erase sector size, unless done above. */
++			if ((host_caps & MMC_CAP_NO_BUS_TEST) == 0) {
++				err = mmc_set_erase_group(sc, ivar);
++				if (err != MMC_ERR_NONE)
+ 					goto free_ivar;
+-				}
+ 			}
+ 		}
+ 
+diff -u a/sys/dev/mmc/mmcreg.h b/sys/dev/mmc/mmcreg.h
+--- a/sys/dev/mmc/mmcreg.h
++++ b/sys/dev/mmc/mmcreg.h
+@@ -372,6 +372,7 @@
+ #define	EXT_CSD_BOOT_WP_STATUS	174	/* RO */
+ #define	EXT_CSD_ERASE_GRP_DEF	175	/* R/W */
+ #define	EXT_CSD_PART_CONFIG	179	/* R/W */
++#define	EXT_CSD_ERASED_MEM_CONT	181	/* RO */
+ #define	EXT_CSD_BUS_WIDTH	183	/* R/W */
+ #define	EXT_CSD_STROBE_SUPPORT	184	/* RO */
+ #define	EXT_CSD_HS_TIMING	185	/* R/W */
+@@ -379,17 +380,22 @@
+ #define	EXT_CSD_CARD_TYPE	196	/* RO */
+ #define	EXT_CSD_DRIVER_STRENGTH	197	/* RO */
+ #define	EXT_CSD_REV		192	/* RO */
++#define	EXT_CSD_STRUCTURE	194	/* RO */
+ #define	EXT_CSD_PART_SWITCH_TO	199	/* RO */
+ #define	EXT_CSD_PWR_CL_52_195	200	/* RO */
+ #define	EXT_CSD_PWR_CL_26_195	201	/* RO */
+ #define	EXT_CSD_PWR_CL_52_360	202	/* RO */
+ #define	EXT_CSD_PWR_CL_26_360	203	/* RO */
+ #define	EXT_CSD_SEC_CNT		212	/* RO, 4 bytes */
++#define	EXT_CSD_S_A_TIMEOUT	217	/* RO */
+ #define	EXT_CSD_HC_WP_GRP_SIZE	221	/* RO */
+ #define	EXT_CSD_ERASE_TO_MULT	223	/* RO */
+ #define	EXT_CSD_ERASE_GRP_SIZE	224	/* RO */
+ #define	EXT_CSD_BOOT_SIZE_MULT	226	/* RO */
++#define	EXT_CSD_SEC_TRIM_MULT	229	/* RO */
++#define	EXT_CSD_SEC_ERASE_MULT	230	/* RO */
+ #define	EXT_CSD_SEC_FEATURE_SUPPORT 231	/* RO */
++#define	EXT_CSD_TRIM_MULT	232	/* RO */
+ #define	EXT_CSD_PWR_CL_200_195	236	/* RO */
+ #define	EXT_CSD_PWR_CL_200_360	237	/* RO */
+ #define	EXT_CSD_PWR_CL_52_195_DDR 238	/* RO */
+diff -u a/sys/dev/sdhci/sdhci.c b/sys/dev/sdhci/sdhci.c
+--- a/sys/dev/sdhci/sdhci.c
++++ b/sys/dev/sdhci/sdhci.c
+@@ -1724,8 +1724,17 @@
+ {
+ 	uint16_t mode;
+ 
+-	if (data == NULL)
++	if (data == NULL) {
++		/*
++		 * The register still holds the mode of the last command
++		 * with data.  Some controllers take it for this command
++		 * too unless it is cleared; tuning commands carry data,
++		 * so they never come here.
++		 */
++		if (slot->quirks & SDHCI_QUIRK_CLEAR_TRANSFER_MODE)
++			WR2(slot, SDHCI_TRANSFER_MODE, 0);
+ 		return;
++	}
+ 
+ 	mode = SDHCI_TRNS_BLK_CNT_EN;
+ 	if (data->len > 512 || data->block_count > 1) {
+diff -u a/sys/dev/sdhci/sdhci.h b/sys/dev/sdhci/sdhci.h
+--- a/sys/dev/sdhci/sdhci.h
++++ b/sys/dev/sdhci/sdhci.h
+@@ -95,6 +95,8 @@
+ #define	SDHCI_QUIRK_MMC_HS400_IF_CAN_SDR104		(1 << 29)
+ /* SDMA boundary in SDHCI_BLOCK_SIZE broken - use front-end supplied value. */
+ #define	SDHCI_QUIRK_BROKEN_SDMA_BOUNDARY		(1 << 30)
++/* Transfer Mode must be cleared before a command without data. */
++#define	SDHCI_QUIRK_CLEAR_TRANSFER_MODE			(1U << 31)
+ 
+ /*
+  * Controller registers
+diff -u a/sys/dev/sdhci/sdhci_pci.c b/sys/dev/sdhci/sdhci_pci.c
+--- a/sys/dev/sdhci/sdhci_pci.c
++++ b/sys/dev/sdhci/sdhci_pci.c
+@@ -73,6 +73,13 @@
+ #define	SDHC_PCI_BASE_FREQ_KEY		0xfc
+ #define	SDHC_PCI_BASE_FREQ		0xe1
+ 
++/* AMD FCH SD/eMMC controller, and the SMBus that tells its generation. */
++#define	AMD_FCH_SD			0x79061022
++#define	AMD_VENDOR			0x1022
++#define	AMD_HUDSON2_SMBUS		0x780b
++#define	AMD_KERNCZ_SMBUS		0x790b
++#define	AMD_KERNCZ_SMBUS_REV_NL		0x51
++
+ static const struct sdhci_device {
+ 	uint32_t	model;
+ 	uint16_t	subvendor;
+@@ -150,6 +157,8 @@
+ 	    SDHCI_QUIRK_MMC_DDR52 |
+ 	    SDHCI_QUIRK_CAPS_BIT63_FOR_MMC_HS400 |
+ 	    SDHCI_QUIRK_PRESET_VALUE_BROKEN },
++	{ AMD_FCH_SD,	0xffff,	"AMD FCH SD/eMMC Controller",
++	    0 },	/* and sdhci_pci_amd_fch() */
+ 	{ 0,		0xffff,	NULL,
+ 	    0 }
+ };
+@@ -293,6 +302,80 @@
+ 	pci_write_config(dev, SDHC_PCI_BASE_FREQ_KEY, 0x00, 1);
+ }
+ 
++/*
++ * The AMD FCH controller's capability and quirk, as Linux sets them
++ * (sdhci-pci-core.c, amd_probe()).  The CMD19 bus test is never sent: on
++ * this controller its write never completes, and the eMMC then answers no
++ * command until its power is removed.  And on the chipsets before the one
++ * whose SMBus (0x790b) is revision 0x51 or later - the Hudson-2 and the "CZ"
++ * generation - Transfer Mode is cleared before a command without data.
++ *
++ * Its full reset is sdhci_pci_reset()'s, below.
++ */
++static uint32_t
++sdhci_pci_amd_fch(device_t dev, u_int *quirks)
++{
++	device_t smbus;
++
++	smbus = pci_find_device(AMD_VENDOR, AMD_HUDSON2_SMBUS);
++	if (smbus == NULL) {
++		smbus = pci_find_device(AMD_VENDOR, AMD_KERNCZ_SMBUS);
++		if (smbus != NULL &&
++		    pci_get_revid(smbus) >= AMD_KERNCZ_SMBUS_REV_NL)
++			smbus = NULL;
++	}
++	if (smbus != NULL)
++		*quirks |= SDHCI_QUIRK_CLEAR_TRANSFER_MODE;
++	if (bootverbose)
++		device_printf(dev, "no bus test%s\n", smbus != NULL ?
++		    ", Transfer Mode cleared before commands" : "");
++	return (MMC_CAP_NO_BUS_TEST);
++}
++
++/*
++ * A full reset of the AMD FCH controller goes through the PCI power states
++ * first, as Linux's amd_sdhci_reset() does: 0x7906 needs a hard reset to
++ * clear all of its internal state, and its own software reset does not
++ * bring it back from a stuck command.  The power state is written to the
++ * power management register directly rather than with pci_set_powerstate():
++ * this method runs with the slot's mutex held, and pci_set_powerstate() can
++ * go through ACPI, which sleeps.  D3hot to D0 may reset the configuration
++ * space, so it is saved before and restored after; the device is in D0
++ * again by then, so pci_restore_state() does not change its power state.
++ * The card detect logic is reset with the rest, and is given up to 100 ms
++ * to settle before the generic reset.  Other controllers, and the partial
++ * resets, go to the generic reset alone, as without this method.
++ */
++static void
++sdhci_pci_reset(device_t dev, struct sdhci_slot *slot, uint8_t mask)
++{
++	uint16_t status;
++	int i, pmc;
++
++	if (pci_get_devid(dev) == AMD_FCH_SD &&
++	    (mask & SDHCI_RESET_ALL) != 0 &&
++	    pci_find_cap(dev, PCIY_PMG, &pmc) == 0) {
++		pci_save_state(dev);
++		pci_disable_busmaster(dev);
++		status = pci_read_config(dev, pmc + PCIR_POWER_STATUS, 2) &
++		    ~PCIM_PSTAT_DMASK;
++		pci_write_config(dev, pmc + PCIR_POWER_STATUS,
++		    status | PCIM_PSTAT_D3, 2);
++		DELAY(10000);
++		pci_write_config(dev, pmc + PCIR_POWER_STATUS,
++		    status | PCIM_PSTAT_D0, 2);
++		DELAY(10000);
++		pci_restore_state(dev);
++		for (i = 0; i < 10; i++) {
++			if (sdhci_pci_read_4(dev, slot, SDHCI_PRESENT_STATE) &
++			    SDHCI_CARD_STABLE)
++				break;
++			DELAY(10000);
++		}
++	}
++	sdhci_generic_reset(dev, slot, mask);
++}
++
+ static int
+ sdhci_pci_probe(device_t dev)
+ {
+@@ -331,7 +414,7 @@
+ {
+ 	struct sdhci_pci_softc *sc = device_get_softc(dev);
+ 	struct sdhci_slot *slot;
+-	uint32_t model;
++	uint32_t caps, model;
+ 	uint16_t subvendor;
+ 	int bar, err, rid, slots, i;
+ 
+@@ -347,6 +430,9 @@
+ 			break;
+ 		}
+ 	}
++	caps = 0;
++	if (model == AMD_FCH_SD)
++		caps = sdhci_pci_amd_fch(dev, &sc->quirks);
+ 	sc->quirks &= ~sdhci_quirk_clear;
+ 	sc->quirks |= sdhci_quirk_set;
+ 
+@@ -389,6 +475,7 @@
+ 		}
+ 
+ 		slot->quirks = sc->quirks;
++		slot->host.caps = caps;
+ 
+ 		if (sdhci_init_slot(dev, slot, i) != 0)
+ 			continue;
+@@ -514,6 +601,7 @@
+ 	DEVMETHOD(sdhci_write_4,	sdhci_pci_write_4),
+ 	DEVMETHOD(sdhci_write_multi_4,	sdhci_pci_write_multi_4),
+ 	DEVMETHOD(sdhci_set_uhs_timing,	sdhci_generic_set_uhs_timing),
++	DEVMETHOD(sdhci_reset,		sdhci_pci_reset),
+ 
+ 	DEVMETHOD_END
+ };
