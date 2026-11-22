@@ -45,10 +45,12 @@ SYSTEMDISK = os.path.join(TOP, 'src', 'opnsense', 'scripts', 'xgs', 'system-disk
 IMAGE = os.path.join(TOP, 'install', 'image-fchemmc.sh')
 INSTALL = os.path.join(TOP, 'install', 'install.sh')
 UNINSTALL = os.path.join(TOP, 'install', 'uninstall.sh')
+GUARD = os.path.join(TOP, 'install', 'fchemmc-guard.sh')
 SH = shutil.which('sh')
 
 K0 = 'FreeBSD 15.1-RELEASE-p6 stable/26.7-n284176-c962f76493b6 SMP'
 K1 = 'FreeBSD 15.1-RELEASE-p7 stable/26.7-n284300-2b4c6d8e0f1a SMP'
+K2 = 'FreeBSD 15.1-RELEASE-p8 stable/26.7-n284400-aaaabbbbcccc SMP'
 KM1 = 'FreeBSD 15.1-RELEASE-p4 stable/26.7-n284159-abbbe67a45e7 SMP'
 OTHER = 'FreeBSD 15.1-RELEASE-p2 stable/26.7-n284102-0f1e2d3c4b5a SMP'
 
@@ -196,16 +198,17 @@ class Boots(Tree):
 
     def new_boot(self):
         """What a reboot does to the follower's marks: /var/run is emptied, nextboot's one shot spent."""
-        for name in ('pinned', 'armed', 'nextboot.state'):
+        for name in ('pinned', 'armed', 'nextboot.state', 'tried', 'good-failed'):
             if os.path.exists(self.path(name)):
                 os.unlink(self.path(name))
 
-    def follower(self, fails=False):
+    def follower(self, fails=False, npuep_fails=False):
         make = self.stub('make', 'ln -s "${1#SYSDIR=}/amd64/include" machine\n'
                                  'case "$*" in *FCHEMMC_KERNEL=*) %s ;; '
-                                 '*) : > npuep.o; echo "ELF npuep" > npuep.ko ;; esac'
+                                 '*) %s ;; esac'
                          % ('echo "error: no" >&2; exit 1' if fails else
-                            'echo "ELF fchemmc for ${2#FCHEMMC_KERNEL=}" > fchemmc.ko'))
+                            'echo "ELF fchemmc for ${2#FCHEMMC_KERNEL=}" > fchemmc.ko',
+                            'exit 1' if npuep_fails else ': > npuep.o; echo "ELF npuep" > npuep.ko'))
         with open(FOLLOW, encoding='utf-8') as f:
             text = f.read()
         for command, stand_in in (('/usr/bin/logger', self.stub('logger', 'printf "%%s\\n" "$*" >> "%s"'
@@ -238,13 +241,17 @@ class Boots(Tree):
                    UNAME=self.stub('uname', 'echo "%s"' % K0),
                    FCHEMMC_SRCTREE=self.path('fsrc'), FCHEMMC_BUILDROOT=self.path('fbuild'),
                    FCHEMMC_BUILDLOG=self.path('fbuild.log'), FCHEMMC_SAID=self.path('fsaid'),
-                   FCHEMMC_LOADER=self.path('boot/loader.conf.d/fchemmc.conf'))
+                   FCHEMMC_LOADER=self.path('boot/loader.conf.d/fchemmc.conf'),
+                   FCHEMMC_TRIED=self.path('tried'), GOOD_FAILED=self.path('good-failed'),
+                   FCHEMMC_GOODCONF=self.path('boot/loader.conf.d/fchemmc-good.conf'),
+                   GUARD_SRC=GUARD, GUARD_DIR=self.path('boot/fchemmc-guard'), HOOKROOT=self.path('hooks'),
+                   SYSTEMDISK=SYSTEMDISK)
         env.update(more)
         return env
 
-    def follow(self, emmc, fails=False, **more):
-        return subprocess.run([SH, self.follower(fails)], env=self.env(emmc, **more), capture_output=True,
-                              text=True, timeout=60)
+    def follow(self, emmc, fails=False, npuep_fails=False, **more):
+        return subprocess.run([SH, self.follower(fails, npuep_fails)], env=self.env(emmc, **more),
+                              capture_output=True, text=True, timeout=60)
 
     def upgrade(self, emmc, fails=False):
         hook = self.read_swapped(UPGRADE, (('/usr/sbin/pciconf', self.stub('pciconf', "echo '%s'" % NPUEP_PCI)),
@@ -266,7 +273,7 @@ class Boots(Tree):
     # What the loader does: the next boot's kernel - kernel.old where nextboot sends it - and the
     # fchemmc.ko of that kernel's own directory, or /boot/modules' where it has none.
     def next_kernel(self):
-        return 'kernel.old' if (self.read('nextboot.state') or '').strip() == 'kernel.old' else 'kernel'
+        return (self.read('nextboot.state') or '').strip() or 'kernel'
 
     def loaded(self, where):
         own = self.read('boot/%s/fchemmc.ko' % where)
@@ -642,6 +649,194 @@ class Image(Tree):
         self.assertIsNone(self.img('usr/local/share/os-xgs-npu/fchemmc.image'))
 
 
+class Repeated(Boots):
+    """What one update at a time does not show: failed builds, two updates, no npuep, a removed plugin."""
+
+    def setUp(self):
+        super().setUp()
+        self.kernel('kernel', K0)
+        self.kernel('kernel.old', KM1)
+        self.npuep(K0, KM1)
+        self.fchemmc(K0)
+        self.fchemmc(KM1, 'kernel.old')
+
+    def running(self, version):
+        return self.stub('uname-now', 'echo "%s"' % version)
+
+    def keep_good(self):
+        """A run on the running kernel K0: it is kept as the last that booted from the eMMC."""
+        done = self.follow(True, UNAME=self.running(K0))
+        self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+        self.assertIn(K0, self.read('boot/kernel.emmc-good/kernel'))
+        self.assertEqual(self.read('boot/kernel.emmc-good/fchemmc.ko'), 'ELF fchemmc for %s\n' % K0)
+
+    def update(self, version):
+        shutil.rmtree(self.path('boot/kernel.old'), ignore_errors=True)
+        os.rename(self.path('boot/kernel'), self.path('boot/kernel.old'))
+        self.kernel('kernel', version)
+
+    def guard(self, emmc=True):
+        return subprocess.run([SH, os.path.join(self.path('boot/fchemmc-guard'), 'guard.sh')],
+                              env=dict(self.env(emmc), BOOT=self.path('boot'),
+                                       SYSTEMDISK=self.stub('sd', 'exit %d' % (0 if emmc else 1))),
+                              capture_output=True, text=True, timeout=30)
+
+    def test_a_second_update_after_a_failed_build_boots_the_kept_kernel(self):
+        self.keep_good()
+        self.update(K1)
+        self.follow(True, fails=True)
+        self.new_boot()
+        self.follow(True, fails=True)
+        self.update(K2)
+        done = self.follow(True, fails=True, PINONLY='1')
+        self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+        self.assertEqual(self.next_kernel(), 'kernel.emmc-good')
+        self.assert_next_boot_finds_its_disk()
+
+    def test_two_updates_with_no_run_between_boot_the_kept_kernel(self):
+        self.keep_good()
+        self.update(K1)
+        self.update(K2)
+        self.assertEqual(self.follow(True, PINONLY='1').returncode, 0)
+        self.assertEqual(self.next_kernel(), 'kernel.emmc-good')
+        self.assert_next_boot_finds_its_disk()
+
+    def test_the_kept_kernel_is_replaced_only_once_a_newer_one_has_booted(self):
+        self.keep_good()
+        self.update(K1)
+        self.follow(True, UNAME=self.running(K0))
+        self.assertIn(K0, self.read('boot/kernel.emmc-good/kernel'), 'K1 has not booted yet')
+        self.new_boot()
+        self.follow(True, UNAME=self.running(K1))
+        self.assertIn(K1, self.read('boot/kernel.emmc-good/kernel'))
+        self.assertEqual(self.read('boot/kernel.emmc-good/fchemmc.ko'), 'ELF fchemmc for %s\n' % K1)
+        self.assertIn('kernel.emmc-good', self.read('boot/loader.conf.d/fchemmc-good.conf'))
+
+    def test_a_swap_cut_off_half_way_is_put_right(self):
+        self.keep_good()
+        os.rename(self.path('boot/kernel.emmc-good'), self.path('boot/kernel.emmc-good.del'))
+        self.update(K1)
+        self.follow(True, fails=True, UNAME=self.running(K0))
+        self.assertIn(K0, self.read('boot/kernel.emmc-good/kernel'))
+        self.assertFalse(os.path.exists(self.path('boot/kernel.emmc-good.del')))
+
+    def test_run_again_after_a_failed_build_builds_it(self):
+        self.staged(K1)
+        self.assertEqual(self.upgrade(True, fails=True).returncode, 1)
+        again = self.upgrade(True)
+        self.assertEqual(again.returncode, 0, again.stdout + again.stderr)
+        self.assertEqual(self.read('boot/modules/fchemmc.ko.kernel'), K1 + '\n')
+
+    def test_a_failed_build_is_tried_again_at_each_boot_and_not_every_tick(self):
+        self.update(K1)
+        self.follow(True, fails=True)
+        self.follow(True)
+        self.assertEqual(self.read('boot/modules/fchemmc.ko.kernel'), K0 + '\n', 'the same boot: not again')
+        self.new_boot()
+        self.follow(True)
+        self.assertEqual(self.read('boot/modules/fchemmc.ko.kernel'), K1 + '\n')
+
+    def test_without_npuep_fchemmc_is_still_pinned_and_built(self):
+        for name in ('npuep.ko', 'npuep.ko.kernel', 'npuep.ko.prev', 'npuep.ko.prev.kernel'):
+            os.unlink(self.path('boot/modules/' + name))
+        self.update(K1)
+        done = self.follow(True)
+        self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+        self.assertEqual(self.read('boot/modules/fchemmc.ko.kernel'), K1 + '\n')
+        self.assertEqual(self.nextboot(), ['-k kernel.old', '-D'])
+        self.assert_next_boot_finds_its_disk()
+
+    def test_a_failed_npuep_build_does_not_hold_fchemmc_back(self):
+        self.update(K1)
+        self.follow(True, npuep_fails=True)
+        self.assertEqual(self.read('boot/modules/fchemmc.ko.kernel'), K1 + '\n')
+        self.assert_next_boot_finds_its_disk()
+
+    def test_the_guard_arms_again_at_a_boot_whatever_spent_it(self):
+        self.keep_good()
+        self.update(K1)
+        self.follow(True, fails=True)
+        self.new_boot()
+        self.assertEqual(self.next_kernel(), 'kernel')
+        self.assertEqual(self.guard().returncode, 0)
+        self.assertEqual(self.next_kernel(), 'kernel.old')
+        self.assertTrue(os.path.exists(self.path('armed')), 'the follower lets it go once it has built')
+        for hook in ('early/04-fchemmc-guard', 'stop/79-fchemmc-guard'):
+            self.assertIn('guard.sh', self.read('hooks/' + hook))
+
+    def test_the_guard_does_nothing_where_the_kernel_has_its_fchemmc_or_the_disk_is_not_the_emmc(self):
+        self.keep_good()
+        args = self.nextboot()
+        self.guard()
+        self.assertEqual(self.nextboot(), args)
+        self.update(K1)
+        self.guard(emmc=False)
+        self.assertEqual(self.nextboot(), args)
+
+    def test_with_the_plugin_gone_a_kernel_update_still_boots(self):
+        self.keep_good()
+        for name in ('npuep.ko', 'npuep.ko.kernel', 'npuep.ko.prev', 'npuep.ko.prev.kernel'):
+            os.unlink(self.path('boot/modules/' + name))
+        self.update(K1)
+        self.guard()
+        self.assertEqual(self.next_kernel(), 'kernel.old')
+        self.assert_next_boot_finds_its_disk()
+        self.new_boot()
+        self.update(K2)
+        self.guard()
+        self.assertEqual(self.next_kernel(), 'kernel.emmc-good')
+        self.assert_next_boot_finds_its_disk()
+
+    def test_a_check_cut_off_stops_no_upgrade_away_from_the_emmc(self):
+        self.staged(K1)
+        real = self.follower()
+        wrap = self.stub('wrap', '[ "${EMMCCHECK:-0}" = 1 ] && exit 124\nexec sh "%s"' % real)
+        hook = self.read_swapped(UPGRADE, (('/usr/sbin/pciconf', self.stub('pciconf', "echo '%s'" % NPUEP_PCI)),
+                                           ('/usr/bin/logger', self.stub('hl', 'exit 0'))))
+        done = subprocess.run([SH, hook], env=self.env(False, FOLLOW=wrap, LIMIT='30'), capture_output=True,
+                              text=True, timeout=120)
+        self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+
+    def test_a_check_cut_off_stops_the_upgrade_on_the_emmc(self):
+        self.staged(K1)
+        real = self.follower()
+        wrap = self.stub('wrap', '[ "${EMMCCHECK:-0}" = 1 ] && exit 124\nexec sh "%s"' % real)
+        hook = self.read_swapped(UPGRADE, (('/usr/sbin/pciconf', self.stub('pciconf', "echo '%s'" % EMMC_PCI)),
+                                           ('/usr/bin/logger', self.stub('hl', 'exit 0'))))
+        done = subprocess.run([SH, hook], env=self.env(True, FOLLOW=wrap, LIMIT='30',
+                                                       SYSTEMDISK=self.stub('sd', 'exit 0')),
+                              capture_output=True, text=True, timeout=120)
+        self.assertEqual(done.returncode, 1, done.stdout + done.stderr)
+
+    def test_a_same_label_on_a_usb_disk_does_not_hide_the_emmc(self):
+        conf = self.write('c', '0 DISK da0 1 512\n1 PART da0p3 1 512\n2 LABEL gpt/rootfs 1 512\n'
+                               '0 DISK mmcsd0 1 512\n1 PART mmcsd0p3 1 512\n2 LABEL gpt/rootfs 1 512\n')
+        mounts = self.write('m', '/dev/gpt/rootfs / ufs rw 1 1\n')
+        done = subprocess.run([SH, SYSTEMDISK, '-e'], env=dict(os.environ, MOUNTS=mounts, CONFTXT=conf))
+        self.assertEqual(done.returncode, 0)
+
+    def test_an_appliance_with_nothing_of_fchemmc_asks_nothing(self):
+        for name in ('fchemmc.ko', 'fchemmc.ko.kernel'):
+            os.unlink(self.path('boot/modules/' + name))
+            os.unlink(self.path('boot/kernel.old/' + name))
+        os.unlink(self.path('boot/loader.conf.d/fchemmc.conf'))
+        asked = self.path('asked')
+        env = dict(self.env(False), EMMCROOT='',
+                   PCICONF=self.stub('pc', 'echo x >> "%s"' % asked),
+                   SYSTEMDISK=self.stub('sd', 'echo x >> "%s"; exit 0' % asked))
+        done = subprocess.run([SH, self.follower()], env=env, capture_output=True, text=True, timeout=60)
+        self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+        self.assertFalse(os.path.exists(asked))
+        self.assertFalse(os.path.exists(self.path('boot/fchemmc-guard')))
+        self.assertFalse(os.path.exists(self.path('boot/kernel.emmc-good')))
+
+    def test_not_on_the_emmc_no_guard_and_no_kept_kernel(self):
+        self.follow(False, UNAME=self.running(K0))
+        self.assertFalse(os.path.exists(self.path('boot/fchemmc-guard')))
+        self.assertFalse(os.path.exists(self.path('boot/kernel.emmc-good')))
+        self.assertFalse(os.path.exists(self.path('hooks')))
+
+
 class Wiring(unittest.TestCase):
     """install.sh and uninstall.sh, read."""
 
@@ -671,6 +866,15 @@ class Wiring(unittest.TestCase):
         self.assertIn('/boot/loader.conf.d/fchemmc.conf', m.group(2))
         self.assertIn('if [ -f /var/run/octep-follow.armed ] && [ "${EMMCROOT}" = 1 ]; then', text)
         self.assertIn('rm -f "${PREFIX}/opnsense/scripts/xgs/system-disk.sh"', text)
+        # the guard and the kept kernel stay in that branch, and go in the other
+        self.assertIn('/boot/fchemmc-guard', m.group(2))
+        self.assertIn('/boot/kernel.emmc-good', m.group(2))
+
+    def test_install_keeps_fchemmc_where_the_system_is_on_an_emmc_whatever_pciconf_says(self):
+        text = self.read(INSTALL)
+        keep = text.index('if { [ -f /boot/modules/fchemmc.ko ] &&')
+        self.assertIn('/bin/sh "${SRC}/src/opnsense/scripts/xgs/system-disk.sh" -e', text[keep:keep + 120])
+        self.assertLess(keep, text.index('rm -f /boot/modules/fchemmc.ko /boot/modules/fchemmc.ko.kernel', keep))
 
 
 if __name__ == '__main__':

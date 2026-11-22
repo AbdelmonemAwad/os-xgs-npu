@@ -705,6 +705,7 @@ install -m 0755 "${SRC}/src/opnsense/scripts/octep/ports.py" "${PREFIX}/opnsense
 # it; rc.syshook.d/upgrade/20-octep, for the firmware upgrade path that calls that level; and cron,
 # which needs nobody's cooperation at all.
 install -m 0755 "${SRC}/install/kernel-follow.sh" "${PREFIX}/opnsense/scripts/octep/kernel-follow.sh"
+install -m 0755 "${SRC}/install/fchemmc-guard.sh" "${PREFIX}/opnsense/scripts/octep/fchemmc-guard.sh"
 install -m 0755 "${SRC}/contrib/npuep/fetch-sources.sh" "${PREFIX}/opnsense/scripts/octep/fetch-sources.sh"
 
 # ---------------------------------------------------------------- the driver's sources
@@ -760,13 +761,20 @@ copy_driver "${SRC}/contrib/npuep" "${PREFIX}/share/os-xgs-npu/npuep"
 # above. Where the system disk is that eMMC - installed onto it from a ready-made image, which carries a
 # build for its own kernel (install/image-fchemmc.sh) - the follower treats fchemmc as the boot needs it
 # (install/kernel-follow.sh, "the eMMC as the system disk"); nothing here differs for it.
-if /usr/sbin/pciconf -l 2>/dev/null |
+# A system that has fchemmc and runs from an eMMC keeps it whatever pciconf answers: it boots only with
+# what the branch below would take away.
+if { [ -f /boot/modules/fchemmc.ko ] &&
+    /bin/sh "${SRC}/src/opnsense/scripts/xgs/system-disk.sh" -e > /dev/null 2>&1; } ||
+    /usr/sbin/pciconf -l 2>/dev/null |
     grep -qE 'chip=0x79061022|vendor=0x1022[[:space:]]+device=0x7906'; then
     copy_driver "${SRC}/contrib/fchemmc" "${PREFIX}/share/os-xgs-npu/fchemmc"
 else
     rm -rf "${PREFIX}/share/os-xgs-npu/fchemmc"
     rm -f /boot/modules/fchemmc.ko /boot/modules/fchemmc.ko.kernel /boot/loader.conf.d/fchemmc.conf \
         /var/db/os-xgs-npu/fchemmc-follow.said "${PREFIX}/share/os-xgs-npu/fchemmc.image"
+    rm -rf /boot/fchemmc-guard /boot/kernel.emmc-good
+    rm -f /boot/loader.conf.d/fchemmc-good.conf "${PREFIX}/etc/rc.syshook.d/early/04-fchemmc-guard" \
+        "${PREFIX}/etc/rc.syshook.d/stop/79-fchemmc-guard"
 fi
 
 # A carried copy of the kernel sources, if this checkout has one beside it.

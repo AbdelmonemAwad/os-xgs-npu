@@ -251,9 +251,19 @@ one: opnsense-update runs `kldxref /boot/kernel` at every base update, and the h
 **What the kernel follower does there** (`install/kernel-follow.sh`, "the eMMC as the system disk"):
 
 - the next boot is never sent to a kernel the loader would find no matching fchemmc for, while
-  `kernel.old` has one: the fall-back to `kernel.old` (`nextboot -k kernel.old`) is armed as it is for
-  npuep - before a rebuild, again at every boot, and at every orderly reboot by the stop hook - and let
-  go only once fchemmc is built for `/boot/kernel`, never for npuep alone;
+  another kernel has one: the fall-back (`nextboot -k`) goes to `kernel.old`, or to
+  `kernel.emmc-good` where `kernel.old` has none. It is armed before a rebuild, by a boot hook early
+  in every boot, and at every orderly reboot, and let go only once fchemmc is built for
+  `/boot/kernel`, never for npuep alone;
+- `/boot/kernel.emmc-good` is the last kernel that booted from the eMMC, whole, with its fchemmc. No
+  kernel update rotates it, so two updates with no build between them still leave a kernel that
+  boots; it is replaced only once a newer kernel has booted from the eMMC, and is on the boot menu;
+- fchemmc is followed first and on its own: a missing or failing npuep does not hold it back, and a
+  build that failed is tried again at each boot, upgrade and reboot;
+- a guard that needs nothing of the plugin (`install/fchemmc-guard.sh`, copied to
+  `/boot/fchemmc-guard`, with hooks `early/04` and `stop/79`) arms the fall-back again. At stop it
+  runs after every plugin's follower, so another plugin clearing `nextboot` cannot leave the reboot
+  unsteered, and it stays when the plugin is removed;
 - the fall-back is never armed for npuep where `kernel.old` would find no fchemmc: a boot without its
   front ports is still a boot, one without its system disk is not;
 - the build that is replaced is kept, for the kernel it was built for, in that kernel's own directory;
@@ -261,14 +271,16 @@ one: opnsense-update runs `kldxref /boot/kernel` at every base update, and the h
   only when every upgrade hook succeeded, is stopped by the upgrade hook where fchemmc could not be
   built for that kernel (`EMMCCHECK=1`): the upgrade says why, applies nothing, and can be run again.
 
-`install/uninstall.sh` leaves fchemmc, its loader line, the kept builds and a fall-back to
-`kernel.old` where the system disk is the eMMC, and says that nothing builds it for a new kernel once
-the plugin is gone.
+`install/uninstall.sh` leaves fchemmc, its loader line, the kept builds, the guard, `kernel.emmc-good`
+and a fall-back where the system disk is the eMMC. Nothing builds fchemmc for a new kernel once the
+plugin is gone, so the appliance then stays on the last kernel that has it.
 
-One window is left: between an update installing a new kernel and the follower's next run (its
-five-minute tick, or the stop hook at the reboot the update asks for), a power cut leaves the next boot
-on the new kernel without its fchemmc. The boot menu's **Kernel** entry (`k`) then picks `kernel.old`,
-which has one.
+**An accepted limit.** Between an update installing a new kernel and the next run that arms the
+fall-back (the follower's five-minute tick, or the stop hook at the reboot the update asks for), a
+power cut leaves the next boot on the new kernel without its fchemmc, and that boot finds no disk. The
+boot menu's **Kernel** entry (`k`) then picks `kernel.old` or `kernel.emmc-good`, which have one; it
+takes someone at the console. A check inside the loader would close this, and is not done: it would
+change the boot path of every appliance for a window of minutes.
 
 **In the XGS image.** The image is made on a build machine with no XGS 87, and its first boot is too
 late for the plugin to build fchemmc: `install.sh` runs from the image's first-boot hook after the

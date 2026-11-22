@@ -78,7 +78,7 @@ esac
 # Bounded, because this runs between the operator asking for a reboot and getting one. A fetch
 # that will not finish must not hold the machine: leaving the module unbuilt is where we would
 # have been anyway, and the boot hook and cron still get their turn afterwards.
-if /usr/bin/timeout -k 10 "${LIMIT}" /bin/sh "${FOLLOW}"; then
+if FCHEMMC_RETRY=1 /usr/bin/timeout -k 10 "${LIMIT}" /bin/sh "${FOLLOW}"; then
 	log "done"
 else
 	rc=$?

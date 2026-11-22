@@ -238,17 +238,17 @@ and the installer offers it. Everything else in step 7 is the same: in step 4, t
   The vendor's own image puts it back whenever you want it again.
 - **Kernel updates are protected.** With the system on the eMMC, a kernel without a matching
   `fchemmc.ko` has no disk to start from, so the plugin builds `fchemmc` for every new kernel before
-  that kernel is used: until the build is done, the next boot takes the previous kernel, which keeps
-  its own build. An upgrade to a new release whose kernel `fchemmc` could not be built for is stopped
-  before anything is applied, and says so; run it again later. If the power goes off just after an
-  update installed a new kernel and the appliance does not start, press **k** at the boot menu until
-  it shows **kernel.old**, then boot: that kernel has its `fchemmc`.
-- **Removing the plugin leaves `fchemmc` in place**, because the system needs it to start. Nothing
-  builds it for a new kernel while the plugin is gone: install the plugin again before any update.
-- **Going back to a USB disk.** Boot the XGS image from the stick, and in the live system's shell
-  (option 8) clear the eMMC first: `gpart destroy -F mmcsd0`. Two installed systems on two disks carry
-  the same names, and a boot can take its system from either. Then install onto the USB disk as in
-  step 7, or put the vendor's system back on the eMMC with the vendor's own image.
+  that kernel is used: until the build is done, the next boot takes an earlier kernel that has its
+  own build. An upgrade to a new release whose kernel `fchemmc` could not be built for is stopped
+  before anything is applied, and says so; run it again later. If the power goes off in the minutes
+  just after an update installed a new kernel and the appliance does not start, press **k** at the
+  boot menu until it shows **kernel.old** or **kernel.emmc-good**, then boot: those have their `fchemmc`.
+- **Take out the old USB system disk** once the system is on the eMMC. Two installed systems carry
+  the same disk names, and a boot can take its system from either.
+- **Removing the plugin leaves `fchemmc` in place**, because the system needs it to start. After a
+  kernel update the appliance then stays on the last kernel that has it, until the plugin is back.
+- **Going back to a USB disk.** Put the vendor's system back on the eMMC with the vendor's own image
+  first, so that only one installed system is left, and then install onto the USB disk as in step 7.
 
 ## 8. The first boot from the disk
 

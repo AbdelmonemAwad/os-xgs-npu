@@ -28,8 +28,8 @@
 # IT NEVER FAILS AN UPDATE, BUT FOR ONE. An update that stops half way is worse than a module that needs
 # rebuilding by hand, so every path here exits 0 - except where the system disk is the eMMC of an XGS 87
 # and fchemmc, the driver that disk is reached through (contrib/fchemmc), is not built for the staged
-# kernel: a boot of that kernel would find no system disk at all, and across a major release no
-# fall-back to kernel.old is armed. There this exits 1 before anything is applied, and OPNsense's
+# kernel: a boot of that kernel would find no system disk at all. There this exits 1 before anything is
+# applied, and OPNsense's
 # upgrade.sh applies no kernel, empties what it had staged (opnsense-update -es) and does not reboot:
 # "The upgrade was aborted due to an error." The lines before it say why; run again, the upgrade stages
 # its sets once more and this hook builds fchemmc again - most often what failed was fetching that
@@ -74,7 +74,7 @@ if [ ! -x "${FOLLOW}" ]; then
 	exit 0
 fi
 
-if OUT=$(/usr/bin/timeout -k 10 "${LIMIT}" /bin/sh "${FOLLOW}" 2>&1); then
+if OUT=$(FCHEMMC_RETRY=1 /usr/bin/timeout -k 10 "${LIMIT}" /bin/sh "${FOLLOW}" 2>&1); then
 	# The follower is quiet and exits 0 when there is nothing to do, which is the normal case, so
 	# only say something when it actually rebuilt.
 	case "${OUT}" in
@@ -99,10 +99,23 @@ fi
 
 # THE SYSTEM DISK (see the top). Said in the update's own log too - this hook's output is what the
 # firmware page shows - and to syslog.
-if ! CHECK=$(EMMCCHECK=1 /usr/bin/timeout -k 5 60 /bin/sh "${FOLLOW}" 2>&1); then
+# Only the check's own answer, 3, stops an upgrade. Anything else that ended it - a time limit - says
+# nothing about the kernel: it stops an upgrade only where the system disk is known to be that eMMC, and
+# on any other appliance the upgrade goes on, as it always has.
+: ${SYSTEMDISK:=/usr/local/opnsense/scripts/xgs/system-disk.sh}
+CHECK=$(EMMCCHECK=1 /usr/bin/timeout -k 5 60 /bin/sh "${FOLLOW}" 2>&1)
+crc=$?
+if [ ${crc} -ne 0 ] && [ ${crc} -ne 3 ]; then
+	if /usr/sbin/pciconf -l 2>/dev/null | grep -qE 'chip=0x79061022|vendor=0x1022[[:space:]]+device=0x7906' &&
+	    /usr/bin/timeout -k 3 15 /bin/sh "${SYSTEMDISK}" -e > /dev/null 2>&1; then
+		CHECK="the system disk is the eMMC, and the check of the staged kernel did not finish"
+		crc=3
+	fi
+fi
+if [ ${crc} -eq 3 ]; then
 	echo "${CHECK}" | while read -r l; do echo "${l}"; warn "${l}"; done
 	echo "The kernel this upgrade installs would boot without its system disk, so the upgrade is stopped before it is applied."
-	echo "The system stays on the release it runs now. Run the upgrade again; why the build failed is in /var/db/os-xgs-npu/build-fchemmc.log"
+	echo "The system stays on the release it runs now. Run the upgrade again; the reason is in the lines above, in the system log under octep-follow, and for a failed build in /var/db/os-xgs-npu/build-fchemmc.log"
 	warn "the upgrade is stopped before its kernel is applied: on the eMMC system disk that kernel would boot without fchemmc"
 	exit 1
 fi

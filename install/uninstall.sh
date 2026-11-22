@@ -75,17 +75,21 @@ rm -f /boot/modules/octep.ko.prev /boot/modules/octep.ko.prev.kernel
 # EXCEPT WHERE THE SYSTEM DISK IS THAT eMMC: the system boots only with fchemmc there, so the module,
 # its loader line and the builds kept in the kernels' own directories stay, and so does a fall-back to
 # kernel.old (below), which there may be what keeps the next boot on a kernel that has its fchemmc.
-# Nothing builds it for a new kernel once the plugin is gone, and it says so.
+# So do the copy of the last kernel that booted from the eMMC and the guard with its two hooks
+# (install/fchemmc-guard.sh): nothing builds fchemmc for a new kernel once the plugin is gone, and the
+# guard then keeps every boot on a kernel that has one.
 EMMCROOT=0
 if [ -f "${PREFIX}/opnsense/scripts/xgs/system-disk.sh" ] &&
     /bin/sh "${PREFIX}/opnsense/scripts/xgs/system-disk.sh" -e > /dev/null 2>&1; then
     EMMCROOT=1
     echo "== the system disk is the eMMC: fchemmc and its loader line stay, or the next boot would find no system disk =="
-    echo "   nothing builds it for a new kernel now: install the plugin again before any kernel update"
+    echo "   after a kernel update the appliance stays on the last kernel that has it, until the plugin is installed again"
 else
     rm -f /boot/modules/fchemmc.ko /boot/modules/fchemmc.ko.kernel /boot/modules/fchemmc.ko.new \
         /boot/modules/fchemmc.ko.kernel.new
-    rm -f /boot/loader.conf.d/fchemmc.conf
+    rm -f /boot/loader.conf.d/fchemmc.conf /boot/loader.conf.d/fchemmc-good.conf
+    rm -rf /boot/fchemmc-guard /boot/kernel.emmc-good
+    rm -f "${PREFIX}/etc/rc.syshook.d/early/04-fchemmc-guard" "${PREFIX}/etc/rc.syshook.d/stop/79-fchemmc-guard"
 fi
 rm -rf /var/db/os-xgs-npu/build-fchemmc
 rm -f /var/db/os-xgs-npu/build-fchemmc.log /var/db/os-xgs-npu/fchemmc-follow.said
@@ -122,6 +126,7 @@ rm -f "${PREFIX}/opnsense/scripts/octep/npu-platform.sh"
 rm -f "${PREFIX}/opnsense/scripts/octep/ports.py"
 rm -f /var/db/os-xgs-npu/npu-platform.txt /var/db/os-xgs-npu/ports.json /var/db/os-xgs-npu/coprocessor.json
 rm -f "${PREFIX}/opnsense/scripts/octep/kernel-follow.sh"
+rm -f "${PREFIX}/opnsense/scripts/octep/fchemmc-guard.sh"
 rm -f "${PREFIX}/opnsense/scripts/octep/fetch-sources.sh"
 rmdir "${PREFIX}/opnsense/scripts/octep" 2>/dev/null || true
 

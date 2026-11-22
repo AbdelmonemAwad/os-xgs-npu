@@ -168,3 +168,8 @@ first XGS 3300: [the plugins' signed releases](docs/measurements/signed-plugin-r
   2026-10-23; a main release at once, and a small release - its number has a fourth part - with no
   images of its own, since 2026-10-24. An appliance installed from the images of
   a main release takes the small releases after it from XGS: Updates.
+- **The first release that carries `install/image-fchemmc.sh`** needs its images asked for, in this
+  order: merge xgs-image-builder's change first (its build guest moves to FreeBSD 15.1; on the 14.2
+  guest the script refuses and the image build fails), publish the release here, then run the
+  builder's `release-images.yml` with `project_tag` set to that tag. A small release gets no images
+  by itself.

@@ -22,7 +22,9 @@
 # kern.geom.conftxt, where every provider is printed after the one it is built on and one level
 # deeper: a label on a partition on a disk, an encrypted provider on a partition, a mirror on its
 # disks. The disk is the provider at level 0 above it. A name that does not lie on a disk - a memory
-# disk's, a network filesystem's - gives none.
+# disk's, a network filesystem's - gives none. Every provider of that name counts: a system left on a
+# USB disk carries the same gpt/rootfs label as one installed on the eMMC, and answering from the first
+# would turn the eMMC's protection off.
 #
 # MOUNTS, CONFTXT and ZPOOLS name files that stand in for `mount -p`, kern.geom.conftxt and
 # `zpool list -vHP <pool>`, for testing this away from an appliance.
@@ -68,7 +70,7 @@ fi
 TREE=$(conftxt 2>/dev/null)
 DISKS=$(for d in ${DEVICES}; do
 	printf '%s\n' "${TREE}" | /usr/bin/awk -v want="${d}" '
-		NF >= 3 && $1 ~ /^[0-9]+$/ { above[$1] = $3; if ($3 == want) { print above[0]; exit } }'
+		NF >= 3 && $1 ~ /^[0-9]+$/ { above[$1] = $3; if ($3 == want) print above[0] }'
 done | /usr/bin/awk 'NF && !seen[$0]++')
 
 if [ "${1:-}" = "-e" ]; then

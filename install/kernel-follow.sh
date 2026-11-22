@@ -373,9 +373,17 @@ no_fallback() {
 # appliance does not boot at all. There, and only there, fchemmc is treated as the boot needs it:
 #
 #	- the next boot is never sent to a kernel the loader would load no matching fchemmc for while
-#	  kernel.old has one: the fall-back to kernel.old is armed as for the module above, before a
-#	  rebuild, again at every boot and at every orderly reboot (the stop hook's PINONLY=1 run), and
-#	  let go only once fchemmc is built for /boot/kernel - and never let go for the module above alone;
+#	  another kernel has one: the fall-back - to kernel.old, or to kernel.emmc-good where kernel.old
+#	  has none - is armed before a rebuild, again at every boot and at every orderly reboot, and let
+#	  go only once fchemmc is built for /boot/kernel - and never let go for the module above alone;
+#	- all of this whether or not the module above is installed or builds: fchemmc is followed first;
+#	- the last kernel that booted from the eMMC is kept whole, with its fchemmc, in
+#	  /boot/kernel.emmc-good, which no kernel update rotates, and replaced only once a newer kernel
+#	  has booted from the eMMC: two kernel updates with no build between them leave neither
+#	  /boot/kernel nor kernel.old with an fchemmc, and this one still has;
+#	- a small guard that needs nothing of the plugin (install/fchemmc-guard.sh) is laid down in
+#	  /boot/fchemmc-guard with a boot hook early and one at stop: it arms the fall-back again at each
+#	  boot, has the last word at a reboot, and stays when the plugin is removed;
 #	- the fall-back is never armed for the module above where kernel.old would find no fchemmc: a boot
 #	  without front ports is still a boot, one without a system disk is not;
 #	- an upgrade whose staged kernel fchemmc could not be built for is stopped before that kernel is
@@ -400,7 +408,9 @@ no_fallback() {
 # (opnsense/tools build/kernel.sh, scripts/firmware/health.sh), and opnsense-update runs kldxref on
 # /boot/kernel at every base update, which would add a module left there. Nothing here runs kldxref.
 #
-# EMMCROOT=1 or 0 answers the question for testing; otherwise system-disk.sh does (scripts/xgs).
+# Asked only where something of fchemmc is on this machine and a 1022:7906 is on the bus, so every other
+# appliance spends a few file tests on it. EMMCROOT=1 or 0 answers the question for testing; otherwise
+# system-disk.sh does (scripts/xgs).
 : ${SYSTEMDISK:=${PREFIX}/opnsense/scripts/xgs/system-disk.sh}
 : ${FCHEMMC_SRCTREE:=${PREFIX}/share/os-xgs-npu/fchemmc}
 : ${FCHEMMC_MODULE:=${MODDIR}/fchemmc.ko}
@@ -408,8 +418,18 @@ no_fallback() {
 : ${FCHEMMC_BUILDLOG:=/var/db/os-xgs-npu/build-fchemmc.log}
 : ${FCHEMMC_SAID:=/var/db/os-xgs-npu/fchemmc-follow.said}
 : ${FCHEMMC_LOADER:=/boot/loader.conf.d/fchemmc.conf}
+# Marks that this boot has tried a build that failed before, so that it is tried once a boot.
+: ${FCHEMMC_TRIED:=/var/run/octep-follow.fchemmc-tried}
+: ${PCICONF:=/usr/sbin/pciconf}
 KERNDIR=${KERNEL%/*}
 KERNDIR_OLD=${KERNEL_OLD%/*}
+: ${KERNDIR_GOOD:=${KERNDIR%/*}/kernel.emmc-good}
+# Puts kernel.emmc-good on the boot menu's Kernel entry (k): the loader lists only what `kernels` names.
+: ${FCHEMMC_GOODCONF:=/boot/loader.conf.d/fchemmc-good.conf}
+: ${GOOD_FAILED:=/var/run/octep-follow.emmc-good-failed}
+: ${GUARD_SRC:=${SRCDIR}/fchemmc-guard.sh}
+: ${GUARD_DIR:=/boot/fchemmc-guard}
+: ${HOOKROOT:=${PREFIX}/etc/rc.syshook.d}
 
 EMMC=
 emmc_root() {
@@ -418,7 +438,13 @@ emmc_root() {
 		1|0) EMMC=${EMMCROOT} ;;
 		*)
 			EMMC=0
-			[ -f "${SYSTEMDISK}" ] && /bin/sh "${SYSTEMDISK}" -e > /dev/null 2>&1 && EMMC=1
+			if { [ -f "${FCHEMMC_MODULE}" ] || [ -f "${KERNDIR}/fchemmc.ko" ] ||
+			    [ -f "${KERNDIR_OLD}/fchemmc.ko" ] || [ -d "${KERNDIR_GOOD}" ]; } &&
+			    [ -f "${SYSTEMDISK}" ] && ${PCICONF} -l 2>/dev/null |
+			    /usr/bin/grep -qE 'chip=0x79061022|vendor=0x1022[[:space:]]+device=0x7906' &&
+			    /bin/sh "${SYSTEMDISK}" -e > /dev/null 2>&1; then
+				EMMC=1
+			fi
 			;;
 		esac
 	fi
@@ -476,39 +502,107 @@ fchemmc_keep() {
 	return 0
 }
 
-# The fall-back to kernel.old for the system disk: armed where a boot of kernel.old finds an fchemmc
-# built for it, of the major release of /boot/kernel, whatever the module above is built for - a boot
-# without front ports is still a boot. Its lines are notices; a step that failed says so as an error.
+# Which kernel a boot can fall back to with its system disk: kernel.old where it has its fchemmc,
+# kernel.emmc-good otherwise. Nothing, and false, where neither has.
+emmc_fallback() {
+	if fchemmc_boots "${KERNDIR_OLD}"; then
+		echo "${KERNDIR_OLD##*/}"
+	elif fchemmc_boots "${KERNDIR_GOOD}"; then
+		echo "${KERNDIR_GOOD##*/}"
+	else
+		return 1
+	fi
+}
+
+# The fall-back for the system disk, whatever the module above is built for - a boot without front ports
+# is still a boot - and across a major release too: a boot with its disk can be repaired, and one
+# without cannot. Its lines are notices; a step that failed says so as an error.
 pin_for_emmc() {
 	say=${1:-warn}
-	OLDV=$(version_of_kernel_file "${KERNEL_OLD}" || true)
-	if [ -z "${OLDV}" ]; then
-		warn "fchemmc: the system disk is the eMMC, no fchemmc built for ${KERNEL} is where the loader looks, and there is no usable /boot/kernel.old to fall back to: the next boot finds no system disk"
+	if ! to=$(emmc_fallback); then
+		warn "fchemmc: the system disk is the eMMC, and no kernel in /boot has an fchemmc built for it where the loader looks: the next boot finds no system disk"
 		return 1
 	fi
-	if ! fchemmc_boots "${KERNDIR_OLD}"; then
-		warn "fchemmc: the system disk is the eMMC, and neither ${KERNEL} nor /boot/kernel.old has an fchemmc built for it where the loader looks: the next boot finds no system disk"
-		return 1
-	fi
-	across_major /boot/kernel.old "${OLDV}" "$(version_of_kernel_file "${KERNEL}" || true)" && return 1
 	if [ ! -x "${NEXTBOOT}" ]; then
 		warn "no ${NEXTBOOT}, so the next boot cannot be steered away from a kernel without its system disk"
 		return 1
 	fi
 	if [ "${DRY}" = "1" ]; then
-		log "DRY=1 - would send the next boot to kernel.old, which has its fchemmc"
+		log "DRY=1 - would send the next boot to ${to}, which has its fchemmc"
 		return 0
 	fi
-	if ! "${NEXTBOOT}" -k kernel.old > /dev/null 2>&1; then
-		warn "${NEXTBOOT} -k kernel.old failed"
+	if ! "${NEXTBOOT}" -k "${to}" > /dev/null 2>&1; then
+		warn "${NEXTBOOT} -k ${to} failed"
 		return 1
 	fi
-	: > "${ARMED}" 2>/dev/null || true
-	${say} "fchemmc: the system disk is the eMMC and fchemmc is not built for ${KERNEL}: the next boot takes /boot/kernel.old, which has its fchemmc"
-	if [ -f "${MODULE}" ] && [ "$(/bin/cat "${MODULE}.kernel" 2>/dev/null)" != "${OLDV}" ] &&
-	    [ "$(/bin/cat "${MODULE}.prev.kernel" 2>/dev/null)" != "${OLDV}" ]; then
-		${say} "  ${MODULE} is not built for kernel.old, so that boot may come up without its front ports; it has its system disk"
+	/usr/bin/touch "${ARMED}" 2>/dev/null || true
+	${say} "fchemmc: the system disk is the eMMC and fchemmc is not built for ${KERNEL}: the next boot takes /boot/${to}, which has its fchemmc"
+	tov=$(version_of_kernel_file "${KERNDIR%/*}/${to}/kernel" || true)
+	if [ -f "${MODULE}" ] && [ "$(/bin/cat "${MODULE}.kernel" 2>/dev/null)" != "${tov}" ] &&
+	    [ "$(/bin/cat "${MODULE}.prev.kernel" 2>/dev/null)" != "${tov}" ]; then
+		${say} "  ${MODULE} is not built for ${to}, so that boot may come up without its front ports; it has its system disk"
 	fi
+	return 0
+}
+
+# The last kernel that booted from the eMMC, kept whole with its fchemmc where no kernel update rotates
+# it. Replaced only by the kernel running now, where that is /boot/kernel and has its fchemmc: being up
+# on an eMMC root is the proof that it boots from there. Built beside and swapped in by renames, so the
+# one before stays until the new one is complete, and a swap cut off half way is put right by the next
+# run. The whole directory, because a kernel loads its other modules from it.
+emmc_good_keep() {
+	[ "${DRY}" = "1" ] && return 0
+	if [ ! -d "${KERNDIR_GOOD}" ] && [ -d "${KERNDIR_GOOD}.del" ]; then
+		/bin/mv "${KERNDIR_GOOD}.del" "${KERNDIR_GOOD}"
+	fi
+	/bin/rm -rf "${KERNDIR_GOOD}.new" "${KERNDIR_GOOD}.del"
+	gv=$(${UNAME} -v 2>/dev/null || true)
+	[ -n "${gv}" ] && [ "$(version_of_kernel_file "${KERNEL}" || true)" = "${gv}" ] || return 0
+	fchemmc_boots "${KERNDIR}" || return 0
+	if ! { [ "$(version_of_kernel_file "${KERNDIR_GOOD}/kernel" || true)" = "${gv}" ] &&
+	    fchemmc_boots "${KERNDIR_GOOD}"; }; then
+		gfrom=${FCHEMMC_MODULE}
+		[ -f "${KERNDIR}/fchemmc.ko" ] && gfrom=${KERNDIR}/fchemmc.ko
+		if { /bin/cp -Rp "${KERNDIR}" "${KERNDIR_GOOD}.new" &&
+		    /bin/rm -f "${KERNDIR_GOOD}.new/fchemmc.ko" "${KERNDIR_GOOD}.new/fchemmc.ko.kernel" &&
+		    /bin/cp "${gfrom}" "${KERNDIR_GOOD}.new/fchemmc.ko" &&
+		    printf '%s\n' "${gv}" > "${KERNDIR_GOOD}.new/fchemmc.ko.kernel" &&
+		    fchemmc_boots "${KERNDIR_GOOD}.new"; } 2>/dev/null; then
+			[ ! -d "${KERNDIR_GOOD}" ] || /bin/mv "${KERNDIR_GOOD}" "${KERNDIR_GOOD}.del"
+			/bin/mv "${KERNDIR_GOOD}.new" "${KERNDIR_GOOD}"
+			/bin/rm -rf "${KERNDIR_GOOD}.del"
+			/bin/rm -f "${GOOD_FAILED}"
+			log "fchemmc: ${KERNDIR_GOOD} now holds ${gv}, the last kernel that booted from the eMMC"
+		else
+			/bin/rm -rf "${KERNDIR_GOOD}.new"
+			if [ ! -f "${GOOD_FAILED}" ]; then
+				/usr/bin/touch "${GOOD_FAILED}" 2>/dev/null || true
+				warn "fchemmc: could not keep a copy of the running kernel in ${KERNDIR_GOOD}; what was there stays"
+			fi
+		fi
+	fi
+	if [ -d "${KERNDIR_GOOD}" ] && [ ! -f "${FCHEMMC_GOODCONF}" ]; then
+		{ /bin/mkdir -p "${FCHEMMC_GOODCONF%/*}" &&
+		    printf 'kernels="kernel kernel.old %s"\n' "${KERNDIR_GOOD##*/}" > "${FCHEMMC_GOODCONF}"; } 2>/dev/null || true
+	fi
+	return 0
+}
+
+# The guard (install/fchemmc-guard.sh) and its two hooks, written where they differ.
+emmc_guard_put() {
+	[ "${DRY}" = "1" ] && return 0
+	[ -f "${GUARD_SRC}" ] && [ -f "${SYSTEMDISK}" ] || return 0
+	/bin/mkdir -p "${GUARD_DIR}" "${HOOKROOT}/early" "${HOOKROOT}/stop" 2>/dev/null || return 0
+	/usr/bin/cmp -s "${GUARD_SRC}" "${GUARD_DIR}/guard.sh" ||
+	    /bin/cp "${GUARD_SRC}" "${GUARD_DIR}/guard.sh" 2>/dev/null
+	/usr/bin/cmp -s "${SYSTEMDISK}" "${GUARD_DIR}/system-disk.sh" ||
+	    /bin/cp "${SYSTEMDISK}" "${GUARD_DIR}/system-disk.sh" 2>/dev/null
+	for gh in early/04-fchemmc-guard stop/79-fchemmc-guard; do
+		gline="exec /bin/sh ${GUARD_DIR}/guard.sh"
+		[ "$(/usr/bin/tail -1 "${HOOKROOT}/${gh}" 2>/dev/null)" = "${gline}" ] && continue
+		printf '#!/bin/sh\n# The eMMC system disk: see %s/guard.sh\n%s\n' "${GUARD_DIR}" "${gline}" \
+		    > "${HOOKROOT}/${gh}" 2>/dev/null && /bin/chmod 0755 "${HOOKROOT}/${gh}"
+	done
 	return 0
 }
 
@@ -528,7 +622,7 @@ emmc_after() {
 		[ -f "${ARMED}" ] && unpin_old_kernel
 	elif [ ! -f "${PINNED}" ]; then
 		pin_for_emmc log || true
-		: > "${PINNED}" 2>/dev/null || true
+		/usr/bin/touch "${PINNED}" 2>/dev/null || true
 	fi
 	return 0
 }
@@ -536,9 +630,10 @@ emmc_after() {
 # ---------------------------------------------------------------- the upgrade's check, for the upgrade hook
 #
 # EMMCCHECK=1 answers one question and changes nothing: on the eMMC system disk, is fchemmc built for the
-# kernel an upgrade has staged? 0 yes, or no kernel is staged, or the system disk is not the eMMC; 1 no,
-# with the reason. A kernel already in /boot is past holding: the fall-back above takes it from there.
-# The upgrade hook runs it after the follower and fails where it says 1, and OPNsense's upgrade.sh then
+# kernel an upgrade has staged? 0 yes, or no kernel is staged, or the system disk is not the eMMC; 3 no,
+# with the reason - a code of its own, so that nothing else that can stop this run (a time limit) can
+# read as that answer. A kernel already in /boot is past holding: the fall-back above takes it from there.
+# The upgrade hook runs it after the follower and fails where it says 3, and OPNsense's upgrade.sh then
 # applies no kernel, empties what it staged and does not reboot ("The upgrade was aborted due to an
 # error"). No lock: it reads, as PINONLY=1 does.
 : ${EMMCCHECK:=0}
@@ -580,12 +675,17 @@ if [ "${PINONLY}" = "1" ]; then
 		taken=$(fchemmc_taken "${KERNDIR}")
 		log "  fchemmc    : ${taken:-<none>}"
 		if pin_for_emmc log; then
-			[ "${DRY}" = "1" ] || : > "${PINNED}" 2>/dev/null || true
+			[ "${DRY}" = "1" ] || /usr/bin/touch "${PINNED}" 2>/dev/null || true
 			exit 0
 		fi
 		exit 1
 	fi
 	if [ ! -f "${MODULE}" ]; then
+		# With no module above to want it, a fall-back armed for fchemmc goes once fchemmc is built.
+		if emmc_root && [ -f "${ARMED}" ]; then
+			TARGET=$(version_of_kernel_file "${KERNEL}" || true)
+			unpin_old_kernel
+		fi
 		echo "no ${MODULE} - the driver is not installed on this machine, nothing to fall back with"
 		exit 3
 	fi
@@ -736,7 +836,8 @@ record() {
 
 # Said once for each kernel to follow and outcome, and at every FORCE=1 (an install, which reports it);
 # a build that failed for this kernel is not tried again every five minutes, only at FORCE=1 or for
-# another kernel.
+# another kernel - and, on the eMMC system disk, once at each boot and at each upgrade and reboot
+# (FCHEMMC_RETRY=1, from their hooks), because there "run the upgrade again" has to mean a new try.
 fchemmc_said() {
 	[ "${FORCE}" != "1" ] && [ "$(/bin/cat "${FCHEMMC_SAID}" 2>/dev/null)" = "${TARGET}|$1" ] && return 0
 	[ "${DRY}" = "1" ] || { /bin/mkdir -p "${FCHEMMC_SAID%/*}" &&
@@ -765,6 +866,16 @@ follow_fchemmc() {
 	[ "${DRY}" = "1" ] || fchemmc_loader
 	return 0
 }
+# True, once a run, where a build that failed before is to be tried again.
+FCHEMMC_RETRIED=0
+fchemmc_retry() {
+	emmc_root || return 1
+	[ "${FCHEMMC_RETRIED}" = 0 ] || return 1
+	[ "${FCHEMMC_RETRY:-0}" = 1 ] || [ ! -f "${FCHEMMC_TRIED}" ] || return 1
+	FCHEMMC_RETRIED=1
+	/usr/bin/touch "${FCHEMMC_TRIED}" 2>/dev/null || true
+	return 0
+}
 build_fchemmc() {
 	fstamp=$(/bin/cat "${FCHEMMC_MODULE}.kernel" 2>/dev/null || true)
 	if [ -f "${FCHEMMC_MODULE}" ] && [ "${fstamp}" = "${TARGET}" ] && [ "${FORCE}" != "1" ]; then
@@ -775,13 +886,19 @@ build_fchemmc() {
 		return 0
 	fi
 	if [ "${FORCE}" != "1" ] &&
-	    [ "$(/bin/cat "${FCHEMMC_SAID}" 2>/dev/null)" = "${TARGET}|failed" ]; then
+	    [ "$(/bin/cat "${FCHEMMC_SAID}" 2>/dev/null)" = "${TARGET}|failed" ] && ! fchemmc_retry; then
 		return 0
 	fi
 	fsys=${1:-}
 	if [ -z "${fsys}" ]; then
-		fsys=$(NONET=1 /bin/sh "${FETCH}" "${TARGET}" 2>/dev/null |
-		    /usr/bin/sed -n 's/^[[:space:]]*SYSDIR=\([^[:space:]]*\).*/\1/p' | /usr/bin/tail -1)
+		# On the eMMC system disk this run may be the only one that builds it, so it may fetch.
+		if emmc_root && [ "${NOFETCH}" != "1" ]; then
+			fsys=$(/bin/sh "${FETCH}" "${TARGET}" 2>/dev/null |
+			    /usr/bin/sed -n 's/^[[:space:]]*SYSDIR=\([^[:space:]]*\).*/\1/p' | /usr/bin/tail -1)
+		else
+			fsys=$(NONET=1 /bin/sh "${FETCH}" "${TARGET}" 2>/dev/null |
+			    /usr/bin/sed -n 's/^[[:space:]]*SYSDIR=\([^[:space:]]*\).*/\1/p' | /usr/bin/tail -1)
+		fi
 	fi
 	if [ -z "${fsys}" ] || [ ! -f "${fsys}/sys/param.h" ]; then
 		fchemmc_said nosources ||
@@ -845,7 +962,7 @@ if [ "${EMMCCHECK}" = "1" ]; then
 	TARGET=$(kernel_staged || true)
 	if [ -z "${TARGET}" ]; then
 		echo "the system disk is the eMMC, and no kernel version can be read from the staged set"
-		exit 1
+		exit 3
 	fi
 	STAGED=1
 	if fchemmc_next_ok; then
@@ -855,7 +972,7 @@ if [ "${EMMCCHECK}" = "1" ]; then
 	echo "the system disk is the eMMC, and fchemmc is not built for the staged kernel:"
 	echo "  kernel     : ${TARGET}"
 	echo "  fchemmc    : $(/bin/cat "${FCHEMMC_MODULE}.kernel" 2>/dev/null || echo '<none>')"
-	exit 1
+	exit 3
 fi
 
 WHERE=
@@ -903,21 +1020,28 @@ note "kernel running : ${RUNNING}"
 note "module         : ${MODULE}"
 note "module stamp   : ${STAMP:-<none>}"
 
+# ON THE eMMC SYSTEM DISK, all of this first, and whatever becomes of the module below - which may not
+# be installed, or may fail to build ("the eMMC as the system disk", above): the guard, the copy of the
+# kernel that booted, the fall-back where /boot/kernel has no fchemmc built for it, before anything that
+# can take long and once a boot, and then fchemmc's own build.
+if emmc_root; then
+	emmc_guard_put
+	emmc_good_keep
+	if [ -z "${STAGED}" ] && ! fchemmc_boots "${KERNDIR}" && [ ! -f "${PINNED}" ] && [ "${DRY}" != "1" ]; then
+		pin_for_emmc log || true
+		/usr/bin/touch "${PINNED}" 2>/dev/null || true
+	fi
+	follow_fchemmc ""
+fi
+
 # A machine with neither module is a machine no driver of this project is installed on - the cron
 # entry runs wherever the plugin is - so without FORCE that is the end of it.
 if [ ! -f "${MODULE}" ] && [ "${FORCE}" != "1" ]; then
 	note "no ${MODULE} - the driver is not installed on this machine, nothing to follow"
 	record skipped "not installed"
 	said
+	emmc_after
 	exit 0
-fi
-
-# ON THE eMMC SYSTEM DISK, the fall-back first where /boot/kernel has no fchemmc built for it - before
-# anything that can take long, as for the module just below - whatever the module is built for, and once
-# a boot ("the eMMC as the system disk", above).
-if [ -z "${STAGED}" ] && emmc_root && ! fchemmc_boots "${KERNDIR}" && [ ! -f "${PINNED}" ] && [ "${DRY}" != "1" ]; then
-	pin_for_emmc log || true
-	: > "${PINNED}" 2>/dev/null || true
 fi
 
 if [ "${STAMP}" = "${TARGET}" ] && [ "${FORCE}" != "1" ]; then
