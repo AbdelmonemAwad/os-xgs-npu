@@ -332,7 +332,7 @@ class ReporterTest(unittest.TestCase):
         scrub = self.reporter.Scrubber()
         text = scrub("grep -qF '%s' /root/.ssh/authorized_keys || echo 'ssh-ed25519 %s xgs-npu' >> keys\n"
                      'ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTY%s= root\n'
-                     'ssh-rsa AAAAB3NzaC1yc2E%s== someone@example.org\n' % (body, body, 'R' * 60, 'S' * 80))
+                     'ssh-rsa ' 'AAAAB3NzaC1yc2E%s== someone@example.org\n' % (body, body, 'R' * 60, 'S' * 80))
         for secret in (body, 'AAAAE2Vj', 'AAAAB3Nz', 'someone@example.org'):
             self.assertNotIn(secret, text)
         self.assertIn("grep -qF '<key withheld>' /root/.ssh/authorized_keys", text)
