@@ -13,6 +13,30 @@ release on an appliance you can reach before you trust it with a network you dep
 
 Nothing yet.
 
+## 0.2.0-alpha.1.1 - 2026-11-23
+
+A small release for the XGS 87. Its internal eMMC now works under FreeBSD 15, with a driver of the plugin's
+own, fchemmc, and it can hold the system. An image built from this release carries fchemmc in its live system,
+so that its installer sees the eMMC. On a model without that controller (1022:7906) fchemmc is neither built nor
+loaded, and the npuep and octep drivers are those of 0.2.0-alpha.1.
+
+Tried on a real XGS 87: fchemmc itself, at 50 MHz and 4 bits, after a cold boot and a warm reboot. Not tried yet
+on one: installing onto the eMMC, booting from it, and a kernel update with the system on it. Installing onto the
+eMMC replaces the vendor's system on it. A small release has no ready-made images: build one from this release
+on [the build page](https://npuforge.org/build/), with the driver left on `latest`.
+
+### Improvements and additions
+
+- Early hooks: every decision on the console too; an owner's removal of NPUMGMT kept ([#1210](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1210))
+- fchemmc: an eMMC driver of the plugin's own for the XGS 87 (1022:7906) ([#1211](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1211))
+- First boot: the XGS 87's WAN on Port2 ([#1212](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1212))
+- Support bundle faults from an XGS 87 ([#1213](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1213))
+- The XGS 87's eMMC as the system disk ([#1214](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1214))
+
+### Documentation
+
+- Limitations: on the XGS 136, part of a far-side stream still crosses the host ([#1208](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1208))
+
 ## 0.2.0-alpha.1 - 2026-11-20
 
 The first batch of the project's improvement plan, a stage: what the plan has finished so far, 30 of its 62
