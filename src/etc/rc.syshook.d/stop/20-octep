@@ -34,11 +34,12 @@
 
 log() { /usr/bin/logger -t octep-stop -p daemon.notice "$*" 2>/dev/null || true; }
 
-# Only on hardware a driver of this project claims: the OCTEON TX coprocessor (177d:a300, octep)
-# or the ARMADA one (11ab:7080, npuep). The follower works out which module is installed. Until
-# 2026-10-13 this gate knew only the OCTEON TX and the ARMADA appliance rebooted past it unchecked.
+# Only on hardware a driver of this project claims: the OCTEON TX coprocessor (177d:a300, octep),
+# the ARMADA one (11ab:7080, npuep) or the XGS 87's eMMC controller (1022:7906, fchemmc). The
+# follower works out which module is installed. Until 2026-10-13 this gate knew only the OCTEON TX
+# and the ARMADA appliance rebooted past it unchecked.
 if ! /usr/sbin/pciconf -l 2>/dev/null |
-    grep -qE 'chip=0xa300177d|vendor=0x177d[[:space:]]+device=0xa300|chip=0x708011ab|vendor=0x11ab[[:space:]]+device=0x7080'; then
+    grep -qE 'chip=0xa300177d|vendor=0x177d[[:space:]]+device=0xa300|chip=0x708011ab|vendor=0x11ab[[:space:]]+device=0x7080|chip=0x79061022|vendor=0x1022[[:space:]]+device=0x7906'; then
 	exit 0
 fi
 
@@ -46,7 +47,7 @@ fi
 if [ ! -x "${FOLLOW}" ]; then
 	exit 0
 fi
-if [ ! -f "${MODDIR}/octep.ko" ] && [ ! -f "${MODDIR}/npuep.ko" ]; then
+if [ ! -f "${MODDIR}/octep.ko" ] && [ ! -f "${MODDIR}/npuep.ko" ] && [ ! -f "${MODDIR}/fchemmc.ko" ]; then
 	exit 0
 fi
 
@@ -77,7 +78,7 @@ esac
 # Bounded, because this runs between the operator asking for a reboot and getting one. A fetch
 # that will not finish must not hold the machine: leaving the module unbuilt is where we would
 # have been anyway, and the boot hook and cron still get their turn afterwards.
-if /usr/bin/timeout -k 10 "${LIMIT}" /bin/sh "${FOLLOW}"; then
+if FCHEMMC_RETRY=1 /usr/bin/timeout -k 10 "${LIMIT}" /bin/sh "${FOLLOW}"; then
 	log "done"
 else
 	rc=$?

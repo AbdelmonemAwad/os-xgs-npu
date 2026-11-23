@@ -37,10 +37,17 @@ fi
 # Which appliance, read positively from the board's assembly number - src/opnsense/scripts/xgs/board.sh
 # says why, and why elimination was not good enough. A board this project has not been run on gets
 # nothing at all, rather than whichever family it was guessed to belong to.
+#
+# First of all, what a ready-made image put in for the XGS 87's eMMC (install/image-fchemmc.sh): kept on
+# a board this project installs on that has the controller, and taken away anywhere else - on a board
+# that gets nothing too - so that after an image's first boot nothing of it is left where it does
+# nothing. It says what it did, and nothing where an image put nothing in.
 if ! BOARD=$(/bin/sh "${SRC}/src/opnsense/scripts/xgs/board.sh"); then
+    /bin/sh "${SRC}/install/image-fchemmc.sh" settle unknown-board || true
     echo "== board ${BOARD%% *}: not one this project has been run on - nothing installed =="
     exit 1
 fi
+/bin/sh "${SRC}/install/image-fchemmc.sh" settle || true
 FAMILY=$(echo "${BOARD}" | /usr/bin/awk '{print $2}')
 # A model this project has not been run on installs as everything else does, and says so first.
 case "${BOARD}" in
@@ -124,6 +131,9 @@ install -m 0644 "${SRC}/src/opnsense/mvc/app/library/OPNsense/Auth/TacacsPlus.ph
 # The board reader itself goes on every appliance, because the hooks ask it at every boot.
 install -d -m 0755 "${PREFIX}/opnsense/scripts/xgs"
 install -m 0755 "${SRC}/src/opnsense/scripts/xgs/board.sh" "${PREFIX}/opnsense/scripts/xgs/board.sh"
+# Which disk the system is on: the kernel follower treats fchemmc as the boot needs it where it is the
+# XGS 87's eMMC (install/kernel-follow.sh, "the eMMC as the system disk").
+install -m 0755 "${SRC}/src/opnsense/scripts/xgs/system-disk.sh" "${PREFIX}/opnsense/scripts/xgs/system-disk.sh"
 install -m 0755 "${SRC}/src/opnsense/scripts/xgs/status.py" "${PREFIX}/opnsense/scripts/xgs/status.py"
 install -m 0755 "${SRC}/src/opnsense/scripts/xgs/offload.sh" "${PREFIX}/opnsense/scripts/xgs/offload.sh"
 # The public keys a release's manifest must be signed with for update.py to install it (its SIGNED
@@ -695,6 +705,7 @@ install -m 0755 "${SRC}/src/opnsense/scripts/octep/ports.py" "${PREFIX}/opnsense
 # it; rc.syshook.d/upgrade/20-octep, for the firmware upgrade path that calls that level; and cron,
 # which needs nobody's cooperation at all.
 install -m 0755 "${SRC}/install/kernel-follow.sh" "${PREFIX}/opnsense/scripts/octep/kernel-follow.sh"
+install -m 0755 "${SRC}/install/fchemmc-guard.sh" "${PREFIX}/opnsense/scripts/octep/fchemmc-guard.sh"
 install -m 0755 "${SRC}/contrib/npuep/fetch-sources.sh" "${PREFIX}/opnsense/scripts/octep/fetch-sources.sh"
 
 # ---------------------------------------------------------------- the driver's sources
@@ -747,14 +758,23 @@ copy_driver "${SRC}/contrib/npuep" "${PREFIX}/share/os-xgs-npu/npuep"
 # go only where such a controller is on the bus - the kernel follower builds fchemmc.ko from them,
 # after the driver above and against the same kernel, and writes the loader line beside it - and
 # everything of it is taken away anywhere else. Both spellings of the identity, as for the endpoint
-# above. Root on the eMMC is not a part of it: the eMMC holds data only.
-if /usr/sbin/pciconf -l 2>/dev/null |
+# above. Where the system disk is that eMMC - installed onto it from a ready-made image, which carries a
+# build for its own kernel (install/image-fchemmc.sh) - the follower treats fchemmc as the boot needs it
+# (install/kernel-follow.sh, "the eMMC as the system disk"); nothing here differs for it.
+# A system that has fchemmc and runs from an eMMC keeps it whatever pciconf answers: it boots only with
+# what the branch below would take away.
+if { [ -f /boot/modules/fchemmc.ko ] &&
+    /bin/sh "${SRC}/src/opnsense/scripts/xgs/system-disk.sh" -e > /dev/null 2>&1; } ||
+    /usr/sbin/pciconf -l 2>/dev/null |
     grep -qE 'chip=0x79061022|vendor=0x1022[[:space:]]+device=0x7906'; then
     copy_driver "${SRC}/contrib/fchemmc" "${PREFIX}/share/os-xgs-npu/fchemmc"
 else
     rm -rf "${PREFIX}/share/os-xgs-npu/fchemmc"
     rm -f /boot/modules/fchemmc.ko /boot/modules/fchemmc.ko.kernel /boot/loader.conf.d/fchemmc.conf \
-        /var/db/os-xgs-npu/fchemmc-follow.said
+        /var/db/os-xgs-npu/fchemmc-follow.said "${PREFIX}/share/os-xgs-npu/fchemmc.image"
+    rm -rf /boot/fchemmc-guard /boot/kernel.emmc-good
+    rm -f /boot/loader.conf.d/fchemmc-good.conf "${PREFIX}/etc/rc.syshook.d/early/04-fchemmc-guard" \
+        "${PREFIX}/etc/rc.syshook.d/stop/79-fchemmc-guard"
 fi
 
 # A carried copy of the kernel sources, if this checkout has one beside it.

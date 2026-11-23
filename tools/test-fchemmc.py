@@ -902,8 +902,9 @@ class Wiring(unittest.TestCase):
 
     def test_the_follower_runs_it_after_the_module_it_follows(self):
         text = read(FOLLOW)
-        self.assertIn('follow_fchemmc ""\n\tprune_old_sources\n\texit 0', text)
-        self.assertTrue(text.rstrip().endswith('unpin_old_kernel\nfollow_fchemmc "${SYSDIR}"\nexit 0'))
+        # and, on the eMMC system disk, what the next boot then takes (tools/test-emmc-root.py)
+        self.assertIn('follow_fchemmc ""\n\temmc_after\n\tprune_old_sources\n\texit 0', text)
+        self.assertTrue(text.rstrip().endswith('unpin_old_kernel\nfollow_fchemmc "${SYSDIR}"\nemmc_after\nexit 0'))
 
 
 @unittest.skipIf(SH is None, 'no /bin/sh here')
