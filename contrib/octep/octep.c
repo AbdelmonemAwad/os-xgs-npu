@@ -648,6 +648,8 @@ octep_attach(device_t dev)
 	int err;
 
 	sc->dev = dev;
+	device_printf(dev, "octep, from os-xgs-npu (https://github.com/AbdelmonemAwad/os-xgs-npu): "
+	    "Copyright (c) 2026 Abdelmonem Awad, BSD-2-Clause\n");
 	mtx_init(&sc->mtx, device_get_nameunit(dev), NULL, MTX_DEF);
 	callout_init(&sc->poll, 1);
 	callout_init(&sc->sdp_poll, 1);

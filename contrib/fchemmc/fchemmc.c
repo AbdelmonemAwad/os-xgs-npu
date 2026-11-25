@@ -548,6 +548,8 @@ fchemmc_attach(device_t dev)
 	int bar, err, rid, i;
 
 	sc->dev = dev;
+	device_printf(dev, "fchemmc, from os-xgs-npu (https://github.com/AbdelmonemAwad/os-xgs-npu): "
+	    "Copyright (c) 2026 Abdelmonem Awad, BSD-2-Clause\n");
 	sc->no_soft_reset = -1;
 	sc->clear_tm = fchemmc_needs_clear_tm();
 	/*

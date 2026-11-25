@@ -1301,6 +1301,8 @@ npuep_attach(device_t dev)
 	int err;
 
 	sc->dev = dev;
+	device_printf(dev, "npuep, from os-xgs-npu (https://github.com/AbdelmonemAwad/os-xgs-npu): "
+	    "Copyright (c) 2026 Abdelmonem Awad, BSD-2-Clause\n");
 	sc->sysctl_ctx = malloc(sizeof(*sc->sysctl_ctx), M_DEVBUF, M_WAITOK);
 	sysctl_ctx_init(sc->sysctl_ctx);	/* before any facility adds to it: npuep_sysctl_ctx */
 	npuep_gone = 0;		/* a new attach: the coprocessor is read again (#768) */
