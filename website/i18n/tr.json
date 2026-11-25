@@ -641,6 +641,7 @@
     "reports_verdict": {
       "agrees": "bu sayfayla uyuşuyorlar",
       "disagrees": "bu sayfayla uyuşmuyorlar",
+      "switch_only": "yardımcı işlemci yanıt verdi; bu modelin ön portlarının tümü anahtarın arkasında ve bu karşılaştırma anahtarın arkasındaki portlara bakmaz",
       "unread": "yardımcı işlemci okunamadı"
     },
     "reports_compat": "Sahiplerin neyin çalıştığına dair raporları:",

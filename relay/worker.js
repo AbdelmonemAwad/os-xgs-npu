@@ -15,9 +15,10 @@
  *     spends none of them on a report one of the others refuses;
  *   - opens an issue for a fingerprint it has not seen, and comments on the issue it opened before
  *     for one it has - at most once a day per appliance, and ten times a day on one issue in all -
- *     reopening it, at most once a day, if it had been closed as done; a port check that agrees is
- *     noted once for each appliance and binding it confirms - the report's evidence without its
- *     link states - and never reopens its issue (confirms());
+ *     reopening it, at most once a day, if it had been closed as done; a port check that agrees, or
+ *     that says a model's front ports are all behind the switch, is noted once for each appliance and
+ *     binding it confirms - the report's evidence without its link states - and never reopens its
+ *     issue (confirms());
  *   - keeps a contact address, when one is given, in its own store and never in the issue.
  * It changes nothing in the report: the appliance built the text and cleaned it, and the page there
  * shows the owner exactly what was sent.
@@ -92,10 +93,17 @@ export function lastSeen(body) {
 // come back). One the issue's daily notes leave out is answered 429 and its key not kept, so the
 // appliance keeps it and sends it again (reporter.py, send() and due()). Until 2026-11-07 every day's
 // agreement from each appliance was noted and reopened the issue: #812, two owners' XGS 126s, seventeen
-// notes and a reopening, every one of them "they agree". A verdict that cannot judge or that disagrees
-// is a problem, and is noted and reopens as any other.
+// notes and a reopening, every one of them "they agree". A port check of a model whose front ports are
+// all behind the switch - the reporter's "switch_only", since 2026-11-25: its coprocessor answered with
+// its link to the switch alone, all it has, and the check has none of the coprocessor's own ports to
+// compare - is taken the same way. The reporter sends it once from an appliance, as it sends an
+// agreement; taken as a problem, a second owner's report would reopen an issue closed as understood,
+// #812 again (#880, #1177). A verdict that cannot judge, that disagrees, or a coprocessor that did not
+// answer is a problem, and is noted and reopens as any other.
 export function confirms(doc) {
-    return doc.kind === 'untested-model' && /port by port: they agree\./.test(doc.body || '');
+    return doc.kind === 'untested-model'
+        && /port by port: (?:they agree\.|the coprocessor answered, and lists only its link to the switch - )/
+            .test(doc.body || '');
 }
 
 // What a confirmation confirmed: the report's Evidence section with each line's last "; <link state>"

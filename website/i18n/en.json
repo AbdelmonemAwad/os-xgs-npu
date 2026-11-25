@@ -636,6 +636,7 @@
     "reports_verdict": {
       "agrees": "they agree with this page",
       "disagrees": "they do not agree with this page",
+      "switch_only": "the coprocessor answered; this model's front ports are all behind the switch, and this check does not compare ports behind it",
       "unread": "the coprocessor could not be read"
     },
     "reports_compat": "Owners' reports of what works:",

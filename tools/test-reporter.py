@@ -1388,6 +1388,22 @@ class ReporterTest(unittest.TestCase):
         self.reporter.save('boots.json', {'last_boot': BOOT - 3600, 'dumps': [], 'dump_left': False})
         self.assertEqual([p['kind'] for p in self.reporter.from_reset()], ['unexpected-reset'])
 
+    def test_a_dump_the_last_look_had_seen_hides_no_reset_whatever_its_own_time(self):
+        # The boot that ended saved, at its start, a dump of the boot before it, whose kernel's clock ran
+        # seventy minutes ahead (#1217's unit): the dump's own time falls inside the boot that ended. The
+        # look in that boot kept it; then that boot lost its power, and wrote no dump of its own.
+        self.dump(9, 'page fault', ['kdb_enter', 'panic', 'trap_pfault'], when=BOOT - 3000)
+        self.saved_at(9, BOOT - 7170)
+        record = {'last_boot': BOOT - 7200, 'dumps': [self.dump_key(9)], 'dump_left': False}
+        self.reporter.save('boots.json', record)
+        # its own time alone takes it for the boot that ended; the dumps that look had seen are left out
+        self.assertTrue(self.reporter.dumped_between(BOOT - 7200, BOOT))
+        self.assertFalse(self.reporter.dumped_between(BOOT - 7200, BOOT, record['dumps']))
+        self.assertEqual([p['kind'] for p in self.reporter.from_reset()], ['unexpected-reset'])
+        # and one that look had not seen, with the same time, is still the boot's that ended
+        self.reporter.save('boots.json', dict(record, dumps=[]))
+        self.assertEqual(self.reporter.from_reset(), [])
+
     def test_a_dump_left_on_the_device_is_told_by_its_own_time(self):
         # A savecore that could not save a dump left it on the device (savecore -C found one at that look):
         # the next boot's savecore saves it, and its own time says which boot wrote it

@@ -641,6 +641,7 @@
     "reports_verdict": {
       "agrees": "ils concordent avec cette page",
       "disagrees": "ils ne concordent pas avec cette page",
+      "switch_only": "le coprocesseur a répondu ; les ports de façade de ce modèle sont tous derrière le switch, et cette vérification ne confronte pas les ports derrière lui",
       "unread": "le coprocesseur n'a pas pu être lu"
     },
     "reports_compat": "Rapports des propriétaires sur ce qui marche :",

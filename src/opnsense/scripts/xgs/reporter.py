@@ -1318,6 +1318,9 @@ def from_untested_model():
             return []
         state[held] = table
     AFTER_QUEUE['untested.json'] = state
+    # The relay (relay/worker.js, confirms()) and the site (website/build.py) tell an agreement and a
+    # model behind the switch by these words, "port by port: they agree." and "port by port: the
+    # coprocessor answered, and lists only its link to the switch - ": they change together.
     said = {'agrees': 'they agree', 'disagrees': 'they do NOT agree - the table is wrong for this model',
             'unclear': 'not all of them can be judged - two of its interfaces carry one address',
             'switch_only': 'the coprocessor answered, and lists only its link to the switch - every front port '
@@ -1596,14 +1599,22 @@ def dump_time(info):
         return None
 
 
-def dumped_between(started, until):
+def dumped_between(started, until, seen=None):
     """Whether a crash dump savecore saved was written in the boot that ran from `started` to `until`,
     by the dump's own time: the second way of telling it (saved_this_boot() is the first). By the time
     this runs, rc's savecore has taken the dump off the dump device - savecore -C then finds none - and
-    from_crash() reports it. An info.N with no time read is not taken as this boot's here."""
+    from_crash() reports it. An info.N with no time read is not taken as this boot's here.
+
+    A dump the last look had seen (`seen`, as boots.json keeps it; None before a look kept it) was saved
+    by the time that look ran - in the boot that ended or one before it - so it was written in a boot
+    before the one that ended, whatever its own time says. Its time is by the clock of the kernel that
+    wrote it: one seventy minutes ahead, as an XGS 126's was (#1217), puts it inside the boot that ended,
+    and a reset of that boot with no dump of its own went unreported (the review of 2026-11-25)."""
     if not started or not until:
         return False
-    for info in dumps_saved().values():
+    for key, info in dumps_saved().items():
+        if seen is not None and key in seen:
+            continue
         when = dump_time(info)
         if when is not None and started - DUMP_SLACK <= when <= until + DUMP_SLACK:
             return True
@@ -1692,12 +1703,13 @@ def from_reset():
     # 2026-11-03 and 11-05, each queued twice (#1197). A dump written in the boot that ended - one that panicked
     # in its shutdown too - is reported by from_crash(), and that report is this restart's record.
     # Which boot wrote it is told first by when savecore saved it, at this boot (saved_this_boot()), and
-    # only then by the dump's own time against the two boots' starts (dumped_between()). The dump's time
-    # is by the clock of the kernel that crashed, and the window's end by this boot's: an XGS 126 whose
-    # clock moved by more than an hour within a boot (a note it sent to #812 carried a time seventy
-    # minutes after the note's own) had its panic of 2026-11-24 filed twice, as the dump's report and as
-    # a restart with "No crash dump was written" (#1217, #601).
-    saved = ended and (saved_this_boot(previous, boot, seen, left, looked) or dumped_between(previous, boot))
+    # only then by the own time of a dump the last look had not seen, against the two boots' starts
+    # (dumped_between()). The dump's time is by the clock of the kernel that crashed, and the window's
+    # end by this boot's: an XGS 126 whose clock moved by more than an hour within a boot (a note it sent
+    # to #812 carried a time seventy minutes after the note's own) had its panic of 2026-11-24 filed
+    # twice, as the dump's report and as a restart with "No crash dump was written" (#1217, #601).
+    saved = ended and (saved_this_boot(previous, boot, seen, left, looked)
+                      or dumped_between(previous, boot, seen))
     # A dump still on the device after this boot's savecore is one it did not save: said below for this
     # restart, and kept for the next boot's look, whose savecore may save it.
     dumpdev = sysctl('kern.shutdown.dumpdevname')
