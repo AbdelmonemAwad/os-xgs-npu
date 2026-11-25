@@ -1051,6 +1051,84 @@ class ReporterTest(unittest.TestCase):
         entry = next(e for e in self.reporter.entries().values() if e['kind'] == 'untested-model')
         self.assertIn('they agree', entry['summary'])
 
+    @staticmethod
+    def behind_the_switch(why=None):
+        """portcheck.check()'s answer on an XGS 107w (#880), whose front ports are all behind the switch:
+        its coprocessor answered with its link to the switch alone - or, given `why`, could not be read."""
+        head = "XGS 107w (AMDA0200-0004), ARMADA: added from the vendor's files, untested"
+        if why:
+            return {'verdict': 'unread', 'why': why, 'model': 'XGS 107w', 'assembly': 'AMDA0200-0004',
+                    'family': 'armada', 'ports': [],
+                    'lines': [head, "the coprocessor did not answer: the coprocessor's console shows no Linux "
+                                    'prompt; nothing was sent']}
+        return {'verdict': 'switch_only', 'model': 'XGS 107w', 'assembly': 'AMDA0200-0004', 'family': 'armada',
+                'ports': [{'tag': 0, 'eth': 'eth0', 'mac': 'CP0 eth0', 'address': '0:0', 'switch_link': True}],
+                'lines': [head, 'coprocessor port 0 (eth0, CP0 eth0 = 0:0): the link to the switch',
+                          "the coprocessor answered, and its network agent lists only its link to the switch "
+                          "(num_of_ports 1): every front port of this model is behind the switch, and this check "
+                          "compares only the coprocessor's own"]}
+
+    def test_a_model_whose_ports_are_all_behind_the_switch_says_so_once_and_not_as_unread(self):
+        # #880, #1177: an XGS 107w's and an XGS 107's coprocessor answered with its link to the switch
+        # alone, all it has, and every boot filed that as "unread" - a coprocessor that did not answer.
+        self.machine.boot += 60
+        self.untested(self.behind_the_switch())
+        found = self.reporter.from_untested_model()
+        self.assertEqual(len(found), 1)
+        said = found[0]
+        self.assertEqual(said['signature'], 'untested model AMDA0200-0004 switch_only')
+        self.assertIn('port by port: the coprocessor answered, and lists only its link to the switch - every '
+                      'front port of this model is behind the switch, which this check does not compare.',
+                      said['summary'])
+        self.assertIn('all behind the switch', said['title'])
+        for words in ('did not answer', 'could not be read', 'they agree', 'unread'):
+            self.assertNotIn(words, said['summary'] + said['title'])
+        # its own issue, not the one a coprocessor that did not answer went to
+        fp = self.reporter.fingerprint
+        self.assertNotEqual(fp('os-xgs-npu', 'untested-model', said['signature'], said['key']),
+                            fp('os-xgs-npu', 'untested-model', 'untested model AMDA0200-0004 unread', 'AMDA0200-0004'))
+        self.reporter.queue_saved()
+        # once from an appliance: every boot after finds the same and says nothing of it, a boot whose
+        # coprocessor did not answer between them is said as before, and the same answer after it is not news
+        self.assertEqual(self.port_checks(self.behind_the_switch(), self.behind_the_switch(),
+                                          self.behind_the_switch('no_answer'), self.behind_the_switch()),
+                         [0, 0, 1, 0])
+        self.assertEqual(self.reporter.load('untested.json', {}).get('agreed'), None)
+        # another appliance the disk was copied into says it there too
+        own = self.reporter.appliance_id
+        self.reporter.appliance_id = lambda: 'another-appliance'
+        try:
+            self.assertEqual(self.port_checks(self.behind_the_switch()), [1])
+        finally:
+            self.reporter.appliance_id = own
+
+    def test_a_model_behind_the_switch_sends_one_report_and_no_daily_repeat(self):
+        # One report in all, across boots and days; the same model's coprocessor not answering is
+        # reported at each boot and mentioned again once a day, as before; and so is the switch link alone
+        # from a model with front ports on the coprocessor's own MACs, a list without them.
+        xgs126 = {'verdict': 'unread', 'why': 'no_front_ports', 'model': 'XGS 126', 'assembly': 'AMDA0201-0001',
+                  'family': 'armada', 'ports': [],
+                  'lines': ["XGS 126 (AMDA0201-0001), ARMADA: added from the vendor's files, untested",
+                            "the coprocessor answered, and its network agent's list of its ports has only its link "
+                            "to the switch, no front port (num_of_ports 1)"]}
+        for answer, reports, sent in ((self.behind_the_switch(), 1, 1), (self.behind_the_switch('no_answer'), 3, 3),
+                                      (xgs126, 3, 3)):
+            self.relay.received.clear()
+            self.reporter.save('untested.json', {})
+            for entry in self.reporter.entries().values():
+                os.unlink(os.path.join(self.reporter.QUEUE, entry['id'] + '.json'))
+            self.untested(answer)
+            for n in range(3):
+                self.machine.boot = BOOT + 60 * n
+                self.collect()
+                for entry in self.reporter.entries().values():
+                    entry['sent_at'] -= self.reporter.RESEND_AFTER		# a day later, each time
+                    self.reporter.store(entry)
+            rows = [r for r in self.reporter.listing()['rows'] if r['kind'] == 'untested-model']
+            self.assertEqual([r['count'] for r in rows], [reports], answer['verdict'])
+            self.assertEqual(len([d for d in self.relay.received if d['kind'] == 'untested-model']), sent,
+                             answer['verdict'])
+
     def test_the_driver_s_reading_of_the_coprocessor_s_software(self):
         read = self.reporter.driver_reading
         none = 'read by the driver as no vendor version it knows'
@@ -1253,12 +1331,99 @@ class ReporterTest(unittest.TestCase):
         kinds = sorted(e['kind'] for e in self.reporter.entries().values())
         self.assertIn('unexpected-reset', kinds)
 
-    def test_a_dump_whose_time_cannot_be_read_hides_nothing(self):
+    def dump_key(self, number):
+        """A saved dump as the look keeps it in boots.json: info.N and its file's time."""
+        return 'info.%d@%d' % (number, int(os.path.getmtime(os.path.join(self.root, 'var/crash/info.%d' % number))))
+
+    def saved_at(self, number, when):
+        """A saved dump's file given the time savecore wrote it at."""
+        for name in ('info.%d' % number, 'textdump.tar.%d' % number):
+            os.utime(os.path.join(self.root, 'var/crash', name), (when, when))
+
+    def test_a_dump_whose_time_cannot_be_read_is_told_by_when_it_was_saved(self):
+        # Until 2026-11-25 a dump whose time could not be read hid nothing, and its panic was filed twice.
+        # Saved at this boot, it was written in the boot that ended, whatever its time says.
         self.dump(4, 'page fault', ['kdb_enter', 'panic', 'trap_pfault'])
         self.reporter.save('boots.json', {'last_boot': BOOT - 3600})
         self.reporter.collect(at_boot=True)
-        kinds = sorted(e['kind'] for e in self.reporter.entries().values())
-        self.assertIn('unexpected-reset', kinds)
+        self.assertEqual(sorted(self.kinds()), ['kernel-panic'])
+        # one the look at the boot that ended had seen already hides nothing
+        self.reporter.save('boots.json', {'last_boot': BOOT - 3600, 'dumps': [self.dump_key(4)], 'dump_left': False})
+        self.reporter.collect(at_boot=True)
+        self.assertIn('unexpected-reset', self.kinds())
+
+    def test_a_panic_saved_by_the_next_boot_is_one_problem_whatever_its_clock_said(self):
+        # #1217, #601: an XGS 126's panic of 2026-11-24, saved by the next boot's savecore, was filed as a
+        # restart as well - "No crash dump was written" - its dump's own time by a clock more than an hour
+        # off. Here it is an hour after this boot's start, and the file from before it by this boot's
+        # clock: the look at the boot that ended had seen no dump, and none was left on the device.
+        self.dump(6, 'page fault', ['kdb_enter', 'panic', 'trap_pfault', 'rgephy_status'], when=BOOT + 3600)
+        self.saved_at(6, BOOT - 600)
+        self.reporter.save('boots.json', {'last_boot': BOOT - 3600, 'dumps': [], 'dump_left': False})
+        self.assertFalse(self.reporter.dumped_between(BOOT - 3600, BOOT))
+        self.reporter.collect(at_boot=True)
+        self.assertEqual(sorted(self.kinds()), ['kernel-panic'])
+        # and what this look found is kept for the next one: the dump, and nothing left on the device
+        kept = self.reporter.load('boots.json', {})
+        self.assertEqual((kept['last_boot'], kept['dumps'], kept['dump_left']), (BOOT, [self.dump_key(6)], False))
+
+    def test_a_dump_saved_at_this_boot_with_no_record_before_it_is_told_by_its_file(self):
+        # The first boot after an update, before any look kept what it found: a file from this boot's
+        # start or after is one this boot's savecore saved, its own time an hour off or not.
+        self.dump(7, 'page fault', ['kdb_enter', 'panic', 'trap_pfault'], when=BOOT + 3600)
+        self.reporter.save('boots.json', {'last_boot': BOOT - 3600})
+        self.reporter.collect(at_boot=True)
+        self.assertEqual(sorted(self.kinds()), ['kernel-panic'])
+
+    def test_a_reset_with_no_new_dump_is_still_reported(self):
+        # The one dump there was there at the last look: the boot that ended wrote none, though the dump's
+        # own time is an hour before that boot and its file's after this one's start, by clocks that moved
+        self.dump(8, 'page fault', ['kdb_enter', 'panic', 'trap_pfault'], when=BOOT - 7200)
+        self.saved_at(8, BOOT + 60)
+        self.reporter.save('boots.json', {'last_boot': BOOT - 3600, 'dumps': [self.dump_key(8)], 'dump_left': False})
+        self.assertEqual([p['kind'] for p in self.reporter.from_reset()], ['unexpected-reset'])
+        # and no dump at all, as before
+        for name in ('info.8', 'textdump.tar.8'):
+            os.unlink(os.path.join(self.root, 'var/crash', name))
+        self.reporter.save('boots.json', {'last_boot': BOOT - 3600, 'dumps': [], 'dump_left': False})
+        self.assertEqual([p['kind'] for p in self.reporter.from_reset()], ['unexpected-reset'])
+
+    def test_a_dump_left_on_the_device_is_told_by_its_own_time(self):
+        # A savecore that could not save a dump left it on the device (savecore -C found one at that look):
+        # the next boot's savecore saves it, and its own time says which boot wrote it
+        self.dump(3, 'page fault', ['kdb_enter', 'panic', 'trap_pfault'], when=BOOT - 86400)
+        self.reporter.save('boots.json', {'last_boot': BOOT - 3600, 'dumps': [], 'dump_left': True})
+        self.assertEqual([p['kind'] for p in self.reporter.from_reset()], ['unexpected-reset'])
+        # where none was left, one saved at this boot is the boot's that ended, whatever its time
+        self.reporter.save('boots.json', {'last_boot': BOOT - 3600, 'dumps': [], 'dump_left': False})
+        self.assertEqual(self.reporter.from_reset(), [])
+        # and what was left at this look is kept: savecore -C answering that a dump is still there
+        real = self.reporter.succeeds
+        self.reporter.succeeds = lambda argv, timeout=30: argv[:2] == ['/sbin/savecore', '-C']
+        try:
+            self.reporter.from_reset()
+        finally:
+            self.reporter.succeeds = real
+        self.assertIs(self.reporter.load('boots.json', {})['dump_left'], True)
+
+    def test_a_dump_saved_by_a_boot_between_does_not_stand_for_the_last(self):
+        # A boot after the last look that went before its own (05-xgs-report wrote it down, after its
+        # savecore): a dump saved before this boot started was saved by that boot, of the one before it
+        self.started(BOOT - 3600)
+        self.shut_down(BOOT - 3700)
+        self.dump(2, 'page fault', ['kdb_enter', 'panic', 'trap_pfault'])
+        self.saved_at(2, BOOT - 3500)
+        self.reporter.save('boots.json', {'last_boot': BOOT - 7200, 'dumps': [], 'dump_left': False})
+        summaries = [p['summary'] for p in self.reporter.from_reset() if p['kind'] == 'unexpected-reset']
+        self.assertEqual(len(summaries), 1)
+        self.assertIn('The boot that started at %s ended without an orderly shutdown' % self.reporter.iso(BOOT - 3600),
+                      summaries[0])
+        # one saved at this boot is the last one's
+        self.started(BOOT - 3600)
+        self.shut_down(BOOT - 3700)
+        self.saved_at(2, BOOT + 30)
+        self.reporter.save('boots.json', {'last_boot': BOOT - 7200, 'dumps': [], 'dump_left': False})
+        self.assertEqual(self.reporter.from_reset(), [])
 
     def test_a_panic_in_the_shutdown_with_a_dump_is_one_problem(self):
         os.makedirs(self.state, exist_ok=True)

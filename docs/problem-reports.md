@@ -94,7 +94,7 @@ Only the parts that are installed, each one's reports going to its own repositor
 | fan incident | `/var/db/fanctl/incident.json` | fan control recorded an incident |
 | kernel panic | `/var/crash/info.N`, `textdump.tar.N` | a crash dump was saved; the panic string, the backtrace and ~~the end of the message buffer~~ from the message buffer the trap - its fault address, instruction pointer and process - with the ten lines the kernel logged before it go into the report, up to 60 lines (2026-10-25: #755 carried only the backtrace's end twice over, and could not say what faulted). Two crashes are the same problem when the panic and the first frames **after** the debugger's, the panic's, the trap's and the lock code's are the same - ~~the first three frames~~, which are the same for every page fault and filed two different crashes as one issue (#467, corrected 2026-10-18). `info.last`, savecore's link to the newest dump, is not a dump of its own. Nothing in `/var/crash` is removed: it is OPNsense's crash reporter's |
 | restart without shutdown | at boot | the boot before this one ended without an orderly shutdown, and since 2026-11-06 each boot since the last look that went before it, and a shutdown that began in order and ended in a kernel panic - see below |
-| untested model | `board.sh` (its "rnd"), `scripts/xgs/portcheck.py` | a model this project has not been run on: once a boot, ten minutes in, its driver's port table held against what its coprocessor reports. One that disagrees or cannot be read is sent as any problem; one that agrees confirms the model's table, and since 2026-11-07 is sent once from an appliance and per table: again only when what agrees is not what the last agreement sent from that appliance confirmed - another table after an update, or the agent's front tags beyond it (OCTEON TX) - never for the same table again, whatever was found between. The appliance is told by its own name, not by its disk, so a disk copied into another unit says it there too; and what marks it as sent is kept only once the report is in the queue. Until then it went from every boot, and two owners' XGS 126s had #812 noted seventeen times and reopened, all "they agree" |
+| untested model | `board.sh` (its "rnd"), `scripts/xgs/portcheck.py` | a model this project has not been run on: once a boot, ten minutes in, its driver's port table held against what its coprocessor reports. One that disagrees or cannot be read is sent as any problem; one that agrees confirms the model's table, and since 2026-11-07 is sent once from an appliance and per table: again only when what agrees is not what the last agreement sent from that appliance confirmed - another table after an update, or the agent's front tags beyond it (OCTEON TX) - never for the same table again, whatever was found between. The appliance is told by its own name, not by its disk, so a disk copied into another unit says it there too; and what marks it as sent is kept only once the report is in the queue. Until then it went from every boot, and two owners' XGS 126s had #812 noted seventeen times and reopened, all "they agree". On a model whose front ports are all behind the switch - the XGS 87, 107 and 116 and their w models - the coprocessor's agent has only its link to the switch to list, and the check none of the coprocessor's own ports to compare: since 2026-11-25 that answer is said once from an appliance in the same way, under a signature of its own, saying the coprocessor answered and that ports behind the switch are not compared. Until then it was filed as "unread", under the signature of a coprocessor that did not answer, from every boot of an XGS 107 and an XGS 107w (#880, #1177). One that did not answer is still sent as any problem |
 
 The logs are read from where the last look stopped; the first look after installing reads none of what
 was there before.
@@ -106,13 +106,26 @@ time down there. At boot, a boot before this one that left no such line, and no 
 the login accounting (`reboot(8)` at a shell bypasses the hook but not that), did not shut down. The
 report says what is known about why:
 
-- a crash dump written in the boot that ended - its own time, savecore's `Dumptime` in `info.N`,
-  between that boot's start and this one's: no report of the restart at all, the dump's own report is
-  its record, with the panic and its backtrace; a panic in the shutdown too. rc's savecore runs before
+- a crash dump written in the boot that ended - ~~its own time, savecore's `Dumptime` in `info.N`,
+  between that boot's start and this one's~~ since 2026-11-25 told first by when savecore saved it,
+  and only then by its own time, savecore's `Dumptime` in `info.N`, between that boot's start and this
+  one's: no report of the restart at all, the dump's own report is its record, with the panic and its
+  backtrace; a panic in the shutdown too. rc's savecore runs before
   the reporter's look and takes the dump off the device, so until 2026-11-18 (#1197) the check below
   found none and every such panic was reported twice, the restart's report saying "No crash dump was
   written" beside the dump's saying one was saved. A dump of a boot further back, saved by this one,
-  does not stand for this restart, nor one whose time cannot be read;
+  does not stand for this restart, ~~nor one whose time cannot be read~~. OPNsense's `/etc/rc` runs
+  savecore before the early hooks, so each boot that got as far as `early/05-xgs-report` has taken
+  what was on the dump device off it, and a dump saved at this boot was written in the boot that ended.
+  The look at each boot keeps the dumps saved by then and whether `savecore -C` still found one on the
+  device (`boots.json`): saved at this boot is a dump that look had not seen - or, with no such record
+  or with a boot between that went before its look, one whose file is from this boot's start or after.
+  Only where one may have been left on the device unsaved - that look found one there or kept no
+  record, or a boot went between - does a dump's own time, from before the boot that ended began, make
+  it a boot further back's. The dump's time is by the clock of the kernel that crashed, the boots' by
+  their own: an XGS 126 whose clock moved by more than an hour within a boot had its panic of
+  2026-11-24 filed twice, as the dump's report and as a restart with "No crash dump was written"
+  (#1217, #601);
 - a crash dump still on the dump device (`savecore -C`): the kernel panicked, and the dump is reported on its
   own once savecore has saved it;
 - no dump, and the message buffer kept the boot before with a panic in it (since 2026-10-26): the
