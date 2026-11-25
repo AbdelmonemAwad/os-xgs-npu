@@ -1282,7 +1282,8 @@ def from_untested_model():
     never for the same table again, whatever was found between (a table that disagreed and agrees again
     unchanged is not news). Until 2026-11-07 it was sent from every boot: two owners' XGS 126s found
     "they agree" forty times between them, and #812 took seventeen notes of it and was reopened as if a
-    fix had failed."""
+    fix had failed. The answer of a model whose front ports are all behind the switch, which has none of
+    the coprocessor's own to compare, is said once in the same way (since 2026-11-25)."""
     board = run(['/bin/sh', '/usr/local/opnsense/scripts/xgs/board.sh']).split()
     if len(board) < 3 or board[2] != 'rnd':
         return []
@@ -1302,16 +1303,28 @@ def from_untested_model():
         return []
     # Every other verdict - not read, two interfaces on one address, disagrees - keeps what the last
     # agreement sent confirmed: the same table agreeing again after it is not news.
-    state = {'boot': boot, 'agreed': last.get('agreed')}
-    if result['verdict'] == 'agrees':
+    # A model whose front ports are all behind the switch (portcheck.py's "switch_only": its coprocessor
+    # answered with its link to the switch alone, and there is none of the coprocessor's own to compare)
+    # is said the same way, once from an appliance and for what it found, under a signature of its own: it
+    # is all the check can say of such a model, and once said it is not news. Until 2026-11-25 it was
+    # "unread", the signature of a coprocessor that did not answer, from every boot of an XGS 107 and an
+    # XGS 107w: noted again each day, and never to be closed by an agreement (#880, #1177).
+    state = {'boot': boot, 'agreed': last.get('agreed'), 'switch_only': last.get('switch_only')}
+    if result['verdict'] in ('agrees', 'switch_only'):
+        held = 'agreed' if result['verdict'] == 'agrees' else 'switch_only'
         table = confirmed_table(result)
-        if table == last.get('agreed'):
+        if table == last.get(held):
             save('untested.json', state)
             return []
-        state['agreed'] = table
+        state[held] = table
     AFTER_QUEUE['untested.json'] = state
+    # The relay (relay/worker.js, confirms()) and the site (website/build.py) tell an agreement and a
+    # model behind the switch by these words, "port by port: they agree." and "port by port: the
+    # coprocessor answered, and lists only its link to the switch - ": they change together.
     said = {'agrees': 'they agree', 'disagrees': 'they do NOT agree - the table is wrong for this model',
-            'unclear': 'not all of them can be judged - two of its interfaces carry one address'}
+            'unclear': 'not all of them can be judged - two of its interfaces carry one address',
+            'switch_only': 'the coprocessor answered, and lists only its link to the switch - every front port '
+                           'of this model is behind the switch, which this check does not compare'}
     # why it could not be read, since 2026-10-26 (#657); the signature stays the verdict's, so a
     # report keeps reaching the issue it reached before
     unread = {'no_answer': 'the coprocessor did not answer',
@@ -1322,7 +1335,9 @@ def from_untested_model():
     said['unread'] = unread.get(result.get('why'), 'the coprocessor could not be read')
     return [{
         'part': 'os-xgs-npu', 'kind': 'untested-model',
-        'title': '%s (%s): added untested - its ports as its coprocessor reports them'
+        'title': ('%s (%s): added untested - its coprocessor answers, and its front ports are all behind the switch'
+                  if result['verdict'] == 'switch_only' else
+                  '%s (%s): added untested - its ports as its coprocessor reports them')
                  % (result.get('model'), result.get('assembly')),
         'summary': "This model was added from the vendor's board files without being tested: there is no "
                    "such appliance here. This holds its driver's port table against what its coprocessor "
@@ -1557,28 +1572,83 @@ def unread_end(started, until):
 DUMP_SLACK = 5         # seconds either side of a boot's bounds, for a dump's own time against them
 
 
-def dumped_between(started, until):
-    """Whether a crash dump savecore saved was written in the boot that ran from `started` to `until`:
-    the dump's own time, savecore's "Dumptime: 2026-11-05 07:57:12 +0000" in its info.N - not the
-    file's, which says only that savecore ran since (a dump of a boot further back, saved by this one,
-    is not this restart's), and moves with a clock that was stepped. By the time this runs, rc's
-    savecore has taken the dump off the dump device - savecore -C then finds none - and from_crash()
-    reports it. An info.N with no time read is not taken as this boot's."""
-    if not started or not until:
-        return False
+def dumps_saved():
+    """The crash dumps savecore has saved, {"info.N@<its file's time>": its path}, named as from_crash()
+    names them: info.last, savecore's link to the newest, is not one of its own."""
+    out = {}
     for info in glob.glob(path('/var/crash/info.*')):
         if not re.search(r'\.\d+$', info):
             continue
-        found = re.search(r'Dumptime:\s*(\d{4}-\d\d-\d\d \d\d:\d\d:\d\d [+-]\d{4})',
-                          read(info[len(ROOT):] if ROOT else info))
-        if not found:
-            continue
         try:
-            when = datetime.datetime.strptime(found.group(1), '%Y-%m-%d %H:%M:%S %z').timestamp()
-        except ValueError:
+            out['%s@%d' % (os.path.basename(info), int(os.path.getmtime(info)))] = info
+        except OSError:
             continue
-        if started - DUMP_SLACK <= when <= until + DUMP_SLACK:
+    return out
+
+
+def dump_time(info):
+    """A dump's own time, savecore's "Dumptime: 2026-11-05 07:57:12 +0000" in its info.N - by the clock
+    of the kernel that wrote it - or None when it cannot be read."""
+    found = re.search(r'Dumptime:\s*(\d{4}-\d\d-\d\d \d\d:\d\d:\d\d [+-]\d{4})',
+                      read(info[len(ROOT):] if ROOT else info))
+    if not found:
+        return None
+    try:
+        return datetime.datetime.strptime(found.group(1), '%Y-%m-%d %H:%M:%S %z').timestamp()
+    except ValueError:
+        return None
+
+
+def dumped_between(started, until, seen=None):
+    """Whether a crash dump savecore saved was written in the boot that ran from `started` to `until`,
+    by the dump's own time: the second way of telling it (saved_this_boot() is the first). By the time
+    this runs, rc's savecore has taken the dump off the dump device - savecore -C then finds none - and
+    from_crash() reports it. An info.N with no time read is not taken as this boot's here.
+
+    A dump the last look had seen (`seen`, as boots.json keeps it; None before a look kept it) was saved
+    by the time that look ran - in the boot that ended or one before it - so it was written in a boot
+    before the one that ended, whatever its own time says. Its time is by the clock of the kernel that
+    wrote it: one seventy minutes ahead, as an XGS 126's was (#1217), puts it inside the boot that ended,
+    and a reset of that boot with no dump of its own went unreported (the review of 2026-11-25)."""
+    if not started or not until:
+        return False
+    for key, info in dumps_saved().items():
+        if seen is not None and key in seen:
+            continue
+        when = dump_time(info)
+        if when is not None and started - DUMP_SLACK <= when <= until + DUMP_SLACK:
             return True
+    return False
+
+
+def saved_this_boot(started, boot, seen, left, looked):
+    """Whether savecore saved, at this boot, a crash dump that the boot which started at `started` - the
+    one that just ended - wrote: told by when the dump was saved and what was on the device before it,
+    not by the dump's own time, which is by the clock of the kernel that crashed.
+
+    OPNsense's /etc/rc runs savecore (rc.subr.d/crashdump) before the early hooks and the start hooks,
+    so every boot that got as far as 05-xgs-report has taken what was on the dump device off it. A dump
+    saved at this boot was written after the boot that ended had its own savecore - in that boot -
+    unless that savecore left one on the device unsaved (a full /var/crash, say). The look at each boot
+    keeps what it found (boots.json): `seen`, the dumps saved by then, and `left`, whether one was still
+    on the device; both None before a look kept them. `looked`: the boot that ended is the one that look
+    ran in, with no boot between whose own savecore could have saved a dump.
+
+    Saved at this boot is a dump that look had not seen, when `looked`; otherwise one it had not seen
+    whose file is from this boot's start or after, by this boot's clock. And where one may have been
+    left on the device - that look did not find none there, or a boot went between - a dump whose own
+    time puts it before the boot that ended began is a boot further back's, saved only now: it does not
+    stand for this restart (the review of 2026-11-18)."""
+    for key, info in dumps_saved().items():
+        if seen is not None and key in seen:
+            continue
+        if not (looked and seen is not None) and int(key.rsplit('@', 1)[1]) < boot:
+            continue
+        if not (looked and left is False):
+            when = dump_time(info)
+            if when is not None and when < started - DUMP_SLACK:
+                continue
+        return True
     return False
 
 
@@ -1596,6 +1666,10 @@ def from_reset():
     chain = ([previous] if previous else []) + unreported_boots(previous, boot)
     problems = [unread_end(started, until) for started, until in zip(chain, chain[1:])
                 if not clean_since(started, until)]
+    # The boot that ended is the one the last look ran in when no other went between them.
+    looked = bool(previous) and len(chain) == 1
+    seen = record.get('dumps') if isinstance(record.get('dumps'), list) else None
+    left = record.get('dump_left') if isinstance(record.get('dump_left'), bool) else None
     previous = chain[-1] if chain else 0
     ended = bool(previous and boot and previous != boot)
     orderly = ended and clean_since(previous)
@@ -1628,10 +1702,20 @@ def from_reset():
     # dump was written" beside the dump's own report saying one was saved: the XGS 136's panics of
     # 2026-11-03 and 11-05, each queued twice (#1197). A dump written in the boot that ended - one that panicked
     # in its shutdown too - is reported by from_crash(), and that report is this restart's record.
-    saved = ended and dumped_between(previous, boot)
+    # Which boot wrote it is told first by when savecore saved it, at this boot (saved_this_boot()), and
+    # only then by the own time of a dump the last look had not seen, against the two boots' starts
+    # (dumped_between()). The dump's time is by the clock of the kernel that crashed, and the window's
+    # end by this boot's: an XGS 126 whose clock moved by more than an hour within a boot (a note it sent
+    # to #812 carried a time seventy minutes after the note's own) had its panic of 2026-11-24 filed
+    # twice, as the dump's report and as a restart with "No crash dump was written" (#1217, #601).
+    saved = ended and (saved_this_boot(previous, boot, seen, left, looked)
+                      or dumped_between(previous, boot, seen))
+    # A dump still on the device after this boot's savecore is one it did not save: said below for this
+    # restart, and kept for the next boot's look, whose savecore may save it.
+    dumpdev = sysctl('kern.shutdown.dumpdevname')
+    on_device = bool(dumpdev) and succeeds(['/sbin/savecore', '-C', '/dev/' + dumpdev])
     if ended and (not orderly or panicked) and not saved:
-        dumpdev = sysctl('kern.shutdown.dumpdevname')
-        dumped = not orderly and bool(dumpdev) and succeeds(['/sbin/savecore', '-C', '/dev/' + dumpdev])
+        dumped = not orderly and on_device
         if orderly:
             why = ('Its shutdown began in order - its stop hooks ran, or reboot(8) wrote its record - but '
                    'the message buffer the restart kept holds a kernel panic, below: the kernel panicked '
@@ -1676,7 +1760,9 @@ def from_reset():
                                                 'panic' if panicked else 'warm' if kept else 'cold')
                          + (' bits ' + ','.join(named) if named else ''),
         })
-    save('boots.json', {'last_boot': boot, 'previous': previous})
+    # and what this boot's savecore saved and left, for the next boot's look to tell a dump of its own
+    save('boots.json', {'last_boot': boot, 'previous': previous, 'dumps': sorted(dumps_saved()),
+                        'dump_left': on_device})
     # The shutdown's record, this boot's own from the early hook, and the boots judged above: this
     # boot got as far as its look.
     for name in ('clean-shutdown', 'boot-started', 'boots-unreported'):

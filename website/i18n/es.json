@@ -641,6 +641,7 @@
     "reports_verdict": {
       "agrees": "coinciden con esta página",
       "disagrees": "no coinciden con esta página",
+      "switch_only": "el coprocesador respondió; los puertos frontales de este modelo están todos tras el switch, y esta comprobación no contrasta los puertos tras él",
       "unread": "no se pudo leer el coprocesador"
     },
     "reports_compat": "Informes de propietarios sobre qué funciona:",

@@ -21,7 +21,10 @@ Linux interface, whose device-tree node names the CP and the MAC. The board file
 address, "0:N" with N the MAC's number across the two CPs. And npuep gives the agent each tag's
 address, its own interface's: so the interface of the host whose address the coprocessor's port
 carries is the one the driver bound to that tag. Board and driver agree when they name the same
-label. Read on the XGS 136 before it was written down: every one agrees.
+label. Read on the XGS 136 before it was written down: every one agrees. On a model whose front ports
+are all behind the switch - the XGS 87, 107 and 116 and their w models - the agent has only its link to
+the switch to list: the verdict is then "switch_only", an answer with nothing of the coprocessor's own
+to compare, and not one that could not be read.
 
 OCTEON TX. The network agent's discover answer (dev.octep.0.nwa.ports) lists every tag it has, with
 a flag for a front port; the table's tags have to be among them, and every front tag the agent has
@@ -134,6 +137,30 @@ def label_of(name):
     return 'Port' + name if name.isdigit() else name
 
 
+def place(node):
+    """A coprocessor port's device-tree node as the board file's address, "0:N" with N the MAC's number
+    across the two CPs, and as "CPn ethm"; '?' and the node itself for one that names no MAC."""
+    m = re.search(r'cp(\d)/config-space/ethernet@0/eth(\d)', node)
+    if m is None:
+        return '?', node
+    return '0:%d' % (int(m.group(1)) * 3 + int(m.group(2))), 'CP%s eth%s' % (m.group(1), m.group(2))
+
+
+def switch_link(w):
+    """The line and the row said of the coprocessor's link to the switch, from its "soc" line."""
+    idx, eth = w[1], w[3]
+    addr, where = place(w[4] if len(w) > 4 else '')
+    return ('coprocessor port %s (%s, %s = %s): the link to the switch' % (idx, eth, where, addr),
+            {'tag': int(idx), 'eth': eth, 'mac': where, 'address': addr, 'switch_link': True})
+
+
+def behind_the_switch(table):
+    """Whether every front port of a model is behind its switch - the XGS 87, 107 and 116 and their w
+    models: their table has none on a MAC of the coprocessor's own, so its agent has only its link to the
+    switch to list, and this check, which compares the coprocessor's own front ports, has none."""
+    return bool(table) and all(p['tag'] & 0x8000 for p in table.values())
+
+
 def check_armada(assembly):
     table = {p['device']: p for p in models.ports(assembly)}
     text, reason = run(['/bin/sh', NPU_RUN, '60', ARMADA_READ % NWA], timeout=120, why=True)
@@ -169,6 +196,23 @@ def check_armada(assembly):
         # The switch link alone - an XGS 87's agent listed nothing else (its support bundle, 2026-11-21):
         # no front port is compared, so the check has nothing to agree on, and is not taken as one that did.
         count = next((l.split()[1] for l in said if l.startswith('count ') and len(l.split()) > 1), '?')
+        if behind_the_switch(table):
+            # On a model whose front ports are all behind the switch that is the whole of the agent's list,
+            # and the coprocessor answered it: no failure, and nothing here to compare. Until 2026-11-25 it
+            # was "unread" as on any other model, and the problem reporter filed it from every boot of an
+            # XGS 107 and an XGS 107w as a coprocessor that did not answer (#880, #1177).
+            lines, rows = [], []
+            for w in soc:
+                if len(w) < 4:
+                    lines.append('a line of the coprocessor\'s ports could not be read: %s' % ' '.join(w))
+                    continue
+                line, row = switch_link(w)
+                lines.append(line)
+                rows.append(row)
+            lines.append('the coprocessor answered, and its network agent lists only its link to the switch '
+                         '(num_of_ports %s): every front port of this model is behind the switch, and this '
+                         'check compares only the coprocessor\'s own' % count)
+            return {'verdict': 'switch_only', 'lines': lines, 'ports': rows, 'board_labels': len(addrs)}
         return {'verdict': 'unread', 'why': 'no_front_ports', 'ports': [], 'board_labels': len(addrs),
                 'lines': ['the coprocessor answered, and its network agent\'s list of its ports has only its '
                           'link to the switch, no front port (num_of_ports %s)' % count]}
@@ -199,14 +243,12 @@ def check_armada(assembly):
             lines.append('a line of the coprocessor\'s ports could not be read: %s' % ' '.join(w))
             continue
         idx, kind, eth = w[1], w[2], w[3]
-        node = w[4] if len(w) > 4 else ''
         mac = (w[5] if len(w) > 5 else '').lower()
-        m = re.search(r'cp(\d)/config-space/ethernet@0/eth(\d)', node)
-        addr = '0:%d' % (int(m.group(1)) * 3 + int(m.group(2))) if m else '?'
-        where = ('CP%s eth%s' % (m.group(1), m.group(2))) if m else node
+        addr, where = place(w[4] if len(w) > 4 else '')
         if kind == '2':
-            lines.append('coprocessor port %s (%s, %s = %s): the link to the switch' % (idx, eth, where, addr))
-            rows.append({'tag': int(idx), 'eth': eth, 'mac': where, 'address': addr, 'switch_link': True})
+            line, row = switch_link(w)
+            lines.append(line)
+            rows.append(row)
             continue
         said = addrs.get(addr, '?')
         devs = macs.get(mac, [])

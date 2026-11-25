@@ -641,6 +641,7 @@
     "reports_verdict": {
       "agrees": "sie stimmen mit dieser Seite überein",
       "disagrees": "sie stimmen nicht mit dieser Seite überein",
+      "switch_only": "der Koprozessor hat geantwortet; die Front-Ports dieses Modells liegen alle hinter dem Switch, und Ports dahinter gleicht diese Prüfung nicht ab",
       "unread": "der Koprozessor konnte nicht gelesen werden"
     },
     "reports_compat": "Berichte von Besitzern darüber, was funktioniert:",

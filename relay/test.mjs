@@ -218,6 +218,59 @@ await test('a port check that agrees is noted once for each appliance and bindin
     assert.equal(problem.state, 'open');
 });
 
+// A port check of a model whose front ports are all behind the switch, as the reporter builds it since
+// 2026-11-25 ("switch_only"): its coprocessor answered with its link to the switch alone, all it has.
+const switchOnly = (appliance, seen = '2026-11-25 09:00:00') => report({
+    fingerprint: '0000000000001177', kind: 'untested-model', appliance, model: 'Sophos XGS 107r1',
+    title: '[untested-model] XGS 107 (AMDA0200-0003): added untested - its coprocessor answers, and its front '
+        + 'ports are all behind the switch',
+    body: '### What happened\n\nThis model was added from the vendor\'s board files without being tested: '
+        + 'there is no such appliance here. This holds its driver\'s port table against what its '
+        + 'coprocessor reports, port by port: the coprocessor answered, and lists only its link to the switch '
+        + '- every front port of this model is behind the switch, which this check does not compare.\n\n'
+        + '### Evidence\n\n```text\nXGS 107 (AMDA0200-0003), ARMADA: added from the vendor\'s files, untested\n'
+        + 'coprocessor port 0 (eth0, CP0 eth0 = 0:0): the link to the switch\n'
+        + 'the coprocessor answered, and its network agent lists only its link to the switch (num_of_ports 1): '
+        + 'every front port of this model is behind the switch, and this check compares only the coprocessor\'s own\n'
+        + '```\n\n### The appliance\n\n| Model | XGS 107 |\n\n'
+        + `Seen 1 time(s) between ${seen} UTC and ${seen} UTC. Sent automatically by the problem reporter of os-xgs-npu.`,
+});
+
+await test('a port check behind the switch is noted once for each appliance, and never reopens (#880, #1177)', async () => {
+    const {confirms} = await import('./worker.js');
+    const env = environment();
+    const {data} = await post(env, switchOnly('444444444444'));
+    const issue = github.issues.get(data.issue);
+    const notes = () => github.comments.filter(c => c.issue === data.issue).length;
+    // closed as understood, the way GitHub closes by default: as completed
+    Object.assign(issue, {state: 'closed', state_reason: 'completed', closed_at: '2026-11-25T12:00:00Z'});
+
+    // a second owner's appliance says it after the close: noted, and the issue stays closed
+    nextDay(env);
+    const other = await post(env, switchOnly('555555555555', '2026-11-26 09:00:00'));
+    assert.equal(other.data.noted, true);
+    assert.equal(issue.state, 'closed');
+    assert.equal(notes(), 1);
+
+    // both again on the days after: nothing more, still closed, and never labelled as seen after a fix
+    for (const day of ['2026-11-27 09:00:00', '2026-11-28 09:00:00']) {
+        nextDay(env);
+        assert.equal((await post(env, switchOnly('444444444444', day))).data.noted, false);
+        assert.equal((await post(env, switchOnly('555555555555', day))).data.noted, false);
+    }
+    assert.equal(issue.state, 'closed');
+    assert.equal(notes(), 1);
+    assert.ok(!github.calls.includes(`POST /repos/AbdelmonemAwad/os-xgs-npu/issues/${data.issue}/labels`));
+
+    // the same model's coprocessor not answering, or an answer without a front port on a model that has
+    // some on the coprocessor's own MACs, is a problem as before
+    const said = verdict => ({kind: 'untested-model', body: `coprocessor reports, port by port: ${verdict}.`});
+    assert.equal(confirms(said('the coprocessor did not answer')), false);
+    assert.equal(confirms(said('the coprocessor answered, and its list of ports has no front port')), false);
+    assert.equal(confirms(said('the coprocessor answered, but its answer was cut short')), false);
+    assert.equal(confirms(said('they agree')), true);
+});
+
 await test('an appliance confirming another binding is noted again, and the issue stays closed', async () => {
     const env = environment();
     const {data} = await post(env, portCheck('f9de0af37e10', 'they agree'));

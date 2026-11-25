@@ -143,6 +143,9 @@ APPLIANCES = ['XGS 87', 'XGS 107', 'XGS 116', 'XGS 126', 'XGS 136', 'XGS 138', '
 INSTALLED = ['An image from xgs-image-builder', 'The installer, on an OPNsense already there', 'Something else']
 WORKS = ['every front port', 'flows in hardware', "IPsec in the coprocessor's engine", 'the front panel',
          'temperatures and fans', 'updates from XGS - Updates']
+# The words of the problem reporter's port check of a model whose front ports are all behind the switch
+# (scripts/xgs/reporter.py, from_untested_model(), "switch_only"); the relay knows them too (confirms()).
+SWITCH_ONLY = 'port by port: the coprocessor answered, and lists only its link to the switch'
 
 
 def github_issues(label):
@@ -529,7 +532,11 @@ class Site:
             r['kinds'][kind] = r['kinds'].get(kind, 0) + 1
             if kind == 'untested-model':
                 body = i.get('body') or ''
-                verdict = 'disagrees' if 'do NOT agree' in body else ('agrees' if 'they agree' in body else 'unread')
+                # Since 2026-11-25 the reporter says of a model whose front ports are all behind the switch
+                # that its coprocessor answered with its link to the switch alone: an answer, which the
+                # page would otherwise call a coprocessor that could not be read (#880, #1177).
+                verdict = ('disagrees' if 'do NOT agree' in body else 'agrees' if 'they agree' in body else
+                           'switch_only' if SWITCH_ONLY in body else 'unread')
                 r['portchecks'].append({'verdict': verdict, 'url': i['html_url'], 'date': day})
 
     def badges(self):

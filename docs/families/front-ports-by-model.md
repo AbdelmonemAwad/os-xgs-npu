@@ -140,7 +140,10 @@ driver's interfaces each port carries the address of - npuep gives the agent eve
 says, port by port, whether the board and the driver name the same label. On the OCTEON TX family it
 holds the table's tags against the agent's discover answer. It prints labels, tags and interface names,
 no address. On the XGS 136 every one of its four agrees; on the second XGS 3300 all twelve of the
-table's are the agent's, and the module's four are named as not in the table.
+table's are the agent's, and the module's four are named as not in the table. On a model whose front
+ports are all behind the switch - the XGS 87, 107 and 116 and their w models - the agent has only its
+link to the switch to list: the check says the coprocessor answered so, and that it compares no port
+behind the switch (since 2026-11-25; until then it said the coprocessor could not be read, #880, #1177).
 
 On a model marked research and development the problem reporter runs it once a boot, ten minutes in,
 and files what it says as an issue - one for each model and verdict - when reporting is on. The first
