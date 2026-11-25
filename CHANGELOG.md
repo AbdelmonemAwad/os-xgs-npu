@@ -13,6 +13,26 @@ release on an appliance you can reach before you trust it with a network you dep
 
 Nothing yet.
 
+## 0.2.0-alpha.1.2 - 2026-11-25
+
+A small release of three fixes for what appliances reported after 0.2.0-alpha.1.1. The XGS 87, 107 and 116, whose
+front ports are all behind the switch, no longer report their port check every day as a coprocessor that could not
+be read. A kernel panic is one problem report, not also a restart without a shutdown. On the XGS 126 and 136, a front
+port's carrier coming up no longer reads as an address change. And the exclusion list's run each minute no longer
+fails while a firmware update replaces OPNsense's files.
+
+Tried on the lab's appliances before this release: the port driver's change on an XGS 136, before and after; the
+panic and the restart without a shutdown on an XGS 3300, with its clock two hours ahead; the firmware lock on both.
+Not tried on an appliance: the port check of an XGS 87, 107 or 116, which the lab has none of; stand-in tests cover
+it. The relay that files the reports takes the new port check as no fault since today. A small release has no
+ready-made images: build one from this release on [the build page](https://npuforge.org/build/).
+
+### Fixes
+
+- Problem reports: on the XGS 87, 107 and 116 and their w models, the port check is said once from each appliance, as what it is, and no longer every day as an unread coprocessor ([issue 880](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/880), [issue 1177](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/1177)); a panic whose dump the next boot saved is told by where the dump was saved, not by the crashed kernel's clock, so it is not filed a second time as a restart ([issue 1217](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/1217), [issue 601](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/601)) ([#1221](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1221))
+- npuep (XGS 126, 136): a front port's carrier coming up still names its address to the switch again, but no longer says "has another address", counts in `nwa.mac_retells` or starts the fast path's programming pass again; it is counted in `nwa.mac_carrier_retells` ([#1222](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1222))
+- The exclusion list's run each minute waits while a firmware update holds OPNsense's firmware lock or config.inc is away, instead of a PHP fatal sent as a fault ([issue 1219](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/1219)) ([#1223](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1223))
+
 ## 0.2.0-alpha.1.1 - 2026-11-23
 
 A small release for the XGS 87. Its internal eMMC now works under FreeBSD 15, with a driver of the plugin's
