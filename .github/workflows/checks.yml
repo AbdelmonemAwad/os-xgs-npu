@@ -460,7 +460,9 @@ jobs:
           python3 tools/test-firewall-hook.py
 
       # "Never offloaded" as scripts/xgs/flow_exclude.php reads it: a list longer than the 64 entries
-      # the drivers keep is everything kept with the host, not refused. tools/test-flow-exclude.py.
+      # the drivers keep is everything kept with the host, not refused; and the minute's --if-changed
+      # run leaves quietly while a firmware update holds OPNsense's lock or config.inc is away (#1219).
+      # tools/test-flow-exclude.py.
       - name: Never offloaded past the driver's 64
         run: |
           command -v php > /dev/null || sudo apt-get install -y --no-install-recommends php-cli > /dev/null

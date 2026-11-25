@@ -213,12 +213,45 @@ function canonical(string $list, array &$entries, array &$refused): string
     return implode(' ', $out);
 }
 
+/*
+ * Whether the minute's --if-changed run should leave its work to the next one (#1219). A firmware
+ * update replaces the core package's files while cron goes on running, and a run that came while
+ * config.inc was away stopped in require_once: nothing written, nothing broken, but a PHP fatal the
+ * problem reporter sent as a fault. So the run waits while a firmware action holds OPNsense's lock -
+ * asked as OPNsense's own scripts/firmware/running.sh asks it, a lock taken without waiting and given
+ * back at once - and while config.inc cannot be found on the include path at all, for an update run
+ * by hand, which takes no lock. Busy only when the lock would have to be waited for ($busy): a lock
+ * this cannot take for any other reason must not stop every minute's run for good. The next minute's
+ * run, or the boot hook after the update's reboot, writes the list.
+ */
+function firmware_busy(): bool
+{
+    $lock = @fopen('/tmp/pkg_upgrade.progress', 'r');
+    if ($lock !== false) {
+        $busy = 0;
+        $held = !flock($lock, LOCK_EX | LOCK_NB, $busy) && $busy;
+        fclose($lock);
+        if ($held) {
+            return true;
+        }
+    }
+    return stream_resolve_include_path('config.inc') === false;
+}
+
 $list = null;
 $ifchanged = (($argv[1] ?? '') === '--if-changed');
 $why = [];
 if (isset($argv[1]) && !$ifchanged) {
     $list = $argv[1];
 } else {
+    /*
+     * Only the minute's run waits. Without an argument the caller wants the list written now - a
+     * save, the boot hook, the owner by hand - and the driver keeps nothing it was not given, so a
+     * configuration that cannot be read there stays a loud failure.
+     */
+    if ($ifchanged && firmware_busy()) {
+        exit(0);
+    }
     require_once('config.inc');
     $list = (string)($config['OPNsense']['XGS']['general']['flow_exclude'] ?? '');
     $ipfw = ipfw_keeps($config, $why);
