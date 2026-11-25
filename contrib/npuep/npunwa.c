@@ -122,10 +122,13 @@ struct npunwa_port {
 	int		agent_mac_ok;
 	/*
 	 * The address the switch was last told is this port's, and mac_fail as allmulti_fail: the
-	 * link sweep tells it again whenever the interface's moves (npunwa_link_step).
+	 * link sweep tells it again whenever the interface's moves (npunwa_link_step). mac_retell
+	 * is set when the carrier comes up and cleared once the address is told again: the same
+	 * address named once more, which is not a move.
 	 */
 	uint8_t		told_mac[6];
 	int		mac_fail;
+	int		mac_retell;
 };
 
 /* What one transaction found, handed back to whoever asked for it. */
@@ -181,8 +184,9 @@ struct npunwa_softc {
 	uint64_t		 mtu_sets;
 	int			 mac_from_agent; /* hw.npuep.mac_from_agent: the ports' own addresses */
 	int			 macs_taken;	/* nwa.macs_from_agent: -1 until decided, then how many */
-	int			 macs_moved;	/* a port's address was told again: the rpc side next */
+	int			 macs_moved;	/* a port's address moved: the rpc side next */
 	uint64_t		 mac_retells;	/* nwa.mac_retells */
+	uint64_t		 mac_carrier_retells; /* nwa.mac_carrier_retells */
 };
 
 static struct npunwa_softc *npunwa_sc;
@@ -853,10 +857,12 @@ npunwa_link_step(struct npunwa_softc *sc)
 			 * its "this is my address" entry closed, measured on the XGS 3300, and a
 			 * medium set here does just that. Told while the port was still down, on
 			 * 2026-11-15, the XGS 136's Port8 once passed no unicast after 1000baseT was
-			 * set; one request at each carrier up.
+			 * set; one request at each carrier up. Asked for by a flag, not by
+			 * forgetting the address told, so the reconcile knows the same address from
+			 * a new one.
 			 */
 			if (link)
-				memset(p->told_mac, 0, sizeof(p->told_mac));
+				p->mac_retell = 1;
 			npugiu_link_change(n, link, p->speed);
 		}
 	}
@@ -907,22 +913,45 @@ npunwa_link_step(struct npunwa_softc *sc)
 	 * back on its hardware address - and until issue 730 nothing here followed either, so a port
 	 * given another address received broadcast only. Told again within a sweep; the interface
 	 * table on the fastpath follows from the task, outside this lock (sc->macs_moved).
+	 *
+	 * The carrier coming up (mac_retell, above) tells it too, and that is not a move: the same
+	 * address named again changes nothing the fastpath holds. So it is counted apart, in
+	 * nwa.mac_carrier_retells, and said only on a verbose boot. Taken for a move, as it was
+	 * from #1165, every carrier up was logged as another address, counted in
+	 * nwa.mac_retells and started the fastpath's programming pass again - some 45 seconds of
+	 * read-backs, and its line that all the front ports are confirmed once more (#1216).
+	 *
+	 * Nor is the catch-all sent again after it: on the switch ports the agent's handler rewrites
+	 * the own-address TCAM entry alone, not the catch-all (umsd_port_promisc_set) or multicast
+	 * entries; for the coprocessor's own ports that handler is not in the published sources.
 	 */
 	if (p->up && p->mac_fail < 3) {
 		uint8_t now[6];
+		int moved = 0, tell = 0;
 
-		if (npugiu_front_mac(n, now) == 0 && memcmp(now, p->told_mac, sizeof(now)) != 0) {
-			if (npunwa_port_set_mac(sc, n) == 0) {
-				memcpy(p->told_mac, now, sizeof(now));
-				p->mac_fail = 0;
+		if (npugiu_front_mac(n, now) == 0) {
+			moved = (memcmp(now, p->told_mac, sizeof(now)) != 0);
+			tell = moved || p->mac_retell;
+		}
+		if (tell && npunwa_port_set_mac(sc, n) == 0) {
+			memcpy(p->told_mac, now, sizeof(now));
+			p->mac_fail = 0;
+			p->mac_retell = 0;
+			if (moved) {
 				sc->mac_retells++;
 				sc->macs_moved = 1;
 				device_printf(sc->fac.dev, "nwa: %s has another address - the switch "
 				    "told\n", npuep_front_ports[n].label);
-			} else if (++p->mac_fail >= 3)
-				device_printf(sc->fac.dev, "nwa: %s refused its new address three "
-				    "times - not asking again\n", npuep_front_ports[n].label);
-		}
+			} else {
+				sc->mac_carrier_retells++;
+				if (bootverbose)
+					device_printf(sc->fac.dev, "nwa: %s carrier up - its "
+					    "address named to the switch again\n",
+					    npuep_front_ports[n].label);
+			}
+		} else if (tell && ++p->mac_fail >= 3)
+			device_printf(sc->fac.dev, "nwa: %s refused its %saddress three times - "
+			    "not asking again\n", npuep_front_ports[n].label, moved ? "new " : "");
 	}
 
 	/*
@@ -1230,6 +1259,11 @@ npunwa_add_sysctls(struct npunwa_softc *sc)
 	    "times a port's interface took another address after it came up and the switch was "
 	    "told it - OPNsense's MAC address field, or the interface put back on its hardware "
 	    "address");
+	SYSCTL_ADD_U64(ctx, child, OID_AUTO, "mac_carrier_retells", CTLFLAG_RD,
+	    &sc->mac_carrier_retells, 0,
+	    "times a port's carrier came up and the switch was told its address again, unchanged: "
+	    "a port the agent takes down and up can come back with its own-address entry closed "
+	    "(#1165). Not an address change - mac_retells counts those");
 	SYSCTL_ADD_PROC(ctx, child, OID_AUTO, "mtu",
 	    CTLTYPE_STRING | CTLFLAG_RD | CTLFLAG_MPSAFE, sc, 0, npunwa_sysctl_mtu, "A",
 	    "each front port's MTU as the agent last accepted it, 0 for none yet");
