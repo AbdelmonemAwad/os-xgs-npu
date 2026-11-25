@@ -653,3 +653,21 @@ taken down if it should be.
 
 Each page the plugin adds ends with a one-line credit - the project, its author, its licence, and that
 it is independent. OPNsense's own footer, with Deciso's copyright, is left exactly as it is.
+
+### Reusing this code
+
+The licence lets anyone use, change and ship this code, in another project and under another licence,
+the GPL included. It asks one thing in return: **the copyright notice, the two conditions and the
+disclaimer stay with the code**, in its source and in the documentation of what is shipped. A driver,
+script or table ported from here keeps them at the top of each file that carries part of it, for
+example:
+
+```
+Copyright (c) 2026 Abdelmonem Awad <eg2@live.com>
+Derived from os-xgs-npu (https://github.com/AbdelmonemAwad/os-xgs-npu), BSD-2-Clause
+```
+
+with the licence's text beside it. A line in the project's README saying what came from here is asked
+for too: the drivers, their names and the values they use are the result of long measurement on real
+appliances, and the next owner who needs them should be able to find where they were measured.
+Questions about reusing any part: [contact@npuforge.org](mailto:contact@npuforge.org).
