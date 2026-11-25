@@ -917,13 +917,13 @@ npunwa_link_step(struct npunwa_softc *sc)
 	 * The carrier coming up (mac_retell, above) tells it too, and that is not a move: the same
 	 * address named again changes nothing the fastpath holds. So it is counted apart, in
 	 * nwa.mac_carrier_retells, and said only on a verbose boot. Taken for a move, as it was
-	 * from issue 1165, every carrier up was logged as another address, counted in
+	 * from #1165, every carrier up was logged as another address, counted in
 	 * nwa.mac_retells and started the fastpath's programming pass again - some 45 seconds of
 	 * read-backs, and its line that all the front ports are confirmed once more (#1216).
 	 *
-	 * Nor is the catch-all sent again after it: on the switch ports the agent's handler for
-	 * this attribute rewrites the port's own-address TCAM entry alone, and the catch-all
-	 * (umsd_port_promisc_set) and the multicast entry are entries of their own.
+	 * Nor is the catch-all sent again after it: on the switch ports the agent's handler rewrites
+	 * the own-address TCAM entry alone, not the catch-all (umsd_port_promisc_set) or multicast
+	 * entries; for the coprocessor's own ports that handler is not in the published sources.
 	 */
 	if (p->up && p->mac_fail < 3) {
 		uint8_t now[6];
@@ -1263,7 +1263,7 @@ npunwa_add_sysctls(struct npunwa_softc *sc)
 	    &sc->mac_carrier_retells, 0,
 	    "times a port's carrier came up and the switch was told its address again, unchanged: "
 	    "a port the agent takes down and up can come back with its own-address entry closed "
-	    "(issue 1165). Not an address change - mac_retells counts those");
+	    "(#1165). Not an address change - mac_retells counts those");
 	SYSCTL_ADD_PROC(ctx, child, OID_AUTO, "mtu",
 	    CTLTYPE_STRING | CTLFLAG_RD | CTLFLAG_MPSAFE, sc, 0, npunwa_sysctl_mtu, "A",
 	    "each front port's MTU as the agent last accepted it, 0 for none yet");
