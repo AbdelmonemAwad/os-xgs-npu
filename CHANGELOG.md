@@ -13,6 +13,31 @@ release on an appliance you can reach before you trust it with a network you dep
 
 Nothing yet.
 
+## 0.2.0-alpha.1.2 - 2026-11-25
+
+A small release of three fixes for what appliances and an owner reported after 0.2.0-alpha.1.1. The XGS 87, 107
+and 116 and their w models, whose front ports are all behind the switch, no longer report their port check every day
+as a coprocessor that could not be read. A kernel panic whose dump the next boot saved is one problem report, not also
+a restart without a shutdown. On the ARMADA family (XGS 87, 107, 116, 126, 136 and 138), a front port's carrier
+coming up no longer reads as an address change. And the Never offloaded list's run each minute no longer fails while
+a firmware action holds OPNsense's firmware lock. The ARMADA driver changed, so on those models the update says it
+takes effect at the next boot and the page offers the reboot; octep did not change.
+
+Tried on the lab's appliances before this release: on the XGS 136, the port driver's change, before and after; on
+the second XGS 3300, a panic with its clock two hours ahead, filed once, then a restart without a shutdown, still
+reported; on both, the firmware lock held by another process, and config.inc away. Then main was installed on both
+by its installer, the 136 restarted with the driver it built, and `install/verify.sh` found no failure on either. Not
+tried on an appliance: the port check of an XGS 87, 107 or 116, none of which is in the lab, which the repository's
+tests cover; the port driver's change on the other ARMADA models; a real firmware update. The relay that files the
+reports takes the new port check as no fault since 2026-11-25. A small release has no ready-made images: build one
+from this release on [the build page](https://npuforge.org/build/).
+
+### Fixes
+
+- Problem reports: on the XGS 87, 107 and 116 and their w models, the port check is said once from each appliance, as a coprocessor that answered with only its link to the switch, and no longer every day as an unread coprocessor ([issue 880](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/880), [issue 1177](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/1177)); a panic whose dump the next boot saved is told by the boot that saved it, even when the dump's time cannot be read, not by the crashed kernel's clock, so it is not filed a second time as a restart ([issue 1217](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/1217), [issue 601](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/601)) ([#1221](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1221))
+- npuep (ARMADA family): a front port's carrier coming up still names its address to the switch again, but no longer says "has another address", counts in `nwa.mac_retells` or starts the fast path's programming pass again; it is counted in `nwa.mac_carrier_retells` ([#1222](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1222))
+- flow_exclude.php: the Never offloaded list's run each minute leaves without writing while OPNsense's firmware lock is held or config.inc is away, and the next minute's run writes the list, instead of a PHP fatal sent as a fault ([issue 1219](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/1219)) ([#1223](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1223))
+
 ## 0.2.0-alpha.1.1 - 2026-11-23
 
 A small release for the XGS 87. Its internal eMMC now works under FreeBSD 15, with a driver of the plugin's
