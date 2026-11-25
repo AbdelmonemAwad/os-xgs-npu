@@ -53,6 +53,9 @@ for oid in ('dev.octep.0.dp.flow_exclude', 'dev.npuep.0.flow.exclude'):
     if shutil.which('sysctl') and subprocess.run(['sysctl', '-n', oid], capture_output=True).returncode == 0:
         print('FAIL %s is here: this test would write its lists to the running driver' % oid)
         sys.exit(1)
+if os.path.exists('/usr/local/opnsense/scripts/firmware/config.sh'):
+    print('FAIL this is an OPNsense system: the firmware lock cases would take and remove its own lock')
+    sys.exit(1)
 
 addresses = ['198.51.100.%d' % i for i in range(1, 66)]
 
